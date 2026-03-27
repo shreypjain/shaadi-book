@@ -11,6 +11,7 @@ import { authMiddleware } from "./middleware/auth.js";
 import { authRouter } from "./routers/auth.js";
 import { marketRouter } from "./routers/market.js";
 import { adminRouter } from "./routers/admin.js";
+import { withdrawalRouter } from "./routers/withdrawal.js";
 import { startIntegrityMonitor } from "./services/hashChainVerifier.js";
 
 // ---------------------------------------------------------------------------
@@ -67,6 +68,7 @@ const appRouter = router({
   auth: authRouter,
   market: marketRouter,
   admin: adminRouter,
+  withdrawal: withdrawalRouter,
 });
 
 export type AppRouter = typeof appRouter;
