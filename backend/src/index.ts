@@ -74,10 +74,17 @@ app.use(
 
 const PORT = parseInt(process.env["PORT"] ?? "3001", 10);
 const httpServer = http.createServer(app);
-createWebSocketServer(httpServer);
 
-httpServer.listen(PORT, () => {
-  console.log(`[server] Backend running on http://localhost:${PORT}`);
-  console.log(`[server] Health: http://localhost:${PORT}/health`);
-  console.log(`[server] tRPC: http://localhost:${PORT}/trpc`);
-});
+// createWebSocketServer is async (Redis adapter setup)
+createWebSocketServer(httpServer)
+  .then(() => {
+    httpServer.listen(PORT, () => {
+      console.log(`[server] Backend running on http://localhost:${PORT}`);
+      console.log(`[server] Health: http://localhost:${PORT}/health`);
+      console.log(`[server] tRPC: http://localhost:${PORT}/trpc`);
+    });
+  })
+  .catch((err: unknown) => {
+    console.error("[server] Failed to start WebSocket server:", err);
+    process.exit(1);
+  });
