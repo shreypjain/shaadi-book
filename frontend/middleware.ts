@@ -1,10 +1,12 @@
 /**
- * Next.js Edge Middleware — Task 4.3
+ * Next.js Edge Middleware — Task 4.3 + auth-ui
  *
- * Protects /admin/* routes by checking the sb_token cookie.
- * Decodes the JWT payload (base64url, no signature verification — that
- * happens server-side on every API call). Redirects to / if missing or
- * role !== 'admin'.
+ * Two responsibilities:
+ *  1. Redirect unauthenticated visitors (no sb_token cookie) to /login.
+ *  2. Redirect non-admins away from /admin/* routes.
+ *
+ * JWT payload is decoded client-side (base64url, no signature verification).
+ * Signature verification happens server-side on every API call.
  */
 
 import { NextResponse } from "next/server";
@@ -24,27 +26,48 @@ function decodeJwtPayload(token: string): { role?: string } | null {
   }
 }
 
+// Routes that are always public — no token required
+const PUBLIC_PATHS = ["/login"];
+
 export function middleware(req: NextRequest): NextResponse {
-  // Only protect /admin/* paths
-  if (!req.nextUrl.pathname.startsWith("/admin")) {
+  const { pathname } = req.nextUrl;
+
+  // Always allow public paths
+  if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
     return NextResponse.next();
   }
 
   const token = req.cookies.get("sb_token")?.value;
 
+  // Unauthenticated — redirect to login
   if (!token) {
-    return NextResponse.redirect(new URL("/", req.url));
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
   }
 
   const payload = decodeJwtPayload(token);
 
-  if (payload?.role !== "admin") {
-    return NextResponse.redirect(new URL("/", req.url));
+  // Corrupt/unparseable token — force re-login
+  if (!payload) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
+
+  // Admin-only routes
+  if (pathname.startsWith("/admin") && payload.role !== "admin") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/";
+    return NextResponse.redirect(url);
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: "/admin/:path*",
+  // Match all routes except Next.js internals + static files
+  matcher: [
+    "/((?!_next/static|_next/image|favicon\\.ico|manifest\\.json|icons/).*)",
+  ],
 };
