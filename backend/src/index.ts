@@ -9,6 +9,7 @@ import { createContext, router, publicProcedure } from "./trpc.js";
 import { createWebSocketServer } from "./ws/index.js";
 import { authMiddleware } from "./middleware/auth.js";
 import { authRouter } from "./routers/auth.js";
+import { marketRouter } from "./routers/market.js";
 
 // ---------------------------------------------------------------------------
 // App
@@ -62,6 +63,7 @@ const appRouter = router({
     timestamp: new Date().toISOString(),
   })),
   auth: authRouter,
+  market: marketRouter,
 });
 
 export type AppRouter = typeof appRouter;
