@@ -1,0 +1,15 @@
+// ---------------------------------------------------------------------------
+// Shaadi Book — Prisma Schema
+// Phase 0: Datasource + generator only.
+// Full schema added in Task 1.1 (models: users, markets, outcomes, positions,
+// purchases, transactions, admin_audit_log).
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
