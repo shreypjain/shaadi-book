@@ -1,289 +1,322 @@
 /**
- * Immutable Ledger Service — Task 2.3
+ * Immutable Ledger Service — PRD §7.4
  *
- * Append-only transaction ledger with SHA-256 hash chain.
+ * Central service for all ledger operations:
+ *   appendTransaction   — insert a transaction with SHA-256 hash chain
+ *   getUserBalance      — derive user balance (credits - debits)
+ *   getCharityPoolTotal — net credit balance of the charity_pool account
+ *   getTotalDeposits    — total DEPOSIT transaction amounts
+ *   runReconciliation   — verify the conservation invariant
  *
- * Accounting convention (double-entry, from house perspective):
- *   DEPOSIT:     debit=house_amm,   credit=user:{id}        → user balance +
- *   PURCHASE:    debit=user:{id},   credit=house_amm        → user balance -
- *   PAYOUT:      debit=house_amm,   credit=user:{id}        → user balance +
- *   CHARITY_FEE: debit=house_amm,   credit=charity_pool     → charity pool +
- *   WITHDRAWAL:  debit=user:{id},   credit=withdrawal:{ref} → user balance -
- *   REFUND:      debit=house_amm,   credit=user:{id}        → user balance +
+ * Every balance is derived from the append-only `transactions` table —
+ * never stored independently.
  *
- * User balance = SUM(amount WHERE creditAccount='user:{id}')
- *              - SUM(amount WHERE debitAccount='user:{id}')
- *
- * Reconciliation invariant:
- *   SUM(user balances) + SUM(charity_fees) + SUM(withdrawals) + house_pool = SUM(deposits)
- *   where house_pool >= 0 (ensures solvency).
- *
- * References:
- *   PRD §7.4 — Immutable Ledger Guarantees
+ * Hash chain: txHash = SHA256(prevHash | type | amount | userId | createdAt)
+ * The background verifier (hashChainVerifier.ts) checks this every 60 s.
  */
 
-import { createHash } from "crypto";
 import { Decimal } from "decimal.js";
-import type { Prisma, Transaction, TransactionType } from "@prisma/client";
+
 import { prisma } from "../db.js";
+import { computeHash } from "./hashChain.js";
 
 // ---------------------------------------------------------------------------
-// Constants
+// Enum mirror — Prisma client may not be generated in all environments
 // ---------------------------------------------------------------------------
 
-/** SHA-256 hash of all zeros — used as the prevHash for the very first tx. */
-export const GENESIS_HASH = "0".repeat(64);
+/** Mirrors the TransactionType enum in schema.prisma. */
+export type LedgerTransactionType =
+  | "DEPOSIT"
+  | "PURCHASE"
+  | "PAYOUT"
+  | "CHARITY_FEE"
+  | "WITHDRAWAL"
+  | "REFUND";
 
 // ---------------------------------------------------------------------------
-// Hash chain helpers
+// Internal types
 // ---------------------------------------------------------------------------
 
-/**
- * Compute the SHA-256 hash for a transaction row.
- *
- * Content: prevHash + type + amount (string) + userId + createdAt (ISO-8601)
- */
-export function computeTxHash(
-  prevHash: string,
-  type: TransactionType,
-  amount: Decimal | number | string,
-  userId: string,
-  createdAt: Date
-): string {
-  const content = `${prevHash}${type}${amount.toString()}${userId}${createdAt.toISOString()}`;
-  return createHash("sha256").update(content, "utf8").digest("hex");
+/** Minimal queryable interface — satisfied by main PrismaClient and tx sub-clients. */
+type QueryClient = {
+  $queryRaw<T = unknown>(
+    query: TemplateStringsArray,
+    ...values: unknown[]
+  ): Promise<T>;
+};
+
+/** Coerce any Prisma / postgres numeric return value to a plain JS number. */
+function toNumber(val: unknown): number {
+  if (val === null || val === undefined) return 0;
+  if (typeof val === "number") return val;
+  if (typeof val === "bigint") return Number(val);
+  if (typeof val === "string") return parseFloat(val) || 0;
+  if (typeof val === "object" && "toNumber" in val) {
+    return (val as { toNumber(): number }).toNumber();
+  }
+  return parseFloat(String(val)) || 0;
+}
+
+// ---------------------------------------------------------------------------
+// Public types
+// ---------------------------------------------------------------------------
+
+/** Input fields for a new transaction — hash chain fields are computed internally. */
+export interface AppendTransactionInput {
+  userId: string;
+  /** Ledger account being debited, e.g. "user:{uuid}" or "house_amm". */
+  debitAccount: string;
+  /** Ledger account being credited. */
+  creditAccount: string;
+  type: LedgerTransactionType;
+  /** Amount in US dollars (not cents). Stored as Decimal(18,6). */
+  amount: number;
+  /** Stripe checkout session ID — only set for DEPOSIT transactions. */
+  stripeSessionId?: string;
+  /** Explicit timestamp — defaults to now(). Useful for deterministic testing. */
+  createdAt?: Date;
+}
+
+/** Return value of runReconciliation — all dollar amounts. */
+export interface ReconciliationResult {
+  valid: boolean;
+  userBalances: number;
+  houseAmm: number;
+  charityPool: number;
+  totalDeposits: number;
+  totalWithdrawals: number;
+  /** lhs = userBalances + houseAmm + charityPool + totalWithdrawals */
+  lhs: number;
+  /** rhs = totalDeposits */
+  rhs: number;
+  /** |lhs - rhs| — should be < 0.0001 for a healthy ledger */
+  diff: number;
 }
 
 // ---------------------------------------------------------------------------
 // appendTransaction
 // ---------------------------------------------------------------------------
 
-export interface AppendTransactionData {
-  userId: string;
-  debitAccount: string;
-  creditAccount: string;
-  type: TransactionType;
-  /** Dollar amount (stored as Decimal). Use integer-cent values, e.g. 50.00 for $50. */
-  amount: Decimal | number | string;
-  stripeSessionId?: string;
-  /** If provided, use this as prevHash (caller owns the transaction). Otherwise
-   *  we query the DB for the latest txHash. The caller MUST pass a Prisma
-   *  transaction client to keep the read-then-write atomic. */
-  prevHash?: string;
-}
-
 /**
- * Append a new transaction to the ledger.
+ * Append a new transaction to the immutable ledger.
  *
- * - Fetches the previous transaction's txHash (or genesis hash if none exists).
- * - Computes SHA-256 txHash = hash(prevHash + type + amount + userId + createdAt).
- * - INSERTs the row (append-only; trigger prevents UPDATE/DELETE).
+ * Wraps in a Serializable transaction so that `getLastHash` and the INSERT
+ * are atomic — preventing hash chain races under concurrent writes.
  *
- * MUST be called inside a Prisma interactive transaction when the caller needs
- * atomicity with other writes (e.g. the purchase engine).
+ * NOTE: The purchase engine computes the hash chain inline inside its own
+ * transaction (see purchaseEngine.ts). Use appendTransaction for standalone,
+ * single-row inserts (e.g. Stripe deposit credits, withdrawal records).
  *
- * @param data  - Transaction fields.
- * @param tx    - Optional Prisma transaction client for atomicity.
- * @returns The newly created Transaction row.
+ * @returns { id, txHash } of the newly inserted row
  */
 export async function appendTransaction(
-  data: AppendTransactionData,
-  tx?: Prisma.TransactionClient
-): Promise<Transaction> {
-  const client = tx ?? prisma;
-  const amountDecimal = new Decimal(data.amount.toString());
-
-  // Fetch previous hash inside the same DB transaction (serializes chain writes).
-  const prevHash =
-    data.prevHash ??
-    (await (async () => {
-      const lastTx = await client.transaction.findFirst({
+  data: AppendTransactionInput
+): Promise<{ id: string; txHash: string }> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (prisma.$transaction as any)(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async (tx: any) => {
+      // Get the last hash INSIDE the transaction to prevent concurrent races.
+      const lastTx = (await tx.transaction.findFirst({
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         select: { txHash: true },
-      });
-      return lastTx?.txHash ?? GENESIS_HASH;
-    })());
+      })) as { txHash: string } | null;
 
-  const createdAt = new Date();
-  const txHash = computeTxHash(
-    prevHash,
-    data.type,
-    amountDecimal,
-    data.userId,
-    createdAt
-  );
+      const prevHash = lastTx?.txHash ?? "0".repeat(64);
+      const now = data.createdAt ?? new Date();
 
-  return client.transaction.create({
-    data: {
-      userId: data.userId,
-      debitAccount: data.debitAccount,
-      creditAccount: data.creditAccount,
-      type: data.type,
-      amount: amountDecimal,
-      prevHash,
-      txHash,
-      stripeSessionId: data.stripeSessionId,
-      createdAt,
+      const txHash = computeHash(
+        prevHash,
+        data.type,
+        new Decimal(data.amount).toFixed(6),
+        data.userId,
+        now.toISOString()
+      );
+
+      const record = (await tx.transaction.create({
+        data: {
+          userId: data.userId,
+          debitAccount: data.debitAccount,
+          creditAccount: data.creditAccount,
+          type: data.type,
+          amount: new Decimal(data.amount),
+          prevHash,
+          txHash,
+          stripeSessionId: data.stripeSessionId ?? null,
+          createdAt: now,
+        },
+        select: { id: true },
+      })) as { id: string };
+
+      return { id: record.id, txHash };
     },
-  });
+    { isolationLevel: "Serializable", timeout: 10_000 }
+  );
 }
 
 // ---------------------------------------------------------------------------
-// Balance queries
+// getUserBalance
 // ---------------------------------------------------------------------------
 
 /**
  * Derive a user's current balance from the transactions ledger.
  *
- * balance = SUM(amount WHERE creditAccount = 'user:{userId}')
- *         - SUM(amount WHERE debitAccount  = 'user:{userId}')
+ * balance = SUM(amount WHERE credit_account = 'user:{id}')
+ *         - SUM(amount WHERE debit_account  = 'user:{id}')
  *
- * Uses raw SQL for performance (avoids loading every row into JS).
+ * @param userId - UUID of the user
+ * @param client - Prisma client or tx sub-client (injectable for unit tests)
+ * @returns Balance in integer cents (e.g. 5000 = $50.00)
  */
 export async function getUserBalance(
   userId: string,
-  tx?: Prisma.TransactionClient
-): Promise<Decimal> {
-  const client = tx ?? prisma;
-  const account = `user:${userId}`;
+  client: QueryClient = prisma as QueryClient
+): Promise<number> {
+  const userAccount = `user:${userId}`;
 
-  const result = await client.$queryRaw<[{ balance: string | null }]>`
+  const result = await client.$queryRaw<Array<{ balance: unknown }>>`
     SELECT
       COALESCE(
-        SUM(CASE WHEN credit_account = ${account} THEN amount ELSE 0 END) -
-        SUM(CASE WHEN debit_account  = ${account} THEN amount ELSE 0 END),
+        SUM(CASE WHEN credit_account = ${userAccount} THEN amount ELSE 0 END)
+        - SUM(CASE WHEN debit_account  = ${userAccount} THEN amount ELSE 0 END),
         0
       ) AS balance
     FROM transactions
   `;
 
-  return new Decimal(result[0]?.balance ?? "0");
+  return Math.round(toNumber(result[0]?.balance ?? 0) * 100);
 }
 
+// ---------------------------------------------------------------------------
+// getCharityPoolTotal
+// ---------------------------------------------------------------------------
+
 /**
- * Sum of all charity fees collected across all market resolutions.
+ * Return the net balance accumulated in the charity_pool ledger account.
+ *
+ * @returns Charity pool total in integer cents
  */
 export async function getCharityPoolTotal(
-  tx?: Prisma.TransactionClient
-): Promise<Decimal> {
-  const client = tx ?? prisma;
-
-  const result = await client.$queryRaw<[{ total: string | null }]>`
-    SELECT COALESCE(SUM(amount), 0) AS total
+  client: QueryClient = prisma as QueryClient
+): Promise<number> {
+  const result = await client.$queryRaw<Array<{ total: unknown }>>`
+    SELECT
+      COALESCE(
+        SUM(CASE WHEN credit_account = 'charity_pool' THEN amount ELSE 0 END)
+        - SUM(CASE WHEN debit_account  = 'charity_pool' THEN amount ELSE 0 END),
+        0
+      ) AS total
     FROM transactions
-    WHERE type = 'CHARITY_FEE'
   `;
 
-  return new Decimal(result[0]?.total ?? "0");
+  return Math.round(toNumber(result[0]?.total ?? 0) * 100);
 }
 
+// ---------------------------------------------------------------------------
+// getTotalDeposits
+// ---------------------------------------------------------------------------
+
 /**
- * Sum of all confirmed deposits (Stripe-verified payments).
+ * Sum all DEPOSIT transaction amounts.
+ *
+ * @returns Total deposits in integer cents
  */
 export async function getTotalDeposits(
-  tx?: Prisma.TransactionClient
-): Promise<Decimal> {
-  const client = tx ?? prisma;
-
-  const result = await client.$queryRaw<[{ total: string | null }]>`
+  client: QueryClient = prisma as QueryClient
+): Promise<number> {
+  const result = await client.$queryRaw<Array<{ total: unknown }>>`
     SELECT COALESCE(SUM(amount), 0) AS total
     FROM transactions
     WHERE type = 'DEPOSIT'
   `;
 
-  return new Decimal(result[0]?.total ?? "0");
-}
-
-/**
- * Sum of all withdrawal amounts processed (i.e. approved + paid out).
- * Includes all WITHDRAWAL-type transactions — caller filters by status
- * via WithdrawalRequest table if needed.
- */
-export async function getTotalWithdrawals(
-  tx?: Prisma.TransactionClient
-): Promise<Decimal> {
-  const client = tx ?? prisma;
-
-  const result = await client.$queryRaw<[{ total: string | null }]>`
-    SELECT COALESCE(SUM(amount), 0) AS total
-    FROM transactions
-    WHERE type = 'WITHDRAWAL'
-  `;
-
-  return new Decimal(result[0]?.total ?? "0");
+  return Math.round(toNumber(result[0]?.total ?? 0) * 100);
 }
 
 // ---------------------------------------------------------------------------
-// Reconciliation
+// runReconciliation
 // ---------------------------------------------------------------------------
 
-export interface ReconciliationResult {
-  /** True when the system is solvent (housePool >= 0). */
-  isBalanced: boolean;
-  totalDeposits: Decimal;
-  totalUserBalances: Decimal;
-  charityPool: Decimal;
-  withdrawalsPaid: Decimal;
-  /**
-   * Residual house pool = deposits − userBalances − charity − withdrawals.
-   * Represents LMSR profit from losing bets.
-   * Negative value = insolvency (system owes more than it received).
-   */
-  housePool: Decimal;
-  checkedAt: Date;
-}
-
 /**
- * Verify the reconciliation invariant:
+ * Check the conservation invariant (PRD §7.4):
  *
- *   SUM(user_balances) + SUM(charity_fees) + SUM(withdrawals) + house_pool = SUM(deposits)
- *   where house_pool >= 0
+ *   SUM(user balances) + SUM(house_amm) + SUM(charity_pool) + SUM(withdrawals)
+ *     = SUM(deposits)
  *
- * Runs inside a READ-COMMITTED snapshot to get a consistent view.
- * Returns a structured result; does NOT throw on imbalance — callers
- * inside transactions should ROLLBACK if isBalanced is false.
+ * Returns a ReconciliationResult object with `valid: boolean`. Does NOT throw —
+ * use this for admin display. The purchase engine has its own throwing version
+ * that triggers a ROLLBACK on violation.
+ *
+ * @param client - Prisma client or tx sub-client (injectable for tests)
  */
 export async function runReconciliation(
-  tx?: Prisma.TransactionClient
+  client: QueryClient = prisma as QueryClient
 ): Promise<ReconciliationResult> {
-  const client = tx ?? prisma;
-
-  // Total aggregate user balances in one pass (avoids per-user fan-out).
-  const userBalResult = await client.$queryRaw<
-    [{ total_user_balances: string | null }]
+  const result = await client.$queryRaw<
+    Array<{
+      user_balances: unknown;
+      house_amm: unknown;
+      charity_pool: unknown;
+      total_deposits: unknown;
+      total_withdrawals: unknown;
+    }>
   >`
     SELECT
       COALESCE(
-        SUM(CASE WHEN credit_account LIKE 'user:%' THEN  amount ELSE 0 END) -
-        SUM(CASE WHEN debit_account  LIKE 'user:%' THEN  amount ELSE 0 END),
+        SUM(CASE WHEN credit_account LIKE 'user:%' THEN amount ELSE 0 END)
+        - SUM(CASE WHEN debit_account  LIKE 'user:%' THEN amount ELSE 0 END),
         0
-      ) AS total_user_balances
+      ) AS user_balances,
+      COALESCE(
+        SUM(CASE WHEN credit_account = 'house_amm' THEN amount ELSE 0 END)
+        - SUM(CASE WHEN debit_account  = 'house_amm' THEN amount ELSE 0 END),
+        0
+      ) AS house_amm,
+      COALESCE(
+        SUM(CASE WHEN credit_account = 'charity_pool' THEN amount ELSE 0 END)
+        - SUM(CASE WHEN debit_account  = 'charity_pool' THEN amount ELSE 0 END),
+        0
+      ) AS charity_pool,
+      COALESCE(SUM(CASE WHEN type = 'DEPOSIT'    THEN amount ELSE 0 END), 0) AS total_deposits,
+      COALESCE(SUM(CASE WHEN type = 'WITHDRAWAL' THEN amount ELSE 0 END), 0) AS total_withdrawals
     FROM transactions
   `;
 
-  const [deposits, charity, withdrawals] = await Promise.all([
-    getTotalDeposits(client),
-    getCharityPoolTotal(client),
-    getTotalWithdrawals(client),
-  ]);
+  const row = result[0];
 
-  const totalUserBalances = new Decimal(
-    userBalResult[0]?.total_user_balances ?? "0"
-  );
+  if (!row) {
+    return {
+      valid: true,
+      userBalances: 0,
+      houseAmm: 0,
+      charityPool: 0,
+      totalDeposits: 0,
+      totalWithdrawals: 0,
+      lhs: 0,
+      rhs: 0,
+      diff: 0,
+    };
+  }
 
-  // house_pool = deposits - userBalances - charity - withdrawals
-  const housePool = deposits
-    .minus(totalUserBalances)
-    .minus(charity)
-    .minus(withdrawals);
+  const userBalances = toNumber(row.user_balances);
+  const houseAmm = toNumber(row.house_amm);
+  const charityPool = toNumber(row.charity_pool);
+  const totalDeposits = toNumber(row.total_deposits);
+  const totalWithdrawals = toNumber(row.total_withdrawals);
+
+  const lhs = userBalances + houseAmm + charityPool + totalWithdrawals;
+  const rhs = totalDeposits;
+  const diff = Math.abs(lhs - rhs);
 
   return {
-    isBalanced: housePool.greaterThanOrEqualTo(0),
-    totalDeposits: deposits,
-    totalUserBalances,
-    charityPool: charity,
-    withdrawalsPaid: withdrawals,
-    housePool,
-    checkedAt: new Date(),
+    valid: diff <= 0.0001,
+    userBalances,
+    houseAmm,
+    charityPool,
+    totalDeposits,
+    totalWithdrawals,
+    lhs,
+    rhs,
+    diff,
   };
 }

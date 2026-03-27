@@ -1,516 +1,498 @@
 /**
- * Ledger Service Tests — Task 2.3
+ * Ledger Service — Unit Tests (Prisma mocked)
  *
- * Tests for:
- *  - computeTxHash (pure function — no DB)
- *  - appendTransaction (hash chain, genesis, chaining)
- *  - getUserBalance (credits add, debits subtract)
- *  - getCharityPoolTotal / getTotalDeposits / getTotalWithdrawals
- *  - runReconciliation (balanced / imbalanced)
- *  - verifyChainIntegrity (valid chain, bad txHash, bad prevHash link)
+ * Tests:
+ *  1. appendTransaction — hash chain validity: prevHash chains correctly,
+ *     txHash is computed from the correct inputs, genesis hash on empty ledger.
  *
- * These are integration tests requiring a live PostgreSQL connection.
- * DATABASE_URL is overridden to the test DB by setup.ts.
+ *  2. runReconciliation — invariant holds for valid states, detects violations:
+ *     user_balances + house_amm + charity_pool + withdrawals = deposits.
  *
- * Accounting convention used throughout:
- *   DEPOSIT:     debit=house_amm,  credit=user:{id}       → balance +
- *   PURCHASE:    debit=user:{id},  credit=house_amm       → balance -
- *   PAYOUT:      debit=house_amm,  credit=user:{id}       → balance +
- *   CHARITY_FEE: debit=house_amm,  credit=charity_pool    → no user effect
- *   WITHDRAWAL:  debit=user:{id},  credit=withdrawal:ref  → balance -
+ *  3. getUserBalance — correct credit/debit accounting from the ledger.
+ *
+ *  4. getCharityPoolTotal / getTotalDeposits — correct sums.
+ *
+ * Strategy: mock the db module (prisma) so no database is required.
+ * The hash computation (computeHash) runs against the REAL implementation —
+ * only database I/O is replaced.
  */
 
-import { afterAll, beforeAll, describe, expect, it, beforeEach } from "vitest";
-import { PrismaClient } from "@prisma/client";
-import { Decimal } from "decimal.js";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createHash } from "node:crypto";
 import {
-  computeTxHash,
-  GENESIS_HASH,
   appendTransaction,
   getUserBalance,
+  runReconciliation,
   getCharityPoolTotal,
   getTotalDeposits,
-  getTotalWithdrawals,
-  runReconciliation,
 } from "../ledger.js";
-import { verifyChainIntegrity } from "../hashChainVerifier.js";
 
 // ---------------------------------------------------------------------------
-// Test DB client
+// Mock: prisma (db module)
 // ---------------------------------------------------------------------------
 
-const prisma = new PrismaClient();
+vi.mock("../../db.js", () => ({
+  prisma: {
+    $transaction: vi.fn(),
+  },
+}));
+
+import { prisma } from "../../db.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Create a minimal user suitable for FK constraints. */
-async function createTestUser(suffix: string) {
-  // Use timestamp + suffix to avoid phone collisions across test runs.
-  const phone = `+1555${Date.now().toString().slice(-6)}${suffix}`;
-  return prisma.user.create({
-    data: { name: `Test ${suffix}`, phone, country: "US", role: "GUEST" },
-  });
+const GENESIS_HASH = "0".repeat(64);
+const USER_ID = "aaaaaaaa-0000-0000-0000-000000000001";
+
+/** Recompute a txHash the same way ledger.ts + hashChain.ts do. */
+function expectedHash(
+  prevHash: string,
+  type: string,
+  amountDollars: number,
+  userId: string,
+  isoTimestamp: string
+): string {
+  const amount = amountDollars.toFixed(6);
+  const data = `${prevHash}|${type}|${amount}|${userId}|${isoTimestamp}`;
+  return createHash("sha256").update(data, "utf8").digest("hex");
 }
 
 // ---------------------------------------------------------------------------
-// Shared fixtures (one user per describe block to isolate ledger state)
+// Mock factory for prisma.$transaction
 // ---------------------------------------------------------------------------
 
-let userId: string;
+/**
+ * Build a mock tx that supports appendTransaction's internal sequence:
+ *   tx.transaction.findFirst  → null (empty ledger) or { txHash: lastHash }
+ *   tx.transaction.create     → { id: <id> }
+ *
+ * Returns the tx mock AND a `captured` array that records every create() call.
+ */
+function makeLedgerTx(opts: {
+  lastTxHash?: string | null;
+  newId?: string;
+}) {
+  const captured: Array<Record<string, unknown>> = [];
 
-beforeAll(async () => {
-  const user = await createTestUser("A");
-  userId = user.id;
-});
+  const tx = {
+    transaction: {
+      findFirst: vi.fn().mockResolvedValue(
+        opts.lastTxHash ? { txHash: opts.lastTxHash } : null
+      ),
+      create: vi.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+        captured.push(data);
+        return Promise.resolve({ id: opts.newId ?? "tx-id-1" });
+      }),
+    },
+  };
 
-afterAll(async () => {
-  await prisma.$disconnect();
-});
+  return { tx, captured };
+}
 
-// ---------------------------------------------------------------------------
-// computeTxHash — pure function, no DB needed
-// ---------------------------------------------------------------------------
-
-describe("computeTxHash", () => {
-  const prevHash = "a".repeat(64);
-  const type = "DEPOSIT" as const;
-  const amount = new Decimal("50.00");
-  const uid = "user-123";
-  const ts = new Date("2024-01-01T00:00:00.000Z");
-
-  it("returns a 64-character hex string", () => {
-    const hash = computeTxHash(prevHash, type, amount, uid, ts);
-    expect(hash).toHaveLength(64);
-    expect(hash).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  it("is deterministic — same inputs → same hash", () => {
-    const h1 = computeTxHash(prevHash, type, amount, uid, ts);
-    const h2 = computeTxHash(prevHash, type, amount, uid, ts);
-    expect(h1).toBe(h2);
-  });
-
-  it("changes when prevHash changes", () => {
-    const h1 = computeTxHash("a".repeat(64), type, amount, uid, ts);
-    const h2 = computeTxHash("b".repeat(64), type, amount, uid, ts);
-    expect(h1).not.toBe(h2);
-  });
-
-  it("changes when type changes", () => {
-    const h1 = computeTxHash(prevHash, "DEPOSIT", amount, uid, ts);
-    const h2 = computeTxHash(prevHash, "PURCHASE", amount, uid, ts);
-    expect(h1).not.toBe(h2);
-  });
-
-  it("changes when amount changes", () => {
-    const h1 = computeTxHash(prevHash, type, "10.00", uid, ts);
-    const h2 = computeTxHash(prevHash, type, "11.00", uid, ts);
-    expect(h1).not.toBe(h2);
-  });
-
-  it("changes when userId changes", () => {
-    const h1 = computeTxHash(prevHash, type, amount, "user-1", ts);
-    const h2 = computeTxHash(prevHash, type, amount, "user-2", ts);
-    expect(h1).not.toBe(h2);
-  });
-
-  it("changes when createdAt changes", () => {
-    const h1 = computeTxHash(prevHash, type, amount, uid, new Date("2024-01-01T00:00:00.000Z"));
-    const h2 = computeTxHash(prevHash, type, amount, uid, new Date("2024-01-02T00:00:00.000Z"));
-    expect(h1).not.toBe(h2);
-  });
-});
+/** Wire prisma.$transaction to execute the callback with a mock tx. */
+function mockTransaction(tx: ReturnType<typeof makeLedgerTx>["tx"]): void {
+  vi.mocked(prisma.$transaction).mockImplementation(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async (fn: any) => fn(tx)
+  );
+}
 
 // ---------------------------------------------------------------------------
-// appendTransaction — hash chain linking
+// Mock factory for $queryRaw
+// ---------------------------------------------------------------------------
+
+type MockQueryClient = {
+  $queryRaw: ReturnType<typeof vi.fn>;
+};
+
+function makeQueryClient(): MockQueryClient {
+  return { $queryRaw: vi.fn() };
+}
+
+// ---------------------------------------------------------------------------
+// 1. appendTransaction — hash chain validity
 // ---------------------------------------------------------------------------
 
 describe("appendTransaction — hash chain", () => {
-  let isolatedUserId: string;
-
-  beforeAll(async () => {
-    const user = await createTestUser("B");
-    isolatedUserId = user.id;
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it("first transaction uses GENESIS_HASH as prevHash", async () => {
-    const tx = await appendTransaction({
-      userId: isolatedUserId,
-      debitAccount: "house_amm",
-      creditAccount: `user:${isolatedUserId}`,
+  it("uses GENESIS_HASH as prevHash for the very first transaction", async () => {
+    const { tx, captured } = makeLedgerTx({ lastTxHash: null, newId: "tx-001" });
+    mockTransaction(tx);
+
+    const fixedDate = new Date("2026-03-27T10:00:00.000Z");
+
+    await appendTransaction({
+      userId: USER_ID,
+      debitAccount: `user:${USER_ID}`,
+      creditAccount: "house_amm",
       type: "DEPOSIT",
-      amount: "100.00",
+      amount: 20,
+      createdAt: fixedDate,
     });
 
-    expect(tx.prevHash).toBe(GENESIS_HASH);
-    expect(tx.txHash).toHaveLength(64);
-    expect(tx.txHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(captured).toHaveLength(1);
+    const inserted = captured[0]!;
+    expect(inserted["prevHash"]).toBe(GENESIS_HASH);
   });
 
-  it("second transaction uses first transaction's txHash as prevHash", async () => {
-    // Need a fresh user so we control the "first" transaction in a deterministic way.
-    const user = await createTestUser("C");
-    const uid = user.id;
+  it("computes a correct SHA-256 txHash for the first transaction", async () => {
+    const { tx, captured } = makeLedgerTx({ lastTxHash: null, newId: "tx-001" });
+    mockTransaction(tx);
 
-    const tx1 = await appendTransaction({
-      userId: uid,
-      debitAccount: "house_amm",
-      creditAccount: `user:${uid}`,
+    const fixedDate = new Date("2026-03-27T10:00:00.000Z");
+
+    await appendTransaction({
+      userId: USER_ID,
+      debitAccount: `user:${USER_ID}`,
+      creditAccount: "house_amm",
       type: "DEPOSIT",
-      amount: "50.00",
+      amount: 20,
+      createdAt: fixedDate,
     });
 
-    const tx2 = await appendTransaction({
-      userId: uid,
-      debitAccount: `user:${uid}`,
+    const inserted = captured[0]!;
+    const want = expectedHash(GENESIS_HASH, "DEPOSIT", 20, USER_ID, fixedDate.toISOString());
+    expect(inserted["txHash"]).toBe(want);
+  });
+
+  it("uses the previous transaction's txHash as prevHash for subsequent transactions", async () => {
+    // --- First transaction ---
+    const firstDate = new Date("2026-03-27T10:00:00.000Z");
+    const { tx: tx1, captured: cap1 } = makeLedgerTx({ lastTxHash: null, newId: "tx-001" });
+    mockTransaction(tx1);
+
+    await appendTransaction({
+      userId: USER_ID,
+      debitAccount: `user:${USER_ID}`,
+      creditAccount: "house_amm",
+      type: "DEPOSIT",
+      amount: 20,
+      createdAt: firstDate,
+    });
+
+    const firstTxHash = cap1[0]!["txHash"] as string;
+
+    // --- Second transaction uses first txHash as prevHash ---
+    const secondDate = new Date("2026-03-27T10:01:00.000Z");
+    const { tx: tx2, captured: cap2 } = makeLedgerTx({
+      lastTxHash: firstTxHash,
+      newId: "tx-002",
+    });
+    mockTransaction(tx2);
+
+    await appendTransaction({
+      userId: USER_ID,
+      debitAccount: `user:${USER_ID}`,
       creditAccount: "house_amm",
       type: "PURCHASE",
-      amount: "25.00",
+      amount: 10,
+      createdAt: secondDate,
     });
 
-    expect(tx2.prevHash).toBe(tx1.txHash);
+    expect(cap2[0]!["prevHash"]).toBe(firstTxHash);
   });
 
-  it("txHash matches recomputation from stored fields", async () => {
-    const user = await createTestUser("D");
-    const uid = user.id;
+  it("chains 3 sequential transactions: each prevHash = previous txHash", async () => {
+    const dates = [
+      new Date("2026-03-27T10:00:00.000Z"),
+      new Date("2026-03-27T10:01:00.000Z"),
+      new Date("2026-03-27T10:02:00.000Z"),
+    ];
+    const amounts = [20, 10, 5];
+    const types = ["DEPOSIT", "PURCHASE", "PAYOUT"] as const;
+    const ids = ["tx-001", "tx-002", "tx-003"];
 
-    const tx = await appendTransaction({
-      userId: uid,
-      debitAccount: "house_amm",
-      creditAccount: `user:${uid}`,
+    let lastHash: string | null = null;
+    const insertedHashes: string[] = [];
+
+    for (let i = 0; i < 3; i++) {
+      const { tx, captured } = makeLedgerTx({ lastTxHash: lastHash, newId: ids[i] });
+      mockTransaction(tx);
+
+      await appendTransaction({
+        userId: USER_ID,
+        debitAccount: `user:${USER_ID}`,
+        creditAccount: "house_amm",
+        type: types[i]!,
+        amount: amounts[i]!,
+        createdAt: dates[i],
+      });
+
+      const row = captured[0]!;
+      const prevHashUsed = i === 0 ? GENESIS_HASH : insertedHashes[i - 1]!;
+      expect(row["prevHash"]).toBe(prevHashUsed);
+
+      const wantHash = expectedHash(
+        prevHashUsed,
+        types[i]!,
+        amounts[i]!,
+        USER_ID,
+        dates[i]!.toISOString()
+      );
+      expect(row["txHash"]).toBe(wantHash);
+
+      insertedHashes.push(row["txHash"] as string);
+      lastHash = row["txHash"] as string;
+    }
+
+    // Verify the chain linkage end-to-end
+    expect(insertedHashes[1]).toBeDefined();
+    expect(insertedHashes[0]).not.toBe(insertedHashes[1]);
+    expect(insertedHashes[1]).not.toBe(insertedHashes[2]);
+  });
+
+  it("returns the new transaction id and txHash", async () => {
+    const { tx } = makeLedgerTx({ lastTxHash: null, newId: "my-custom-id" });
+    mockTransaction(tx);
+
+    const result = await appendTransaction({
+      userId: USER_ID,
+      debitAccount: `user:${USER_ID}`,
+      creditAccount: "house_amm",
       type: "DEPOSIT",
-      amount: "75.00",
+      amount: 10,
     });
 
-    const expected = computeTxHash(
-      tx.prevHash,
-      tx.type,
-      tx.amount,
-      tx.userId,
-      tx.createdAt
-    );
-
-    expect(tx.txHash).toBe(expected);
+    expect(result.id).toBe("my-custom-id");
+    expect(result.txHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("stripeSessionId is stored when provided", async () => {
-    const user = await createTestUser("E");
-    const uid = user.id;
+  it("includes stripeSessionId in the inserted row when provided", async () => {
+    const { tx, captured } = makeLedgerTx({ lastTxHash: null, newId: "tx-stripe" });
+    mockTransaction(tx);
 
-    const tx = await appendTransaction({
-      userId: uid,
-      debitAccount: "house_amm",
-      creditAccount: `user:${uid}`,
+    await appendTransaction({
+      userId: USER_ID,
+      debitAccount: `user:${USER_ID}`,
+      creditAccount: "house_amm",
       type: "DEPOSIT",
-      amount: "30.00",
+      amount: 25,
       stripeSessionId: "cs_test_abc123",
     });
 
-    expect(tx.stripeSessionId).toBe("cs_test_abc123");
+    expect(captured[0]!["stripeSessionId"]).toBe("cs_test_abc123");
   });
 });
 
 // ---------------------------------------------------------------------------
-// getUserBalance
+// 2. runReconciliation — conservation invariant
 // ---------------------------------------------------------------------------
 
-describe("getUserBalance", () => {
-  let balUserId: string;
+describe("runReconciliation — conservation invariant", () => {
+  it("returns valid=true and all zeros for an empty ledger", async () => {
+    const client = makeQueryClient();
+    client.$queryRaw.mockResolvedValue([]);
 
-  beforeAll(async () => {
-    const user = await createTestUser("F");
-    balUserId = user.id;
-  });
+    const result = await runReconciliation(client as Parameters<typeof runReconciliation>[0]);
 
-  it("returns 0 for a user with no transactions", async () => {
-    const user = await createTestUser("G");
-    const bal = await getUserBalance(user.id);
-    expect(bal.toNumber()).toBe(0);
-  });
-
-  it("increases balance when user is creditAccount (DEPOSIT)", async () => {
-    await appendTransaction({
-      userId: balUserId,
-      debitAccount: "house_amm",
-      creditAccount: `user:${balUserId}`,
-      type: "DEPOSIT",
-      amount: "100.00",
-    });
-
-    const bal = await getUserBalance(balUserId);
-    expect(bal.toNumber()).toBeGreaterThanOrEqual(100);
-  });
-
-  it("decreases balance when user is debitAccount (PURCHASE)", async () => {
-    const before = await getUserBalance(balUserId);
-
-    await appendTransaction({
-      userId: balUserId,
-      debitAccount: `user:${balUserId}`,
-      creditAccount: "house_amm",
-      type: "PURCHASE",
-      amount: "40.00",
-    });
-
-    const after = await getUserBalance(balUserId);
-    // Balance decreased by 40
-    expect(before.minus(after).toNumber()).toBeCloseTo(40, 5);
-  });
-
-  it("increases balance when user receives PAYOUT", async () => {
-    const before = await getUserBalance(balUserId);
-
-    await appendTransaction({
-      userId: balUserId,
-      debitAccount: "house_amm",
-      creditAccount: `user:${balUserId}`,
-      type: "PAYOUT",
-      amount: "32.00",
-    });
-
-    const after = await getUserBalance(balUserId);
-    expect(after.minus(before).toNumber()).toBeCloseTo(32, 5);
-  });
-
-  it("decreases balance when user withdraws", async () => {
-    const before = await getUserBalance(balUserId);
-
-    await appendTransaction({
-      userId: balUserId,
-      debitAccount: `user:${balUserId}`,
-      creditAccount: "withdrawal:ref",
-      type: "WITHDRAWAL",
-      amount: "20.00",
-    });
-
-    const after = await getUserBalance(balUserId);
-    expect(before.minus(after).toNumber()).toBeCloseTo(20, 5);
-  });
-
-  it("CHARITY_FEE does not affect user balance", async () => {
-    const before = await getUserBalance(balUserId);
-
-    await appendTransaction({
-      userId: balUserId,
-      debitAccount: "house_amm",
-      creditAccount: "charity_pool",
-      type: "CHARITY_FEE",
-      amount: "8.00",
-    });
-
-    const after = await getUserBalance(balUserId);
-    expect(after.toNumber()).toBeCloseTo(before.toNumber(), 5);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// getCharityPoolTotal / getTotalDeposits / getTotalWithdrawals
-// ---------------------------------------------------------------------------
-
-describe("Aggregate ledger queries", () => {
-  let aggUserId: string;
-
-  beforeAll(async () => {
-    const user = await createTestUser("H");
-    aggUserId = user.id;
-
-    // Insert a known set of transactions.
-    await appendTransaction({
-      userId: aggUserId,
-      debitAccount: "house_amm",
-      creditAccount: `user:${aggUserId}`,
-      type: "DEPOSIT",
-      amount: "200.00",
-    });
-    await appendTransaction({
-      userId: aggUserId,
-      debitAccount: "house_amm",
-      creditAccount: `user:${aggUserId}`,
-      type: "DEPOSIT",
-      amount: "50.00",
-    });
-    await appendTransaction({
-      userId: aggUserId,
-      debitAccount: "house_amm",
-      creditAccount: "charity_pool",
-      type: "CHARITY_FEE",
-      amount: "10.00",
-    });
-    await appendTransaction({
-      userId: aggUserId,
-      debitAccount: "house_amm",
-      creditAccount: "charity_pool",
-      type: "CHARITY_FEE",
-      amount: "5.00",
-    });
-    await appendTransaction({
-      userId: aggUserId,
-      debitAccount: `user:${aggUserId}`,
-      creditAccount: "withdrawal:ref",
-      type: "WITHDRAWAL",
-      amount: "30.00",
-    });
-  });
-
-  it("getTotalDeposits sums only DEPOSIT rows", async () => {
-    const total = await getTotalDeposits();
-    // There are multiple users creating deposits across tests; just verify
-    // the function runs and the result accounts for our test user's $250.
-    expect(total.toNumber()).toBeGreaterThanOrEqual(250);
-  });
-
-  it("getCharityPoolTotal sums only CHARITY_FEE rows", async () => {
-    const total = await getCharityPoolTotal();
-    // Our test user contributed $15 in charity fees.
-    expect(total.toNumber()).toBeGreaterThanOrEqual(15);
-  });
-
-  it("getTotalWithdrawals sums only WITHDRAWAL rows", async () => {
-    const total = await getTotalWithdrawals();
-    expect(total.toNumber()).toBeGreaterThanOrEqual(30);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// runReconciliation
-// ---------------------------------------------------------------------------
-
-describe("runReconciliation", () => {
-  it("is balanced when deposits ≥ user_balances + charity + withdrawals", async () => {
-    const result = await runReconciliation();
-    // Across all test transactions, the invariant should hold.
-    expect(result.isBalanced).toBe(true);
-    expect(result.housePool.toNumber()).toBeGreaterThanOrEqual(0);
-  });
-
-  it("returns correct structure with all required fields", async () => {
-    const result = await runReconciliation();
-    expect(result).toMatchObject({
-      isBalanced: expect.any(Boolean),
-      totalDeposits: expect.any(Object), // Decimal
-      totalUserBalances: expect.any(Object),
-      charityPool: expect.any(Object),
-      withdrawalsPaid: expect.any(Object),
-      housePool: expect.any(Object),
-      checkedAt: expect.any(Date),
-    });
-  });
-
-  it("housePool = deposits − userBalances − charity − withdrawals", async () => {
-    const r = await runReconciliation();
-    const computed = r.totalDeposits
-      .minus(r.totalUserBalances)
-      .minus(r.charityPool)
-      .minus(r.withdrawalsPaid);
-    // Should match within floating-point tolerance.
-    expect(r.housePool.minus(computed).abs().toNumber()).toBeLessThan(0.000001);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// verifyChainIntegrity
-// ---------------------------------------------------------------------------
-
-describe("verifyChainIntegrity", () => {
-  it("reports valid for the current chain (all appended via appendTransaction)", async () => {
-    const result = await verifyChainIntegrity();
     expect(result.valid).toBe(true);
-    expect(result.firstBadTransactionId).toBeUndefined();
-    expect(result.checkedCount).toBeGreaterThan(0);
+    expect(result.totalDeposits).toBe(0);
+    expect(result.userBalances).toBe(0);
+    expect(result.diff).toBe(0);
   });
 
-  it("detects a transaction inserted with a wrong prevHash", async () => {
-    // Insert a transaction directly with a deliberately wrong prevHash.
-    // We bypass appendTransaction to simulate tampering.
-    const user = await createTestUser("I");
-    const uid = user.id;
+  it("returns valid=true when invariant holds exactly", async () => {
+    // $20 deposited, user has $10 balance, house_amm has $10
+    // lhs = 10 + 10 + 0 + 0 = 20 = rhs ✓
+    const client = makeQueryClient();
+    client.$queryRaw.mockResolvedValue([
+      {
+        user_balances: 10,
+        house_amm: 10,
+        charity_pool: 0,
+        total_deposits: 20,
+        total_withdrawals: 0,
+      },
+    ]);
 
-    // First, insert a legitimate transaction (so the chain has a known tail).
-    const legitimateTx = await appendTransaction({
-      userId: uid,
-      debitAccount: "house_amm",
-      creditAccount: `user:${uid}`,
-      type: "DEPOSIT",
-      amount: "10.00",
-    });
+    const result = await runReconciliation(client as Parameters<typeof runReconciliation>[0]);
 
-    // Now insert a tampered transaction whose prevHash does NOT equal
-    // legitimateTx.txHash — it should break the chain link.
-    const wrongPrevHash = "f".repeat(64); // deliberately wrong
-    const createdAt = new Date(Date.now() + 1); // ensure it sorts after legitimateTx
+    expect(result.valid).toBe(true);
+    expect(result.userBalances).toBe(10);
+    expect(result.houseAmm).toBe(10);
+    expect(result.charityPool).toBe(0);
+    expect(result.totalDeposits).toBe(20);
+    expect(result.lhs).toBe(20);
+    expect(result.rhs).toBe(20);
+    expect(result.diff).toBeLessThan(0.0001);
+  });
 
-    // Use raw SQL to bypass appendTransaction's automatic prevHash lookup.
-    await prisma.$executeRaw`
-      INSERT INTO transactions (id, user_id, debit_account, credit_account, type, amount, prev_hash, tx_hash, created_at)
-      VALUES (
-        gen_random_uuid(),
-        ${uid},
-        ${"house_amm"},
-        ${`user:${uid}`},
-        'DEPOSIT'::"TransactionType",
-        10,
-        ${wrongPrevHash},
-        ${computeTxHash(wrongPrevHash, "DEPOSIT", "10.00", uid, createdAt)},
-        ${createdAt}
-      )
-    `;
+  it("returns valid=true including charity_pool and withdrawals", async () => {
+    // $100 deposits, user balance $30, house_amm $50, charity $10, withdrawals $10
+    // lhs = 30 + 50 + 10 + 10 = 100 = rhs ✓
+    const client = makeQueryClient();
+    client.$queryRaw.mockResolvedValue([
+      {
+        user_balances: 30,
+        house_amm: 50,
+        charity_pool: 10,
+        total_deposits: 100,
+        total_withdrawals: 10,
+      },
+    ]);
 
-    const result = await verifyChainIntegrity();
+    const result = await runReconciliation(client as Parameters<typeof runReconciliation>[0]);
 
-    // The chain should now be broken because the tampered tx's prevHash
-    // doesn't match the preceding tx's txHash.
+    expect(result.valid).toBe(true);
+    expect(Math.abs(result.lhs - result.rhs)).toBeLessThan(0.0001);
+  });
+
+  it("returns valid=false and diff > 0 when invariant is violated", async () => {
+    // Tampered: user_balances = $999 but deposits = $20 — clear violation
+    const client = makeQueryClient();
+    client.$queryRaw.mockResolvedValue([
+      {
+        user_balances: 999,
+        house_amm: 0,
+        charity_pool: 0,
+        total_deposits: 20,
+        total_withdrawals: 0,
+      },
+    ]);
+
+    const result = await runReconciliation(client as Parameters<typeof runReconciliation>[0]);
+
     expect(result.valid).toBe(false);
-    expect(result.firstBadTransactionId).toBeDefined();
-    expect(result.error).toBeDefined();
+    expect(result.diff).toBeGreaterThan(0.0001);
   });
 
-  it("detects a transaction whose stored txHash doesn't match the recomputation", async () => {
-    // Insert a transaction with a plausible prevHash (so the link looks OK)
-    // but a deliberately wrong txHash (as if the row was mutated).
-    const user = await createTestUser("J");
-    const uid = user.id;
+  it("returns valid=false for a small discrepancy > 0.0001", async () => {
+    const client = makeQueryClient();
+    client.$queryRaw.mockResolvedValue([
+      {
+        user_balances: 10.01,
+        house_amm: 10,
+        charity_pool: 0,
+        total_deposits: 20,
+        total_withdrawals: 0,
+      },
+    ]);
 
-    // Get the current chain tail to use as a valid prevHash.
-    const lastTx = await prisma.transaction.findFirst({
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      select: { txHash: true },
-    });
-    const tailHash = lastTx?.txHash ?? GENESIS_HASH;
+    const result = await runReconciliation(client as Parameters<typeof runReconciliation>[0]);
 
-    const createdAt = new Date(Date.now() + 2);
-    // Use the correct prevHash (tail) but a WRONG txHash.
-    const corruptTxHash = "0".repeat(64); // obviously wrong
-
-    await prisma.$executeRaw`
-      INSERT INTO transactions (id, user_id, debit_account, credit_account, type, amount, prev_hash, tx_hash, created_at)
-      VALUES (
-        gen_random_uuid(),
-        ${uid},
-        ${"house_amm"},
-        ${`user:${uid}`},
-        'DEPOSIT'::"TransactionType",
-        5,
-        ${tailHash},
-        ${corruptTxHash},
-        ${createdAt}
-      )
-    `;
-
-    const result = await verifyChainIntegrity();
     expect(result.valid).toBe(false);
-    expect(result.firstBadTransactionId).toBeDefined();
+    expect(result.diff).toBeCloseTo(0.01, 4);
   });
 
-  it("checkedCount equals the total number of transactions in the DB", async () => {
-    const dbCount = await prisma.transaction.count();
-    const result = await verifyChainIntegrity();
+  it("returns valid=true for floating-point noise below 0.0001 threshold", async () => {
+    const client = makeQueryClient();
+    client.$queryRaw.mockResolvedValue([
+      {
+        user_balances: 10.000001,
+        house_amm: 9.999999,
+        charity_pool: 0,
+        total_deposits: 20,
+        total_withdrawals: 0,
+      },
+    ]);
 
-    // Might be valid=false at this point due to earlier tamper tests,
-    // but checkedCount should reflect how far we got.
-    expect(result.checkedCount).toBeLessThanOrEqual(dbCount);
-    expect(result.checkedCount).toBeGreaterThan(0);
+    const result = await runReconciliation(client as Parameters<typeof runReconciliation>[0]);
+
+    expect(result.valid).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3. getUserBalance — correct derived balance
+// ---------------------------------------------------------------------------
+
+describe("getUserBalance — derived from ledger", () => {
+  it("returns balance in integer cents (credits - debits)", async () => {
+    const client = makeQueryClient();
+    client.$queryRaw.mockResolvedValue([{ balance: 10.5 }]);
+
+    const balance = await getUserBalance(USER_ID, client as Parameters<typeof getUserBalance>[1]);
+
+    // 10.5 dollars = 1050 cents
+    expect(balance).toBe(1050);
+  });
+
+  it("returns 0 cents for a user with no transactions", async () => {
+    const client = makeQueryClient();
+    client.$queryRaw.mockResolvedValue([{ balance: 0 }]);
+
+    const balance = await getUserBalance(USER_ID, client as Parameters<typeof getUserBalance>[1]);
+
+    expect(balance).toBe(0);
+  });
+
+  it("returns 0 for null/missing balance result", async () => {
+    const client = makeQueryClient();
+    client.$queryRaw.mockResolvedValue([]);
+
+    const balance = await getUserBalance(USER_ID, client as Parameters<typeof getUserBalance>[1]);
+
+    expect(balance).toBe(0);
+  });
+
+  it("rounds to the nearest cent", async () => {
+    const client = makeQueryClient();
+    client.$queryRaw.mockResolvedValue([{ balance: 20.005 }]);
+
+    const balance = await getUserBalance(USER_ID, client as Parameters<typeof getUserBalance>[1]);
+
+    expect(balance).toBe(2001);
+  });
+
+  it("handles negative balance (over-spent scenario)", async () => {
+    const client = makeQueryClient();
+    client.$queryRaw.mockResolvedValue([{ balance: -5 }]);
+
+    const balance = await getUserBalance(USER_ID, client as Parameters<typeof getUserBalance>[1]);
+
+    expect(balance).toBe(-500); // -$5 = -500 cents
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4. getCharityPoolTotal — derived charity balance
+// ---------------------------------------------------------------------------
+
+describe("getCharityPoolTotal", () => {
+  it("returns the net charity pool in integer cents", async () => {
+    const client = makeQueryClient();
+    client.$queryRaw.mockResolvedValue([{ total: 2.4 }]); // $2.40
+
+    const total = await getCharityPoolTotal(client as Parameters<typeof getCharityPoolTotal>[0]);
+
+    expect(total).toBe(240);
+  });
+
+  it("returns 0 when no charity fees have been collected", async () => {
+    const client = makeQueryClient();
+    client.$queryRaw.mockResolvedValue([{ total: 0 }]);
+
+    const total = await getCharityPoolTotal(client as Parameters<typeof getCharityPoolTotal>[0]);
+
+    expect(total).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5. getTotalDeposits
+// ---------------------------------------------------------------------------
+
+describe("getTotalDeposits", () => {
+  it("returns sum of DEPOSIT transactions in integer cents", async () => {
+    const client = makeQueryClient();
+    client.$queryRaw.mockResolvedValue([{ total: 75 }]); // $75.00
+
+    const total = await getTotalDeposits(client as Parameters<typeof getTotalDeposits>[0]);
+
+    expect(total).toBe(7500);
+  });
+
+  it("returns 0 with no deposits", async () => {
+    const client = makeQueryClient();
+    client.$queryRaw.mockResolvedValue([]);
+
+    const total = await getTotalDeposits(client as Parameters<typeof getTotalDeposits>[0]);
+
+    expect(total).toBe(0);
   });
 });

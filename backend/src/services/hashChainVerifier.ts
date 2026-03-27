@@ -1,35 +1,39 @@
 /**
- * Hash Chain Verifier — Task 2.3
+ * Hash Chain Verifier — PRD §7.4 + §9 (rule 11)
  *
- * Iterates all transaction rows in insertion order and recomputes every SHA-256
- * hash to detect any tampering. Runs as a background interval (default 60 s).
+ * Verifies the SHA-256 hash chain that protects the immutable transaction
+ * ledger from tampering. Any modification to a historical row will break
+ * the chain and is immediately detectable.
  *
- * If the chain is broken, it means a row was mutated outside the trigger
- * (e.g. direct superuser access). The system should enter read-only mode and
- * alert the admin.
+ * Usage:
+ *   verifyChainIntegrity()           — one-shot check, returns result object
+ *   startIntegrityMonitor(60_000)    — background polling (runs every 60 s)
  *
- * References:
- *   PRD §7.4 — Cryptographic audit trail
- *   PRD §9   — Ledger corruption recovery (rule #11)
+ * On failure:
+ *   - CRITICAL log emitted
+ *   - Optional onFailure callback invoked (e.g. send admin SMS via Twilio)
+ *   - PRD §9 rule 11: all purchasing should be halted; caller is responsible
+ *     for that gate (e.g. set a READ_ONLY flag on the process).
  */
 
-import { computeTxHash, GENESIS_HASH } from "./ledger.js";
 import { prisma } from "../db.js";
+import { computeHash } from "./hashChain.js";
 
 // ---------------------------------------------------------------------------
-// Chain integrity result
+// Public types
 // ---------------------------------------------------------------------------
 
 export interface ChainIntegrityResult {
-  /** True when every hash in the chain recomputes correctly. */
+  /** true = all hashes verified, false = tampering or corruption detected */
   valid: boolean;
-  /** Number of transactions examined. */
-  checkedCount: number;
-  /** ID of the first transaction whose hash does not match, if any. */
-  firstBadTransactionId?: string;
-  /** Human-readable description of the failure, if any. */
+  /** Number of transaction rows checked */
+  totalChecked: number;
+  /** UUID of the first row where the chain breaks (if any) */
+  brokenAtId?: string;
+  /** 0-based index of the broken row in the ordered chain (if any) */
+  brokenAtSequence?: number;
+  /** Human-readable description of the failure (if any) */
   error?: string;
-  checkedAt: Date;
 }
 
 // ---------------------------------------------------------------------------
@@ -37,140 +41,122 @@ export interface ChainIntegrityResult {
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch all transactions in canonical order and recompute every txHash.
+ * Read all transaction rows in insertion order and verify each SHA-256 hash.
  *
- * Canonical order: created_at ASC, id ASC (stable tiebreaker for same-ms txns).
+ * Two checks per row:
+ *   1. prevHash must equal the txHash of the immediately preceding row.
+ *   2. txHash must equal SHA256(prevHash | type | amount | userId | createdAt).
  *
- * For each row the verifier checks two things:
- *  1. The stored prevHash equals the txHash of the preceding row
- *     (or GENESIS_HASH for the first row).
- *  2. The stored txHash equals recompute(prevHash, type, amount, userId, createdAt).
+ * If either check fails, returns { valid: false, brokenAtId, ... }.
  *
- * @returns ChainIntegrityResult — valid=true if the chain is intact.
+ * NOTE: Fetches all rows into memory. Fine at wedding scale (< 10k rows).
  */
 export async function verifyChainIntegrity(): Promise<ChainIntegrityResult> {
-  const checkedAt = new Date();
-
-  // Fetch in canonical order. We only need the fields used by computeTxHash.
   const transactions = await prisma.transaction.findMany({
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: {
       id: true,
+      userId: true,
       type: true,
       amount: true,
-      userId: true,
-      createdAt: true,
       prevHash: true,
       txHash: true,
+      createdAt: true,
     },
   });
 
   if (transactions.length === 0) {
-    return { valid: true, checkedCount: 0, checkedAt };
+    return { valid: true, totalChecked: 0 };
   }
 
+  const GENESIS_HASH = "0".repeat(64);
   let expectedPrevHash = GENESIS_HASH;
 
-  for (const tx of transactions) {
-    // 1. Verify prevHash links correctly.
+  for (let i = 0; i < transactions.length; i++) {
+    const tx = transactions[i]!;
+
+    // Check 1: prevHash must chain from the previous row.
     if (tx.prevHash !== expectedPrevHash) {
       return {
         valid: false,
-        checkedCount: transactions.indexOf(tx),
-        firstBadTransactionId: tx.id,
-        error: `prevHash mismatch at transaction ${tx.id}: expected ${expectedPrevHash}, got ${tx.prevHash}`,
-        checkedAt,
+        totalChecked: i,
+        brokenAtId: tx.id,
+        brokenAtSequence: i,
+        error:
+          `prevHash mismatch at sequence ${i} (id=${tx.id}): ` +
+          `expected ${expectedPrevHash.slice(0, 16)}... ` +
+          `got ${tx.prevHash.slice(0, 16)}...`,
       };
     }
 
-    // 2. Recompute and verify stored txHash.
-    const recomputed = computeTxHash(
+    // Check 2: recompute txHash and compare.
+    // amount.toFixed(6) produces the same format used at insertion time.
+    const recomputed = computeHash(
       tx.prevHash,
       tx.type,
-      tx.amount,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (tx.amount as any).toFixed(6),
       tx.userId,
-      tx.createdAt
+      tx.createdAt.toISOString()
     );
 
     if (recomputed !== tx.txHash) {
       return {
         valid: false,
-        checkedCount: transactions.indexOf(tx),
-        firstBadTransactionId: tx.id,
-        error: `txHash mismatch at transaction ${tx.id}: stored ${tx.txHash}, recomputed ${recomputed}`,
-        checkedAt,
+        totalChecked: i,
+        brokenAtId: tx.id,
+        brokenAtSequence: i,
+        error:
+          `txHash mismatch at sequence ${i} (id=${tx.id}): ` +
+          `stored=${tx.txHash.slice(0, 16)}... ` +
+          `recomputed=${recomputed.slice(0, 16)}...`,
       };
     }
 
     expectedPrevHash = tx.txHash;
   }
 
-  return { valid: true, checkedCount: transactions.length, checkedAt };
+  return { valid: true, totalChecked: transactions.length };
 }
 
 // ---------------------------------------------------------------------------
 // startIntegrityMonitor
 // ---------------------------------------------------------------------------
 
-/** Callback invoked when the monitor detects a broken chain. */
-export type IntegrityAlertHandler = (result: ChainIntegrityResult) => void;
-
-const defaultAlertHandler: IntegrityAlertHandler = (result) => {
-  // In production: fire a PagerDuty/Twilio alert.
-  console.error(
-    "[ALERT][HashChain] Integrity violation detected — system should halt purchases!",
-    JSON.stringify({
-      firstBadTransactionId: result.firstBadTransactionId,
-      error: result.error,
-      checkedAt: result.checkedAt,
-    })
-  );
-};
-
 /**
- * Start a background integrity monitor.
+ * Start a background integrity monitor that verifies the hash chain at a
+ * fixed interval.
  *
- * Checks chain integrity every `intervalMs` milliseconds (default 60 000 ms).
- * Calls `onAlert` (defaulting to console.error) when the chain is invalid.
+ * Behavior on failure:
+ *   - Emits a CRITICAL log via console.error
+ *   - Calls onFailure(result) if provided — use this to trigger admin alerts
+ *     (e.g. Twilio SMS, admin panel notification)
  *
- * @param intervalMs  - Check interval in milliseconds. Default 60 000 (1 min).
- * @param onAlert     - Optional custom alert handler.
- * @returns A cleanup function that stops the interval.
+ * @param intervalMs  - Poll interval in milliseconds (default 60_000 = 60 s)
+ * @param onFailure   - Optional callback invoked when the chain is broken
+ * @returns           - NodeJS.Timeout handle; call clearInterval() to stop
  */
 export function startIntegrityMonitor(
   intervalMs = 60_000,
-  onAlert: IntegrityAlertHandler = defaultAlertHandler
-): () => void {
-  const timer = setInterval(() => {
+  onFailure?: (result: ChainIntegrityResult) => void
+): NodeJS.Timeout {
+  return setInterval(() => {
     verifyChainIntegrity()
       .then((result) => {
         if (!result.valid) {
-          onAlert(result);
+          console.error(
+            "[ledger] CRITICAL: Hash chain integrity FAILED — possible tampering!",
+            result
+          );
+          onFailure?.(result);
         } else {
           console.info(
-            `[HashChain] Integrity OK — ${result.checkedCount} transactions verified at ${result.checkedAt.toISOString()}`
+            `[ledger] Hash chain OK — ${result.totalChecked} transactions verified.`
           );
         }
       })
       .catch((err: unknown) => {
-        console.error("[HashChain] Monitor error during integrity check:", err);
+        console.error("[ledger] Hash chain integrity check threw:", err);
       });
   }, intervalMs);
-
-  // Run an immediate check on startup.
-  verifyChainIntegrity()
-    .then((result) => {
-      if (!result.valid) {
-        onAlert(result);
-      } else {
-        console.info(
-          `[HashChain] Startup integrity check OK — ${result.checkedCount} transactions verified`
-        );
-      }
-    })
-    .catch((err: unknown) => {
-      console.error("[HashChain] Startup integrity check error:", err);
-    });
-
-  return () => clearInterval(timer);
 }

@@ -1,78 +1,76 @@
 /**
- * Admin Audit Log Service — Task 2.3
+ * Admin Audit Log — PRD §7.4
  *
- * Immutable log of every admin action. Stored in admin_audit_logs table.
- * Used for compliance, debugging, and tamper detection.
+ * Records every admin action with timestamp, IP, admin ID, and structured
+ * metadata. The admin_audit_logs table is INSERT-only by convention — the
+ * application never UPDATEs or DELETEs audit entries.
  *
- * References:
- *   PRD §7.4 — Admin audit log
+ * Actions are logged for all admin operations: market creation, resolution,
+ * pause/void, withdrawal approval/rejection.
  */
 
-import type { AdminAuditLog, AdminAction, Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
+
+// ---------------------------------------------------------------------------
+// Enum mirror (Prisma client may not be generated in all environments)
+// ---------------------------------------------------------------------------
+
+/** Mirrors the AdminAction enum in schema.prisma. */
+export type AuditAdminAction =
+  | "CREATE_MARKET"
+  | "RESOLVE_MARKET"
+  | "PAUSE_MARKET"
+  | "VOID_MARKET"
+  | "APPROVE_WITHDRAWAL"
+  | "REJECT_WITHDRAWAL";
+
+// ---------------------------------------------------------------------------
+// Public types
+// ---------------------------------------------------------------------------
+
+export interface LogAdminActionParams {
+  /** UUID of the admin user performing the action. */
+  adminId: string;
+  action: AuditAdminAction;
+  /**
+   * UUID of the entity being acted on.
+   * For market actions: market ID. For withdrawal actions: withdrawal request ID.
+   */
+  targetId: string;
+  /** Structured metadata describing the action details. */
+  metadata: Record<string, unknown>;
+  /** Requester IP address for audit trail (e.g. ctx.req.ip). */
+  ipAddress: string;
+}
 
 // ---------------------------------------------------------------------------
 // logAdminAction
 // ---------------------------------------------------------------------------
 
 /**
- * Record an admin action in the audit log.
+ * Append a new entry to the admin audit log.
  *
- * @param adminId   - UUID of the admin user performing the action.
- * @param action    - The action type (AdminAction enum).
- * @param targetId  - UUID of the entity being acted upon (market, user, etc.).
- * @param metadata  - Arbitrary JSON payload with context (e.g. outcome IDs).
- * @param ipAddress - The admin's IP address from the HTTP request.
- * @returns The created AdminAuditLog row.
+ * This is a fire-and-remember insert — it should be called after the main
+ * operation succeeds. If logging fails, log the error but do not bubble up
+ * (audit logging is secondary to the primary operation).
+ *
+ * @returns The created entry's id and createdAt timestamp
  */
 export async function logAdminAction(
-  adminId: string,
-  action: AdminAction,
-  targetId: string,
-  metadata: Prisma.InputJsonValue,
-  ipAddress: string
-): Promise<AdminAuditLog> {
-  return prisma.adminAuditLog.create({
+  params: LogAdminActionParams
+): Promise<{ id: string; createdAt: Date }> {
+  const entry = await prisma.adminAuditLog.create({
     data: {
-      adminId,
-      action,
-      targetId,
-      metadata,
-      ipAddress,
+      adminId: params.adminId,
+      action: params.action,
+      targetId: params.targetId,
+      metadata: params.metadata,
+      ipAddress: params.ipAddress,
+    },
+    select: {
+      id: true,
+      createdAt: true,
     },
   });
-}
-
-// ---------------------------------------------------------------------------
-// getRecentAuditLog
-// ---------------------------------------------------------------------------
-
-export interface AuditLogPage {
-  entries: AdminAuditLog[];
-  /** ID of the last entry returned — pass as `cursor` for the next page. */
-  nextCursor: string | null;
-}
-
-/**
- * Return a paginated list of recent audit log entries (newest first).
- *
- * @param limit  - Max rows per page (1–100, default 50).
- * @param cursor - ID of the last row from the previous page (exclusive).
- */
-export async function getRecentAuditLog(
-  limit = 50,
-  cursor?: string
-): Promise<AuditLogPage> {
-  const take = Math.min(Math.max(1, limit), 100);
-
-  const entries = await prisma.adminAuditLog.findMany({
-    take,
-    ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-    orderBy: { createdAt: "desc" },
-  });
-
-  const nextCursor =
-    entries.length === take ? (entries[entries.length - 1]?.id ?? null) : null;
-
-  return { entries, nextCursor };
+  return entry;
 }
