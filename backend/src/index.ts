@@ -10,6 +10,8 @@ import { createWebSocketServer } from "./ws/index.js";
 import { authMiddleware } from "./middleware/auth.js";
 import { authRouter } from "./routers/auth.js";
 import { marketRouter } from "./routers/market.js";
+import { adminRouter } from "./routers/admin.js";
+import { startIntegrityMonitor } from "./services/hashChainVerifier.js";
 
 // ---------------------------------------------------------------------------
 // App
@@ -64,6 +66,7 @@ const appRouter = router({
   })),
   auth: authRouter,
   market: marketRouter,
+  admin: adminRouter,
 });
 
 export type AppRouter = typeof appRouter;
@@ -91,6 +94,9 @@ createWebSocketServer(httpServer)
       console.log(`[server] Health: http://localhost:${PORT}/health`);
       console.log(`[server] tRPC: http://localhost:${PORT}/trpc`);
     });
+
+    // Start ledger hash-chain integrity monitor (checks every 60 s).
+    startIntegrityMonitor(60_000);
   })
   .catch((err: unknown) => {
     console.error("[server] Failed to start WebSocket server:", err);
