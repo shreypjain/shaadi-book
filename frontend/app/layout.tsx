@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import { Providers } from "./providers";
+import { BottomNav } from "@/components/BottomNav";
 
 export const metadata: Metadata = {
   title: "Shaadi Book",
@@ -29,7 +31,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen bg-white text-gray-900 font-sans">
-        {children}
+        <Providers>
+          {children}
+          <BottomNav />
+        </Providers>
       </body>
     </html>
   );
