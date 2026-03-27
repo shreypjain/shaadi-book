@@ -14,6 +14,7 @@ import { adminRouter } from "./routers/admin.js";
 import { withdrawalRouter } from "./routers/withdrawal.js";
 import { paymentRouter } from "./routers/payment.js";
 import webhookRouter from "./routes/webhooks.js";
+import smsRouter from "./routes/sms.js";
 import { startIntegrityMonitor } from "./services/hashChainVerifier.js";
 
 // ---------------------------------------------------------------------------
@@ -44,6 +45,9 @@ app.use(
   })
 );
 
+// URL-encoded body parser for Twilio webhook payloads (Task 5.1)
+app.use(express.urlencoded({ extended: false }));
+
 app.use(helmet());
 app.use(morgan(process.env["NODE_ENV"] === "production" ? "combined" : "dev"));
 
@@ -56,6 +60,13 @@ app.use(authMiddleware);
 // ---------------------------------------------------------------------------
 
 app.use("/api/webhooks", webhookRouter);
+
+// ---------------------------------------------------------------------------
+// Twilio SMS Webhook (Express route — NOT tRPC)
+// Mounted here; express.urlencoded() above parses Twilio's form-encoded body
+// ---------------------------------------------------------------------------
+
+app.use("/api/sms", smsRouter);
 
 // ---------------------------------------------------------------------------
 // Health check
