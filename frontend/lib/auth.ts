@@ -1,12 +1,56 @@
 /**
- * Auth helpers — Task 4.3
+ * Auth helpers — Task 4.3 + auth-ui
  *
  * JWT token storage in localStorage + a short-lived cookie so that
  * Next.js Edge middleware can read the role without hitting the DB.
+ *
+ * Also stores a lightweight user profile in localStorage so the UI
+ * can display the user's name without a network round-trip.
  */
 
 const TOKEN_KEY = "sb_token";
+const USER_KEY = "sb_user";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
+
+// ---------------------------------------------------------------------------
+// Stored user profile
+// ---------------------------------------------------------------------------
+
+export interface StoredUser {
+  id: string;
+  name: string;
+  phone: string;
+  country: string;
+  role: "admin" | "guest";
+}
+
+/** Persist user profile to localStorage after successful login. */
+export function storeUser(user: StoredUser): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+/** Read the stored user profile (browser only). Returns null if absent. */
+export function getStoredUser(): StoredUser | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as StoredUser;
+  } catch {
+    return null;
+  }
+}
+
+/** Remove stored user profile from localStorage. */
+export function clearStoredUser(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(USER_KEY);
+}
+
+// ---------------------------------------------------------------------------
+// JWT token
+// ---------------------------------------------------------------------------
 
 /** Read the stored JWT from localStorage (browser only). */
 export function getToken(): string | null {
@@ -27,6 +71,19 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
   document.cookie = `${TOKEN_KEY}=; path=/; max-age=0`;
 }
+
+/**
+ * Full logout — clears both the JWT and stored user profile.
+ * Call this on the "Log out" button.
+ */
+export function logout(): void {
+  clearToken();
+  clearStoredUser();
+}
+
+// ---------------------------------------------------------------------------
+// JWT decode (no signature verification — happens server-side)
+// ---------------------------------------------------------------------------
 
 /**
  * Decode the JWT payload (base64url) without verifying the signature.

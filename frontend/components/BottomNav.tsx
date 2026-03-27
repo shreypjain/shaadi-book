@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+// ---------------------------------------------------------------------------
+// Hide on /login — auth page renders its own full-screen layout
+// ---------------------------------------------------------------------------
+
 const TABS = [
   {
     href: "/",
@@ -94,6 +98,9 @@ const TABS = [
  */
 export function BottomNav() {
   const pathname = usePathname();
+
+  // Don't render nav on the login page
+  if (pathname === "/login") return null;
 
   function isActive(href: string) {
     if (href === "/") return pathname === "/";
