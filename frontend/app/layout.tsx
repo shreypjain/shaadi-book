@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import { Providers } from "./providers";
 import { BottomNav } from "@/components/BottomNav";
+import { UserMenu } from "@/components/UserMenu";
 
 export const metadata: Metadata = {
   title: "Shaadi Book",
@@ -32,6 +33,8 @@ export default function RootLayout({
     <html lang="en">
       <body className="min-h-screen bg-amber-50 text-gray-900 font-sans">
         <Providers>
+          {/* Auth-aware user menu — hidden on /login */}
+          <UserMenu />
           {children}
           <BottomNav />
         </Providers>
