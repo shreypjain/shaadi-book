@@ -1,8 +1,7 @@
 // ---------------------------------------------------------------------------
 // Shaadi Book — Prisma Schema
-// Phase 0: Datasource + generator only.
-// Full schema added in Task 1.1 (models: users, markets, outcomes, positions,
-// purchases, transactions, admin_audit_log).
+// Task 1.1: Full data model — users, markets, outcomes, positions,
+//           purchases, transactions, admin_audit_log, withdrawal_requests
 // ---------------------------------------------------------------------------
 
 generator client {
@@ -12,4 +11,228 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Country {
+  US
+  IN
+}
+
+enum Role {
+  GUEST
+  ADMIN
+}
+
+enum MarketStatus {
+  PENDING
+  ACTIVE
+  PAUSED
+  RESOLVED
+  VOIDED
+}
+
+enum TransactionType {
+  DEPOSIT
+  PURCHASE
+  PAYOUT
+  CHARITY_FEE
+  WITHDRAWAL
+  REFUND
+}
+
+enum AdminAction {
+  CREATE_MARKET
+  RESOLVE_MARKET
+  PAUSE_MARKET
+  VOID_MARKET
+  APPROVE_WITHDRAWAL
+  REJECT_WITHDRAWAL
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+/// A registered guest or admin user. Identity is phone-based (OTP via Twilio).
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String   @unique
+  country   Country
+  role      Role     @default(GUEST)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  marketsCreated      Market[]            @relation("MarketCreatedBy")
+  positions           Position[]
+  purchases           Purchase[]
+  transactions        Transaction[]
+  adminAuditLogs      AdminAuditLog[]     @relation("AdminAuditAdmin")
+  withdrawalRequests  WithdrawalRequest[] @relation("WithdrawalUser")
+  withdrawalApprovals WithdrawalRequest[] @relation("WithdrawalAdmin")
+
+  @@map("users")
+}
+
+/// A prediction market with 2–5 outcomes (LMSR-priced).
+model Market {
+  id               String       @id @default(uuid())
+  question         String
+  status           MarketStatus @default(PENDING)
+  createdById      String       @map("created_by")
+  openedAt         DateTime?    @map("opened_at")
+  scheduledOpenAt  DateTime?    @map("scheduled_open_at")
+  /// Admin-overridable b_floor for this market. Null = use B_FLOOR_DEFAULT env var (20).
+  bFloorOverride   Decimal?     @map("b_floor_override") @db.Decimal(18, 6)
+  createdAt        DateTime     @default(now()) @map("created_at")
+  resolvedAt       DateTime?    @map("resolved_at")
+  winningOutcomeId String?      @map("winning_outcome_id")
+
+  // Relations
+  createdBy      User       @relation("MarketCreatedBy", fields: [createdById], references: [id])
+  outcomes       Outcome[]
+  positions      Position[]
+  purchases      Purchase[]
+  winningOutcome Outcome?   @relation("MarketWinner", fields: [winningOutcomeId], references: [id])
+
+  @@map("markets")
+}
+
+/// One possible outcome within a market. Tracks the LMSR state vector q[i] via sharesSold.
+model Outcome {
+  id         String   @id @default(uuid())
+  marketId   String   @map("market_id")
+  label      String
+  /// 0-based ordering within a market.
+  position   Int
+  /// The LMSR state vector q[i] — total shares sold for this outcome.
+  sharesSold Decimal  @default(0) @map("shares_sold") @db.Decimal(18, 6)
+  isWinner   Boolean? @map("is_winner")
+
+  // Relations
+  market     Market     @relation(fields: [marketId], references: [id])
+  positions  Position[]
+  purchases  Purchase[]
+  marketWins Market[]   @relation("MarketWinner")
+
+  @@map("outcomes")
+}
+
+/// A user's aggregated holding of an outcome within a market.
+/// This IS mutable (shares and totalCost grow on each purchase).
+model Position {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  marketId  String   @map("market_id")
+  outcomeId String   @map("outcome_id")
+  /// Total shares held (sum of all purchases for this user+market+outcome).
+  shares    Decimal  @db.Decimal(18, 6)
+  /// Total USD spent (sum of purchase costs).
+  totalCost Decimal  @map("total_cost") @db.Decimal(18, 6)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id])
+  market  Market  @relation(fields: [marketId], references: [id])
+  outcome Outcome @relation(fields: [outcomeId], references: [id])
+
+  /// One position per (user, market, outcome) triple.
+  @@unique([userId, marketId, outcomeId])
+  @@map("positions")
+}
+
+/// An immutable record of a single share purchase. No UPDATE or DELETE — enforced by trigger.
+model Purchase {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  marketId    String   @map("market_id")
+  outcomeId   String   @map("outcome_id")
+  shares      Decimal  @db.Decimal(18, 6)
+  cost        Decimal  @db.Decimal(18, 6)
+  avgPrice    Decimal  @map("avg_price") @db.Decimal(18, 6)
+  priceBefore Decimal  @map("price_before") @db.Decimal(18, 6)
+  priceAfter  Decimal  @map("price_after") @db.Decimal(18, 6)
+  bAtPurchase Decimal  @map("b_at_purchase") @db.Decimal(18, 6)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id])
+  market  Market  @relation(fields: [marketId], references: [id])
+  outcome Outcome @relation(fields: [outcomeId], references: [id])
+
+  @@map("purchases")
+}
+
+/// Append-only double-entry ledger row. No UPDATE or DELETE — enforced by trigger.
+/// Every balance change is a row here. User balance = derived SUM, never stored.
+model Transaction {
+  id              String          @id @default(uuid())
+  userId          String          @map("user_id")
+  /// Account being debited (e.g. "user:{id}", "house_amm", "charity_pool").
+  debitAccount    String          @map("debit_account")
+  /// Account being credited.
+  creditAccount   String          @map("credit_account")
+  type            TransactionType
+  /// Amount in USD (stored as Decimal; integer cents at application layer).
+  amount          Decimal         @db.Decimal(18, 6)
+  /// SHA-256 hash of the previous transaction row (hash chain for tamper detection).
+  prevHash        String          @map("prev_hash") @db.Char(64)
+  /// SHA-256(prevHash || type || amount || userId || createdAt).
+  txHash          String          @map("tx_hash") @db.Char(64)
+  stripeSessionId String?         @map("stripe_session_id")
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("transactions")
+}
+
+/// Immutable log of every admin action for compliance / audit purposes.
+/// targetId is a generic UUID pointing to the entity acted upon (market, user, etc.).
+model AdminAuditLog {
+  id        String      @id @default(uuid())
+  adminId   String      @map("admin_id")
+  action    AdminAction
+  /// UUID of the entity being acted on. Type determined by action field.
+  targetId  String      @map("target_id") @db.Uuid
+  metadata  Json
+  ipAddress String      @map("ip_address")
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  // Relations
+  admin User @relation("AdminAuditAdmin", fields: [adminId], references: [id])
+
+  @@map("admin_audit_logs")
+}
+
+/// A guest's request to withdraw their balance via Venmo or Zelle.
+model WithdrawalRequest {
+  id           String           @id @default(uuid())
+  userId       String           @map("user_id")
+  amount       Decimal          @db.Decimal(18, 6)
+  venmoHandle  String?          @map("venmo_handle")
+  zelleContact String?          @map("zelle_contact")
+  status       WithdrawalStatus @default(PENDING)
+  adminId      String?          @map("admin_id")
+  processedAt  DateTime?        @map("processed_at")
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  // Relations
+  user  User  @relation("WithdrawalUser", fields: [userId], references: [id])
+  admin User? @relation("WithdrawalAdmin", fields: [adminId], references: [id])
+
+  @@map("withdrawal_requests")
 }
