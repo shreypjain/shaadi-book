@@ -12,6 +12,8 @@ import { authRouter } from "./routers/auth.js";
 import { marketRouter } from "./routers/market.js";
 import { adminRouter } from "./routers/admin.js";
 import { withdrawalRouter } from "./routers/withdrawal.js";
+import { paymentRouter } from "./routers/payment.js";
+import webhookRouter from "./routes/webhooks.js";
 import { startIntegrityMonitor } from "./services/hashChainVerifier.js";
 
 // ---------------------------------------------------------------------------
@@ -49,6 +51,13 @@ app.use(morgan(process.env["NODE_ENV"] === "production" ? "combined" : "dev"));
 app.use(authMiddleware);
 
 // ---------------------------------------------------------------------------
+// Stripe Webhook (Express route — NOT tRPC)
+// Mounted BEFORE tRPC so it receives the raw body that express.json() saves
+// ---------------------------------------------------------------------------
+
+app.use("/api/webhooks", webhookRouter);
+
+// ---------------------------------------------------------------------------
 // Health check
 // ---------------------------------------------------------------------------
 
@@ -69,6 +78,7 @@ const appRouter = router({
   market: marketRouter,
   admin: adminRouter,
   withdrawal: withdrawalRouter,
+  payment: paymentRouter,
 });
 
 export type AppRouter = typeof appRouter;
