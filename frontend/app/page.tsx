@@ -1,45 +1,247 @@
-export default function HomePage() {
+"use client";
+
+/**
+ * Market Feed — app/page.tsx
+ *
+ * Lists active markets as cards with real-time price updates via Socket.io.
+ * Pull-to-refresh reloads the market list.
+ * NEW badge for markets < 5 min old, Low Activity badge for 30+ min stale.
+ */
+
+import { useState, useEffect, useCallback, useRef } from "react";
+import { MarketCard } from "@/components/MarketCard";
+import { trpc } from "@/lib/trpc";
+import { ensureConnected, subscribeToFeed, getSocket } from "@/lib/socket";
+import type { WsPriceUpdatePayload, WsMarketEventPayload } from "@/lib/api-types";
+
+// Live price state: marketId → (outcomeId → priceCents)
+type LivePrices = Record<string, Record<string, number>>;
+
+export default function MarketFeedPage() {
+  const [livePrices, setLivePrices] = useState<LivePrices>({});
+  const [pullY, setPullY] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const touchStartY = useRef(0);
+
+  // Fetch all active markets (no filter — show ACTIVE + PAUSED + RESOLVED)
+  const { data: markets, isLoading, error, refetch } = trpc.market.list.useQuery(
+    {},
+    { refetchOnWindowFocus: false }
+  );
+
+  // -------------------------------------------------------------------------
+  // WebSocket: global feed + per-market price subscriptions
+  // -------------------------------------------------------------------------
+
+  useEffect(() => {
+    ensureConnected();
+
+    // Subscribe to global market feed events
+    const unsubFeed = subscribeToFeed(
+      (event: WsMarketEventPayload) => {
+        // Refresh market list on any market lifecycle change
+        if (["created", "resolved", "paused", "voided"].includes(event.type)) {
+          void refetch();
+        }
+      }
+    );
+
+    return () => {
+      unsubFeed();
+    };
+  }, [refetch]);
+
+  // Subscribe to price updates for each market
+  useEffect(() => {
+    if (!markets?.length) return;
+
+    const socket = getSocket();
+
+    const handlers: Array<(p: WsPriceUpdatePayload) => void> = [];
+
+    markets.forEach((market) => {
+      const channel = `market:${market.id}:prices`;
+      socket.emit("subscribe", channel);
+
+      const handler = (payload: WsPriceUpdatePayload) => {
+        if (payload.marketId !== market.id) return;
+        setLivePrices((prev) => {
+          const marketPrices: Record<string, number> = { ...(prev[market.id] ?? {}) };
+          payload.prices.forEach(({ outcomeId, priceCents }) => {
+            marketPrices[outcomeId] = priceCents;
+          });
+          return { ...prev, [market.id]: marketPrices };
+        });
+      };
+
+      socket.on("priceUpdate", handler);
+      handlers.push(handler);
+    });
+
+    return () => {
+      markets.forEach((market, i) => {
+        const channel = `market:${market.id}:prices`;
+        socket.emit("unsubscribe", channel);
+        if (handlers[i]) socket.off("priceUpdate", handlers[i]!);
+      });
+    };
+  }, [markets]);
+
+  // -------------------------------------------------------------------------
+  // Pull-to-refresh
+  // -------------------------------------------------------------------------
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0]?.clientY ?? 0;
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    const currentY = e.touches[0]?.clientY ?? 0;
+    const dy = currentY - touchStartY.current;
+    if (dy > 0 && window.scrollY === 0) {
+      setPullY(Math.min(dy * 0.4, 60));
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(async () => {
+    if (pullY > 40) {
+      setIsRefreshing(true);
+      await refetch();
+      setIsRefreshing(false);
+    }
+    setPullY(0);
+  }, [pullY, refetch]);
+
+  // -------------------------------------------------------------------------
+  // Sorted markets: ACTIVE first, then PAUSED, then RESOLVED
+  // -------------------------------------------------------------------------
+
+  const sortedMarkets = [...(markets ?? [])].sort((a, b) => {
+    const order = { ACTIVE: 0, PENDING: 1, PAUSED: 2, RESOLVED: 3, VOIDED: 4 };
+    const ao = order[a.status as keyof typeof order] ?? 5;
+    const bo = order[b.status as keyof typeof order] ?? 5;
+    return ao !== bo ? ao - bo : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+
+  // -------------------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------------------
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center px-4 py-16">
-      <div className="w-full max-w-md text-center">
-        {/* Logo / Title */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-brand-700 mb-2">
-            Shaadi Book
-          </h1>
-          <p className="text-lg text-gray-500">
-            Live prediction market
-          </p>
-          <p className="text-sm text-gray-400 mt-1">
-            Parsh &amp; Spoorthi &middot; Udaipur
-          </p>
+    <div
+      className="min-h-screen"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={() => void handleTouchEnd()}
+    >
+      {/* Pull-to-refresh indicator */}
+      {pullY > 0 && (
+        <div
+          className="flex justify-center pt-4 transition-all"
+          style={{ height: pullY }}
+        >
+          <div
+            className={`w-6 h-6 border-2 border-brand-300 border-t-brand-600 rounded-full ${
+              pullY > 40 ? "animate-spin" : ""
+            }`}
+          />
         </div>
+      )}
 
-        {/* Placeholder CTA */}
-        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-8 shadow-sm">
-          <p className="text-gray-600 mb-6">
-            Place bets on wedding outcomes with real money.
-            Early movers get the best odds.
-          </p>
+      {/* Header */}
+      <header className="sticky top-0 z-10 bg-amber-50/95 backdrop-blur border-b border-amber-100 px-4 py-3">
+        <div className="max-w-lg mx-auto flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-brand-700">Shaadi Book</h1>
+            <p className="text-xs text-gray-400">Parsh &amp; Spoorthi · Udaipur</p>
+          </div>
           <button
-            className="w-full rounded-xl bg-brand-600 px-6 py-3 text-white font-semibold
-                       text-base hover:bg-brand-700 active:scale-95 transition-all
-                       disabled:opacity-50"
-            disabled
+            onClick={() => void refetch()}
+            className="p-2 rounded-xl hover:bg-amber-100 transition-colors"
+            aria-label="Refresh markets"
           >
-            Sign in with Phone →
+            <svg
+              className={`w-5 h-5 text-gray-500 ${isRefreshing ? "animate-spin" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
           </button>
-          <p className="mt-4 text-xs text-gray-400">
-            Auth coming in Task 1.3
-          </p>
         </div>
+      </header>
 
-        {/* Status */}
-        <div className="mt-8 flex items-center justify-center gap-2 text-xs text-gray-400">
-          <span className="inline-block h-2 w-2 rounded-full bg-green-400"></span>
-          <span>Scaffold complete · Task 0.1</span>
-        </div>
-      </div>
-    </main>
+      <main className="max-w-lg mx-auto px-4 py-4 pb-24">
+        {/* Loading skeleton */}
+        {isLoading && (
+          <div className="flex flex-col gap-3">
+            {[1, 2, 3].map((n) => (
+              <div key={n} className="rounded-2xl border bg-white p-5 animate-pulse">
+                <div className="h-4 bg-gray-200 rounded w-3/4 mb-3" />
+                <div className="h-2 bg-gray-100 rounded w-full mb-2" />
+                <div className="h-2 bg-gray-100 rounded w-5/6" />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Error state */}
+        {error && !isLoading && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+            <p className="text-sm text-red-600 font-medium mb-3">
+              Couldn&apos;t load markets
+            </p>
+            <button
+              onClick={() => void refetch()}
+              className="text-sm font-semibold text-red-700 underline"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!isLoading && !error && sortedMarkets.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-20 gap-4">
+            <div className="text-5xl">💍</div>
+            <div className="text-center">
+              <p className="font-semibold text-gray-700">No markets yet</p>
+              <p className="text-sm text-gray-400 mt-1">
+                Check back when the celebration starts!
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Market cards */}
+        {!isLoading && !error && sortedMarkets.length > 0 && (
+          <div className="flex flex-col gap-3 animate-fade-in">
+            {/* Section label for active markets */}
+            {sortedMarkets.some((m) => m.status === "ACTIVE") && (
+              <div className="flex items-center gap-2 px-1">
+                <span className="h-2 w-2 rounded-full bg-green-400 animate-pulse" />
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Live Markets
+                </span>
+              </div>
+            )}
+
+            {sortedMarkets.map((market) => (
+              <MarketCard
+                key={market.id}
+                market={market}
+                livePrices={livePrices[market.id]}
+              />
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
   );
 }

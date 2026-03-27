@@ -30,7 +30,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-white text-gray-900 font-sans">
+      <body className="min-h-screen bg-amber-50 text-gray-900 font-sans">
         <Providers>
           {children}
           <BottomNav />
