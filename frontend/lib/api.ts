@@ -98,7 +98,44 @@ const _client = createTRPCProxyClient<any>({
 // Typed API surface
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Auth response types
+// ---------------------------------------------------------------------------
+
+export interface SendOTPResult {
+  status: "pending";
+}
+
+export interface VerifyOTPResult {
+  token: string;
+  user: {
+    id: string;
+    name: string;
+    phone: string;
+    country: string;
+    role: "admin" | "guest";
+  };
+}
+
 export const api = {
+  auth: {
+    sendOTP: (input: {
+      phone: string;
+      country: "US" | "IN";
+      name: string;
+    }): Promise<SendOTPResult> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).auth.sendOTP.mutate(input) as Promise<SendOTPResult>,
+
+    verifyOTP: (input: {
+      phone: string;
+      country: "US" | "IN";
+      code: string;
+    }): Promise<VerifyOTPResult> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).auth.verifyOTP.mutate(input) as Promise<VerifyOTPResult>,
+  },
+
   wallet: {
     balance: (): Promise<WalletBalance> =>
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
