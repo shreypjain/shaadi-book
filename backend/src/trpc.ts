@@ -9,18 +9,24 @@ import { z } from "zod";
 export interface TRPCContext {
   req: Request;
   res: Response;
-  /** Set after JWT verification middleware */
+  /** Populated by authMiddleware after JWT verification */
   userId?: string;
   userRole?: "guest" | "admin";
+  userPhone?: string;
 }
 
 export async function createContext(opts: {
   req: Request;
   res: Response;
 }): Promise<TRPCContext> {
+  const req = opts.req;
   return {
-    req: opts.req,
+    req,
     res: opts.res,
+    // Forwarded from authMiddleware (set on req by JWT verification)
+    userId: req.userId,
+    userRole: (req.userRole as "guest" | "admin" | undefined),
+    userPhone: req.userPhone,
   };
 }
 
