@@ -1,38 +1,57 @@
 /**
- * Market tRPC router — Task 2.1
+ * Market tRPC Router — Tasks 2.1 + 2.2
  *
- * Currently exposes:
- *   market.buy — authenticated procedure to purchase outcome shares
- *
- * After a successful purchase the router broadcasts three WebSocket events:
- *   1. market:{id}:prices  — new prices for all outcomes
- *   2. market:{id}:activity — anonymised purchase event
- *   3. user:{id}:balance   — updated user balance (private channel)
- *
- * WebSocket broadcasts are fire-and-forget; a failure there must never roll
- * back the committed transaction.
+ * Endpoints:
+ *   market.list      — public, all active markets with prices
+ *   market.getById   — public, market detail + recent purchases
+ *   market.buy       — authenticated, purchase outcome shares
+ *   market.create    — admin only
+ *   market.resolve   — admin only
+ *   market.pause     — admin only
+ *   market.void      — admin only
  */
 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { router, protectedProcedure } from "../trpc.js";
+import { router, publicProcedure, protectedProcedure, adminProcedure } from "../trpc.js";
 import { buyShares, PurchaseError } from "../services/purchaseEngine.js";
 import { getUserBalance } from "../services/balance.js";
 import {
-  broadcastPriceUpdate,
-  broadcastPurchase,
-  broadcastBalanceUpdate,
-} from "../ws/broadcaster.js";
-import { getIO } from "../ws/index.js";
+  createMarket,
+  resolveMarket,
+  pauseMarket,
+  voidMarket,
+  getMarketWithPrices,
+  listMarkets,
+  openMarket,
+} from "../services/marketService.js";
+import {
+  notifyNewMarket,
+  notifyMarketResolved,
+  scheduleMarketOpen,
+} from "../services/notificationService.js";
+import { prisma } from "../db.js";
 
 // ---------------------------------------------------------------------------
-// Input schema
+// Safe IO helper — WebSocket server may not be initialised in tests
+// ---------------------------------------------------------------------------
+
+function getIOSafe() {
+  try {
+    const { getIO } = require("../ws/index.js") as typeof import("../ws/index.js");
+    return getIO();
+  } catch {
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Input schemas
 // ---------------------------------------------------------------------------
 
 const buyInput = z.object({
   marketId: z.string().uuid(),
   outcomeId: z.string().uuid(),
-  /** Integer cents — e.g. 1000 for $10.00. */
   dollarAmountCents: z
     .number()
     .int()
@@ -40,27 +59,78 @@ const buyInput = z.object({
     .max(5000, "Maximum purchase is $50 (5000 cents) per transaction"),
 });
 
+const MarketStatusSchema = z.enum([
+  "PENDING",
+  "ACTIVE",
+  "PAUSED",
+  "RESOLVED",
+  "VOIDED",
+]);
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
 export const marketRouter = router({
   /**
-   * market.buy
-   *
-   * Purchase shares of a market outcome.  Protected: requires a valid JWT.
-   *
-   * On success:
-   *   - Commits the LMSR purchase atomically.
-   *   - Broadcasts live price updates and balance refresh via WebSocket.
-   *   - Returns PurchaseResult to the caller.
-   *
-   * Throws:
-   *   - UNAUTHORIZED  — no JWT
-   *   - BAD_REQUEST   — INVALID_AMOUNT, MARKET_NOT_ACTIVE, OUTCOME_NOT_FOUND,
-   *                     INSUFFICIENT_BALANCE, CAP_EXCEEDED
-   *   - NOT_FOUND     — MARKET_NOT_FOUND, NO_OUTCOMES
-   *   - INTERNAL_SERVER_ERROR — unexpected engine failures
+   * market.list — public
+   */
+  list: publicProcedure
+    .input(
+      z.object({
+        status: MarketStatusSchema.optional(),
+      })
+    )
+    .query(async ({ input }) => {
+      const markets = await listMarkets(input.status);
+      return markets;
+    }),
+
+  /**
+   * market.getById — public
+   */
+  getById: publicProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ input }) => {
+      const market = await getMarketWithPrices(input.id);
+      if (!market) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Market not found" });
+      }
+
+      const recentPurchases = await prisma.purchase.findMany({
+        where: { marketId: input.id },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          shares: true,
+          cost: true,
+          avgPrice: true,
+          priceBefore: true,
+          priceAfter: true,
+          createdAt: true,
+          outcome: { select: { id: true, label: true } },
+        },
+      });
+
+      return {
+        ...market,
+        recentPurchases: recentPurchases.map((p: typeof recentPurchases[number]) => ({
+          id: p.id,
+          outcomeId: p.outcome.id,
+          outcomeLabel: p.outcome.label,
+          shares: Number(p.shares),
+          cost: Number(p.cost),
+          avgPrice: Number(p.avgPrice),
+          priceBefore: Number(p.priceBefore),
+          priceAfter: Number(p.priceAfter),
+          createdAt: p.createdAt,
+        })),
+      };
+    }),
+
+  /**
+   * market.buy — authenticated
    */
   buy: protectedProcedure
     .input(buyInput)
@@ -68,34 +138,23 @@ export const marketRouter = router({
       const { userId } = ctx;
       const { marketId, outcomeId, dollarAmountCents } = input;
 
-      // -----------------------------------------------------------------------
-      // Execute purchase engine (atomic Postgres transaction)
-      // -----------------------------------------------------------------------
       let result;
       try {
         result = await buyShares(userId, marketId, outcomeId, dollarAmountCents);
       } catch (err) {
         if (err instanceof PurchaseError) {
-          // Map PurchaseError codes to tRPC error codes
           switch (err.code) {
             case "MARKET_NOT_FOUND":
             case "NO_OUTCOMES":
             case "OUTCOME_NOT_FOUND":
-              throw new TRPCError({
-                code: "NOT_FOUND",
-                message: err.message,
-              });
+              throw new TRPCError({ code: "NOT_FOUND", message: err.message });
             case "MARKET_NOT_ACTIVE":
             case "MARKET_NOT_OPEN":
             case "INSUFFICIENT_BALANCE":
             case "CAP_EXCEEDED":
             case "INVALID_AMOUNT":
-              throw new TRPCError({
-                code: "BAD_REQUEST",
-                message: err.message,
-              });
+              throw new TRPCError({ code: "BAD_REQUEST", message: err.message });
             case "RECONCILIATION_FAILED":
-              // Critical integrity failure — log prominently
               console.error("[market.buy] CRITICAL reconciliation failure:", err);
               throw new TRPCError({
                 code: "INTERNAL_SERVER_ERROR",
@@ -115,37 +174,158 @@ export const marketRouter = router({
         });
       }
 
-      // -----------------------------------------------------------------------
-      // Broadcast via WebSocket (fire-and-forget, never throws to caller)
-      // -----------------------------------------------------------------------
+      // Broadcast via WebSocket (fire-and-forget)
       try {
-        const io = getIO();
+        const io = getIOSafe();
+        if (io) {
+          const { broadcastPriceUpdate, broadcastPurchase, broadcastBalanceUpdate } =
+            await import("../ws/broadcaster.js");
 
-        // 1. Updated prices for all outcomes (parallel arrays from engine result)
-        broadcastPriceUpdate(
-          io,
-          marketId,
-          result.allNewPrices.map((p, i) => ({
-            outcomeId: result.outcomeIds[i] ?? outcomeId,
-            priceCents: Math.round(p * 100),
-          }))
-        );
+          broadcastPriceUpdate(
+            io,
+            marketId,
+            result.allNewPrices.map((p: number, i: number) => ({
+              outcomeId: result.outcomeIds[i] ?? outcomeId,
+              priceCents: Math.round(p * 100),
+            }))
+          );
 
-        // 2. Anonymised purchase event for the activity feed
-        broadcastPurchase(io, marketId, {
-          outcomeLabel: result.outcomeLabel,
-          dollarAmount: dollarAmountCents / 100,
-          priceAfterCents: result.priceAfterCents,
-        });
+          broadcastPurchase(io, marketId, {
+            outcomeLabel: result.outcomeLabel,
+            dollarAmount: dollarAmountCents / 100,
+            priceAfterCents: result.priceAfterCents,
+          });
 
-        // 3. Updated user balance (private channel)
-        const newBalanceCents = await getUserBalance(userId);
-        broadcastBalanceUpdate(io, userId, { balanceCents: newBalanceCents });
+          const newBalanceCents = await getUserBalance(userId);
+          broadcastBalanceUpdate(io, userId, { balanceCents: newBalanceCents });
+        }
       } catch (wsErr) {
-        // WebSocket failures must NOT propagate — the purchase already committed.
         console.warn("[market.buy] WebSocket broadcast failed (non-fatal):", wsErr);
       }
 
       return result;
+    }),
+
+  /**
+   * market.create — admin only
+   */
+  create: adminProcedure
+    .input(
+      z.object({
+        question: z.string().min(1).max(500),
+        outcomeLabels: z.array(z.string().min(1).max(100)).min(2).max(5),
+        bFloorOverride: z.number().positive().optional(),
+        scheduledOpenAt: z.coerce.date().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const ipAddress = ctx.req.ip ?? ctx.req.socket.remoteAddress ?? "0.0.0.0";
+
+      const marketId = await createMarket(
+        ctx.userId!,
+        input.question,
+        input.outcomeLabels,
+        {
+          bFloorOverride: input.bFloorOverride,
+          scheduledOpenAt: input.scheduledOpenAt,
+          ipAddress,
+        }
+      );
+
+      const market = await getMarketWithPrices(marketId);
+      if (!market) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+      const io = getIOSafe();
+
+      if (input.scheduledOpenAt) {
+        scheduleMarketOpen(
+          {
+            id: marketId,
+            question: input.question,
+            scheduledOpenAt: input.scheduledOpenAt,
+          },
+          async () => {
+            await openMarket(marketId);
+            const opened = await getMarketWithPrices(marketId);
+            if (opened) await notifyNewMarket(opened, io);
+          },
+          io
+        );
+      } else {
+        await notifyNewMarket(market, io);
+      }
+
+      return market;
+    }),
+
+  /**
+   * market.resolve — admin only
+   */
+  resolve: adminProcedure
+    .input(
+      z.object({
+        marketId: z.string().uuid(),
+        winningOutcomeId: z.string().uuid(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const ipAddress = ctx.req.ip ?? ctx.req.socket.remoteAddress ?? "0.0.0.0";
+
+      await resolveMarket(ctx.userId!, input.marketId, input.winningOutcomeId, {
+        ipAddress,
+      });
+
+      const market = await getMarketWithPrices(input.marketId);
+      if (!market) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+      const io = getIOSafe();
+      notifyMarketResolved(
+        {
+          id: market.id,
+          question: market.question,
+          winningOutcomeId: market.winningOutcomeId,
+        },
+        io
+      );
+
+      return market;
+    }),
+
+  /**
+   * market.pause — admin only
+   */
+  pause: adminProcedure
+    .input(z.object({ marketId: z.string().uuid() }))
+    .mutation(async ({ input, ctx }) => {
+      const ipAddress = ctx.req.ip ?? ctx.req.socket.remoteAddress ?? "0.0.0.0";
+
+      await pauseMarket(ctx.userId!, input.marketId, { ipAddress });
+
+      const io = getIOSafe();
+      if (io) {
+        const { broadcastMarketEvent } = await import("../ws/broadcaster.js");
+        broadcastMarketEvent(io, { type: "paused", marketId: input.marketId });
+      }
+
+      return { success: true, marketId: input.marketId };
+    }),
+
+  /**
+   * market.void — admin only
+   */
+  void: adminProcedure
+    .input(z.object({ marketId: z.string().uuid() }))
+    .mutation(async ({ input, ctx }) => {
+      const ipAddress = ctx.req.ip ?? ctx.req.socket.remoteAddress ?? "0.0.0.0";
+
+      await voidMarket(ctx.userId!, input.marketId, { ipAddress });
+
+      const io = getIOSafe();
+      if (io) {
+        const { broadcastMarketEvent } = await import("../ws/broadcaster.js");
+        broadcastMarketEvent(io, { type: "voided", marketId: input.marketId });
+      }
+
+      return { success: true, marketId: input.marketId };
     }),
 });
