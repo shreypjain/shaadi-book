@@ -7,6 +7,8 @@ import * as trpcExpress from "@trpc/server/adapters/express";
 
 import { createContext, router, publicProcedure } from "./trpc.js";
 import { createWebSocketServer } from "./ws/index.js";
+import { authMiddleware } from "./middleware/auth.js";
+import { authRouter } from "./routers/auth.js";
 
 // ---------------------------------------------------------------------------
 // App
@@ -39,6 +41,9 @@ app.use(
 app.use(helmet());
 app.use(morgan(process.env["NODE_ENV"] === "production" ? "combined" : "dev"));
 
+// JWT auth middleware — populates req.userId / req.userRole / req.userPhone
+app.use(authMiddleware);
+
 // ---------------------------------------------------------------------------
 // Health check
 // ---------------------------------------------------------------------------
@@ -56,6 +61,7 @@ const appRouter = router({
     status: "ok" as const,
     timestamp: new Date().toISOString(),
   })),
+  auth: authRouter,
 });
 
 export type AppRouter = typeof appRouter;
