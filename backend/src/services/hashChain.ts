@@ -67,7 +67,7 @@ export function computeHash(
  * @returns 64-char hex prevHash, or '0'.repeat(64) if the ledger is empty
  */
 export async function getLastHash(
-  client: HashChainClient = prisma as HashChainClient
+  client: HashChainClient = prisma as unknown as HashChainClient
 ): Promise<string> {
   const last = await client.transaction.findFirst({
     orderBy: { createdAt: "desc" },
