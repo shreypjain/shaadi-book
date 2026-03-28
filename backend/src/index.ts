@@ -19,6 +19,7 @@ import { walletRouter } from "./routers/wallet.js";
 import webhookRouter from "./routes/webhooks.js";
 import smsRouter from "./routes/sms.js";
 import { startIntegrityMonitor } from "./services/hashChainVerifier.js";
+import { startPeriodicNotifications } from "./services/smsNotifier.js";
 
 // ---------------------------------------------------------------------------
 // App
@@ -126,6 +127,12 @@ createWebSocketServer(httpServer)
 
     // Start ledger hash-chain integrity monitor (checks every 60 s).
     startIntegrityMonitor(60_000);
+
+    // Start periodic SMS market updates (every 5 hours).
+    // Controlled by ENABLE_SMS_NOTIFICATIONS env var — off by default in dev/test.
+    if (process.env["ENABLE_SMS_NOTIFICATIONS"] === "true") {
+      startPeriodicNotifications(5 * 60 * 60 * 1000); // every 5 hours
+    }
   })
   .catch((err: unknown) => {
     console.error("[server] Failed to start WebSocket server:", err);
