@@ -8,7 +8,7 @@
  * References:
  *   PRD §5.1 — My Bets screen
  *   PRD §4.2 — LMSR pricing
- *   PRD §7.5 — 20% charity fee on payouts
+ *   PRD §7.5 — payouts
  */
 
 import { router, protectedProcedure } from "../trpc.js";
@@ -38,7 +38,7 @@ export const betsRouter = router({
    *   - outcome details (label, winner status)
    *   - holding details (shares, total cost, avg price)
    *   - live valuation (current price × shares)
-   *   - potential payout (shares × $1.00 × 0.80 after charity)
+   *   - potential payout (shares × $1.00 at resolution)
    */
   myPositions: protectedProcedure.query(async ({ ctx }) => {
     const positions = await prisma.position.findMany({
@@ -91,8 +91,8 @@ export const betsRouter = router({
       const currentPriceCents = Math.round(currentPrice * 100);
       const currentValueCents = Math.round(shares * currentPrice * 100);
 
-      // Potential payout if this outcome wins (PRD §7.5: 80% after 20% charity fee)
-      const potentialPayoutCents = Math.round(shares * 100 * 0.8);
+      // Potential payout if this outcome wins — full $1.00 per share at resolution
+      const potentialPayoutCents = Math.round(shares * 100);
 
       return {
         id: pos.id,

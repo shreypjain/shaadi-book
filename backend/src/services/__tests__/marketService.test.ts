@@ -7,7 +7,7 @@
  * Covered paths:
  *   1. createMarket with 2 outcomes → status ACTIVE, prices at 50%
  *   2. createMarket with scheduledOpenAt → status PENDING, openedAt null
- *   3. resolveMarket → winning positions paid (80%), charity fee (20%)
+ *   3. resolveMarket → winning positions paid full $1.00 per share
  *   4. voidMarket → all purchases refunded, reconciliation holds
  *   5. pauseMarket → status PAUSED
  *   + guard tests: double-resolve, void-resolved, pause non-active
@@ -254,7 +254,7 @@ describe("createMarket — scheduled", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 3: resolveMarket — winners paid 80%, charity 20%
+// Test 3: resolveMarket — winners paid full $1.00 per share
 // ---------------------------------------------------------------------------
 
 describe("resolveMarket", () => {
@@ -315,8 +315,8 @@ describe("resolveMarket", () => {
     expect(no!.isWinner).not.toBe(true);
   });
 
-  it("Guest A receives net payout (80% of gross)", async () => {
-    // Guest A has 5 shares → gross = $5.00, net = $4.00
+  it("Guest A receives full payout ($1.00 per share)", async () => {
+    // Guest A has 5 shares → payout = $5.00 (full $1.00 per share, no charity deduction)
     const payoutTx = await prisma.transaction.findFirst({
       where: {
         userId: guestAId,
@@ -326,36 +326,18 @@ describe("resolveMarket", () => {
       orderBy: { createdAt: "desc" },
     });
     expect(payoutTx).not.toBeNull();
-    expect(Number(payoutTx!.amount)).toBeCloseTo(4.0, 4);
+    expect(Number(payoutTx!.amount)).toBeCloseTo(5.0, 4);
   });
 
-  it("charity fee is 20% of gross", async () => {
+  it("no CHARITY_FEE transaction created at resolution", async () => {
     const charityTx = await prisma.transaction.findFirst({
       where: {
         userId: guestAId,
         type: "CHARITY_FEE",
-        creditAccount: "charity_pool",
       },
       orderBy: { createdAt: "desc" },
     });
-    expect(charityTx).not.toBeNull();
-    expect(Number(charityTx!.amount)).toBeCloseTo(1.0, 4); // 20% of $5
-  });
-
-  it("net payout + charity fee = gross payout", async () => {
-    const payoutTx = await prisma.transaction.findFirst({
-      where: { userId: guestAId, type: "PAYOUT" },
-      orderBy: { createdAt: "desc" },
-    });
-    const charityTx = await prisma.transaction.findFirst({
-      where: { userId: guestAId, type: "CHARITY_FEE" },
-      orderBy: { createdAt: "desc" },
-    });
-    const gross = 5; // 5 shares × $1.00
-    expect(Number(payoutTx!.amount) + Number(charityTx!.amount)).toBeCloseTo(
-      gross,
-      4
-    );
+    expect(charityTx).toBeNull();
   });
 
   it("Guest B (loser) gets no payout transaction", async () => {
