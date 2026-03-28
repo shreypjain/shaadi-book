@@ -19,7 +19,7 @@ import { router, protectedProcedure, publicProcedure } from "../trpc.js";
 import { createPaymentIntent } from "../services/stripe.js";
 
 const STRIPE_PUBLISHABLE_KEY =
-  "pk_test_51TFrKGQ7LUHSmeG49gwZ4G20jYvVySBtlMXXBFzc0N0gW2DPY12XPNk9pKBV7bHSWM5f2z8aeIxhVXHkpNQTgbGR00CSXL9S8R";
+  process.env["STRIPE_PUBLISHABLE_KEY"] ?? "pk_live_51K7VOBLxvHE3B5E3WaTvPzQKKNxiazYPJTku0ojNaDzjeQiizGDk4o6HVkQ6GvOTg7rFxVAYfWHtrnMUxEc8bNBf00VWSW5JbF";
 
 export const paymentRouter = router({
   /**
