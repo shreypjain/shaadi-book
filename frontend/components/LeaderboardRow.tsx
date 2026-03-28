@@ -7,36 +7,34 @@ interface LeaderboardRowProps {
   isCurrentUser?: boolean;
 }
 
-const MEDAL: Record<number, string> = {
-  1: "🥇",
-  2: "🥈",
-  3: "🥉",
-};
-
-const TOP3_STYLE: Record<
-  number,
-  { bg: string; border: string; text: string }
-> = {
+// Top-3 rank badge styles: gold, silver, bronze
+const TOP3_STYLE: Record<number, { bg: string; border: string; text: string; rankBg: string; rankText: string }> = {
   1: {
-    bg: "bg-amber-50",
-    border: "border-amber-300",
-    text: "text-amber-700",
+    bg: "bg-[#f5efd9]",
+    border: "border-[#c8a45c]/40",
+    text: "text-[#8a6d30]",
+    rankBg: "bg-[#c8a45c]",
+    rankText: "text-white",
   },
   2: {
-    bg: "bg-gray-100",
-    border: "border-gray-300",
-    text: "text-gray-600",
+    bg: "bg-[#f4f4f6]",
+    border: "border-[#c8c8d0]/40",
+    text: "text-[#4a4a5a]",
+    rankBg: "bg-[#9ca3af]",
+    rankText: "text-white",
   },
   3: {
-    bg: "bg-orange-50",
-    border: "border-orange-200",
-    text: "text-orange-700",
+    bg: "bg-[#fdf0e6]",
+    border: "border-[#d97706]/30",
+    text: "text-[#92400e]",
+    rankBg: "bg-[#d97706]",
+    rankText: "text-white",
   },
 };
 
 /**
  * A single row in the leaderboard table.
- * Top-3 entries get medal icons and highlighted backgrounds.
+ * Top-3 entries get gold/silver/bronze accents.
  *
  * PRD §10 — Leaderboard
  */
@@ -50,17 +48,22 @@ export function LeaderboardRow({
 
   return (
     <div
-      className={`flex items-center gap-3 px-4 py-3.5 rounded-2xl border-2 transition-all
-        ${isTop3 ? `${style.bg} ${style.border}` : "bg-white border-gray-100"}
-        ${isCurrentUser ? "ring-2 ring-brand-400 ring-offset-1" : ""}
+      className={`flex items-center gap-3 px-3 py-3 rounded-xl border transition-all
+        ${isTop3 ? `${style.bg} ${style.border}` : "bg-white border-[#e8e4df]"}
+        ${isCurrentUser ? "ring-2 ring-[#1e3a5f]/20 ring-offset-1" : ""}
       `}
     >
-      {/* Rank / medal */}
+      {/* Rank badge */}
       <div className="w-8 flex-shrink-0 text-center">
         {isTop3 ? (
-          <span className="text-xl">{MEDAL[entry.rank]}</span>
+          <span
+            className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold
+              ${style.rankBg} ${style.rankText}`}
+          >
+            {entry.rank}
+          </span>
         ) : (
-          <span className="text-sm font-bold text-gray-400">
+          <span className="text-sm font-bold text-[#8a8a9a]">
             {entry.rank}
           </span>
         )}
@@ -70,13 +73,13 @@ export function LeaderboardRow({
       <div className="flex-1 min-w-0">
         <p
           className={`font-semibold truncate text-sm
-            ${isTop3 ? style.text : "text-gray-800"}
-            ${isCurrentUser ? "text-brand-700" : ""}
+            ${isTop3 ? style.text : "text-[#1a1a2e]"}
+            ${isCurrentUser ? "text-[#1e3a5f]" : ""}
           `}
         >
           {entry.name}
           {isCurrentUser && (
-            <span className="ml-1.5 text-[10px] font-bold bg-brand-100 text-brand-600 px-1.5 py-0.5 rounded-full">
+            <span className="ml-1.5 text-[10px] font-bold bg-brand-50 text-brand-600 px-1.5 py-0.5 rounded-full">
               YOU
             </span>
           )}
@@ -87,13 +90,13 @@ export function LeaderboardRow({
       <div className="text-right flex-shrink-0">
         <p
           className={`font-bold text-sm tabular-nums
-            ${isPositive ? "text-green-600" : "text-red-500"}
+            ${isPositive ? "text-emerald-600" : "text-[#dc2626]"}
           `}
         >
           {isPositive ? "+" : ""}
           {formatDollars(entry.realizedPnlCents)}
         </p>
-        <p className="text-[10px] text-gray-400">P&amp;L</p>
+        <p className="text-[10px] text-[#8a8a9a]">P&amp;L</p>
       </div>
     </div>
   );

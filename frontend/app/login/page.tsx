@@ -4,7 +4,7 @@
  * Login / Register — app/login/page.tsx
  *
  * Flow:
- *   1. Guest enters name + phone (country US/IN) → "Send OTP"
+ *   1. Guest enters name + phone (country US/IN) → "Continue"
  *      → calls auth.sendOTP (tRPC mutation)
  *   2. Returned to OTP screen → enters 6-digit code
  *      → auto-submits on last digit (or manual "Verify")
@@ -18,40 +18,23 @@ import { OTPInput } from "@/components/OTPInput";
 import { api } from "@/lib/api";
 import { setToken, storeUser, getToken } from "@/lib/auth";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 type Step = "phone" | "otp";
-
-// ---------------------------------------------------------------------------
-// Page component
-// ---------------------------------------------------------------------------
 
 export default function LoginPage() {
   const router = useRouter();
 
-  // If already authenticated, skip to the feed
   useEffect(() => {
-    if (getToken()) {
-      router.replace("/");
-    }
+    if (getToken()) router.replace("/");
   }, [router]);
 
   const [step, setStep] = useState<Step>("phone");
-
-  // Phone step
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [country, setCountry] = useState<"US" | "IN">("US");
   const [phoneError, setPhoneError] = useState("");
   const [nameError, setNameError] = useState("");
-
-  // OTP step
   const [otp, setOtp] = useState("");
   const [otpError, setOtpError] = useState("");
-
-  // Shared
   const [isLoading, setIsLoading] = useState(false);
   const [globalError, setGlobalError] = useState("");
 
@@ -63,14 +46,12 @@ export default function LoginPage() {
     setGlobalError("");
     setNameError("");
     setPhoneError("");
-
     let hasError = false;
 
     if (!name.trim()) {
       setNameError("Please enter your name.");
       hasError = true;
     }
-
     if (!isValidPhone(phone, country)) {
       setPhoneError(
         country === "US"
@@ -79,7 +60,6 @@ export default function LoginPage() {
       );
       hasError = true;
     }
-
     if (hasError) return;
 
     setIsLoading(true);
@@ -89,9 +69,9 @@ export default function LoginPage() {
       setOtpError("");
       setStep("otp");
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : "Failed to send OTP. Try again.";
-      setGlobalError(msg);
+      setGlobalError(
+        err instanceof Error ? err.message : "Failed to send OTP. Try again."
+      );
     } finally {
       setIsLoading(false);
     }
@@ -107,7 +87,6 @@ export default function LoginPage() {
       setOtpError("");
       setGlobalError("");
       setIsLoading(true);
-
       try {
         const result = await api.auth.verifyOTP({ phone, country, code });
         setToken(result.token);
@@ -120,11 +99,11 @@ export default function LoginPage() {
         });
         router.replace("/");
       } catch (err: unknown) {
-        const msg =
+        setOtpError(
           err instanceof Error
             ? err.message
-            : "Invalid or expired code. Try again.";
-        setOtpError(msg);
+            : "Invalid or expired code. Try again."
+        );
         setOtp("");
       } finally {
         setIsLoading(false);
@@ -132,17 +111,6 @@ export default function LoginPage() {
     },
     [phone, country, router]
   );
-
-  const handleOTPComplete = useCallback(
-    (code: string) => {
-      void handleVerifyOTP(code);
-    },
-    [handleVerifyOTP]
-  );
-
-  // ---------------------------------------------------------------------------
-  // Handle phone/country change
-  // ---------------------------------------------------------------------------
 
   const handlePhoneChange = useCallback(
     (rawDigits: string, newCountry: "US" | "IN") => {
@@ -158,40 +126,43 @@ export default function LoginPage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-50 via-amber-50 to-wedding-gold-pale flex flex-col">
-      {/* Decorative top bar */}
-      <div className="h-1 bg-gradient-to-r from-brand-400 via-wedding-gold to-brand-600" />
+    <div className="min-h-screen bg-cream-100 flex flex-col">
+      {/* Warm gold accent line */}
+      <div className="h-0.5 bg-[#c8a45c]" />
 
-      <div className="flex-1 flex flex-col items-center justify-center px-5 py-10">
-        {/* Logo / branding */}
+      <div className="flex-1 flex flex-col items-center justify-center px-5 py-12">
+        {/* Branding */}
         <div className="text-center mb-10 animate-fade-in">
-          <div className="text-5xl mb-3 select-none">💍</div>
-          <h1 className="text-3xl font-bold text-brand-700 tracking-tight">
+          <h1 className="text-3xl font-bold text-[#1a1a2e] tracking-tight">
             Shaadi Book
           </h1>
-          <p className="mt-1.5 text-sm text-brand-500 font-medium">
-            Parsh &amp; Spoorthi · Udaipur
+          {/* Gold accent underline */}
+          <div className="mt-2.5 h-px w-14 mx-auto bg-[#c8a45c]" />
+          <p className="mt-3 text-sm text-[#4a4a5a] font-medium">
+            Parsh &amp; Spoorthi &bull; Leela Palace, Udaipur
           </p>
-          <p className="mt-3 text-xs text-gray-400">
+          <p className="mt-1.5 text-xs text-[#8a8a9a]">
             Live prediction markets for the big day
           </p>
         </div>
 
         {/* Card */}
-        <div className="w-full max-w-sm bg-white rounded-3xl shadow-xl shadow-brand-100/40 border border-brand-100 overflow-hidden animate-slide-up">
-          {/* Step header */}
-          <div className="bg-gradient-to-r from-brand-600 to-brand-700 px-6 py-5">
-            <h2 className="text-lg font-bold text-white">
-              {step === "phone" ? "Welcome!" : "Enter your code"}
+        <div className="w-full max-w-sm bg-white rounded-xl shadow-card border border-[#e8e4df] overflow-hidden animate-slide-up">
+          {/* Card header */}
+          <div className="px-6 py-4 border-b border-[#e8e4df] bg-cream-100">
+            <h2 className="text-sm font-semibold text-[#1a1a2e]">
+              {step === "phone" ? "Sign in to your account" : "Enter verification code"}
             </h2>
-            <p className="text-sm text-brand-200 mt-0.5">
+            <p className="text-xs text-[#8a8a9a] mt-0.5">
               {step === "phone"
-                ? "Sign in or create your account to join the fun."
-                : `We sent a 6-digit code to ${country === "US" ? "+1" : "+91"} ${phone}.`}
+                ? "New guests will be registered automatically."
+                : `We sent a 6-digit code to ${
+                    country === "US" ? "+1" : "+91"
+                  } ${phone}.`}
             </p>
           </div>
 
-          <div className="px-6 py-7 flex flex-col gap-5">
+          <div className="px-6 py-6 flex flex-col gap-5">
             {/* ---- Step 1: Phone + name ---- */}
             {step === "phone" && (
               <>
@@ -199,7 +170,7 @@ export default function LoginPage() {
                 <div className="flex flex-col gap-1.5">
                   <label
                     htmlFor="name-input"
-                    className="text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                    className="text-xs font-medium text-[#4a4a5a] uppercase tracking-wider"
                   >
                     Your name
                   </label>
@@ -219,17 +190,17 @@ export default function LoginPage() {
                     placeholder="e.g. Priya Sharma"
                     disabled={isLoading}
                     aria-invalid={Boolean(nameError)}
-                    className={`w-full rounded-2xl border px-4 py-3.5 text-sm bg-white
-                      focus:outline-none transition-colors placeholder:text-gray-300
+                    className={`w-full rounded-lg border px-4 py-3 text-sm bg-white text-[#1a1a2e]
+                      focus:outline-none transition-colors placeholder:text-[#c8c8d0]
                       ${
                         nameError
-                          ? "border-red-400 ring-1 ring-red-400"
-                          : "border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400"
+                          ? "border-[#dc2626] ring-1 ring-[#dc2626]"
+                          : "border-[#e8e4df] focus:border-[#1e3a5f] focus:ring-1 focus:ring-[#1e3a5f]"
                       }
                       ${isLoading ? "opacity-50 cursor-not-allowed" : ""}`}
                   />
                   {nameError && (
-                    <p className="text-xs text-red-500 px-1" role="alert">
+                    <p className="text-xs text-[#dc2626] px-1" role="alert">
                       {nameError}
                     </p>
                   )}
@@ -237,7 +208,7 @@ export default function LoginPage() {
 
                 {/* Phone input */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <label className="text-xs font-medium text-[#4a4a5a] uppercase tracking-wider">
                     Mobile number
                   </label>
                   <PhoneInput
@@ -248,27 +219,24 @@ export default function LoginPage() {
                     error={phoneError}
                   />
                   {country === "IN" && (
-                    <p className="text-[11px] text-gray-400 px-1">
-                      ₹93 ≈ $1 · all bets are in USD
+                    <p className="text-[11px] text-[#8a8a9a] px-1">
+                      All bets are placed in USD
                     </p>
                   )}
                 </div>
 
-                {/* Global error */}
                 {globalError && (
-                  <p className="text-xs text-red-500 text-center" role="alert">
+                  <p className="text-xs text-[#dc2626] text-center" role="alert">
                     {globalError}
                   </p>
                 )}
 
-                {/* CTA */}
                 <button
                   onClick={() => void handleSendOTP()}
                   disabled={isLoading}
-                  className="w-full py-4 rounded-2xl bg-brand-600 hover:bg-brand-700 active:scale-95
-                             text-white font-bold text-sm tracking-wide transition-all
-                             disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100
-                             shadow-lg shadow-brand-200"
+                  className="w-full py-3.5 rounded-lg bg-[#1e3a5f] hover:bg-[#152f52] active:scale-95
+                             text-white font-medium text-sm tracking-wide transition-all
+                             disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
                 >
                   {isLoading ? (
                     <span className="flex items-center justify-center gap-2">
@@ -276,7 +244,7 @@ export default function LoginPage() {
                       Sending…
                     </span>
                   ) : (
-                    "Send OTP →"
+                    "Continue"
                   )}
                 </button>
               </>
@@ -285,13 +253,13 @@ export default function LoginPage() {
             {/* ---- Step 2: OTP ---- */}
             {step === "otp" && (
               <>
-                <div className="flex flex-col items-center gap-2">
-                  <p className="text-xs text-gray-400 text-center">
+                <div className="text-center">
+                  <p className="text-xs text-[#8a8a9a]">
                     Didn&apos;t receive it? Check spam, or{" "}
                     <button
                       type="button"
                       onClick={() => setStep("phone")}
-                      className="text-brand-600 font-semibold underline underline-offset-2"
+                      className="text-[#1e3a5f] font-medium underline underline-offset-2"
                       disabled={isLoading}
                     >
                       go back
@@ -303,26 +271,23 @@ export default function LoginPage() {
                 <OTPInput
                   value={otp}
                   onChange={setOtp}
-                  onComplete={handleOTPComplete}
+                  onComplete={(code) => void handleVerifyOTP(code)}
                   disabled={isLoading}
                   error={otpError}
                 />
 
-                {/* Global error */}
                 {globalError && (
-                  <p className="text-xs text-red-500 text-center" role="alert">
+                  <p className="text-xs text-[#dc2626] text-center" role="alert">
                     {globalError}
                   </p>
                 )}
 
-                {/* Manual submit */}
                 <button
                   onClick={() => void handleVerifyOTP(otp)}
                   disabled={isLoading || otp.length < 6}
-                  className="w-full py-4 rounded-2xl bg-brand-600 hover:bg-brand-700 active:scale-95
-                             text-white font-bold text-sm tracking-wide transition-all
-                             disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100
-                             shadow-lg shadow-brand-200"
+                  className="w-full py-3.5 rounded-lg bg-[#1e3a5f] hover:bg-[#152f52] active:scale-95
+                             text-white font-medium text-sm tracking-wide transition-all
+                             disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
                 >
                   {isLoading ? (
                     <span className="flex items-center justify-center gap-2">
@@ -330,7 +295,7 @@ export default function LoginPage() {
                       Verifying…
                     </span>
                   ) : (
-                    "Verify & Join →"
+                    "Verify & Join"
                   )}
                 </button>
               </>
@@ -339,31 +304,21 @@ export default function LoginPage() {
         </div>
 
         {/* Footer */}
-        <p className="mt-8 text-[11px] text-gray-400 text-center max-w-xs">
-          By continuing you agree to the{" "}
-          <span className="text-gray-500">fun vibes</span> of Parsh &amp;
-          Spoorthi&apos;s wedding. All payouts in USD via Venmo/Zelle
-          post-event.
+        <p className="mt-8 text-[11px] text-[#8a8a9a] text-center max-w-xs">
+          By continuing you agree to the rules of Parsh &amp; Spoorthi&apos;s
+          wedding. All payouts in USD post-event.
         </p>
       </div>
 
-      {/* Decorative bottom bar */}
-      <div className="h-1 bg-gradient-to-r from-wedding-gold via-brand-400 to-wedding-gold" />
+      {/* Bottom accent line */}
+      <div className="h-0.5 bg-[#c8a45c]" />
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Micro helpers
-// ---------------------------------------------------------------------------
-
 function SpinnerIcon() {
   return (
-    <svg
-      className="w-4 h-4 animate-spin"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
+    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
       <circle
         className="opacity-25"
         cx="12"

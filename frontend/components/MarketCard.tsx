@@ -2,7 +2,7 @@
  * MarketCard.tsx — Market feed card.
  *
  * Shows: question, outcome probability bars, total volume, time since opened.
- * Badges: NEW (pulsing, < 5 min old) and Low Activity (> 30 min no trades).
+ * Badges: NEW (< 5 min old, gold) and Low Activity (> 30 min no trades).
  * Accepts `livePrices` map for real-time socket updates.
  */
 
@@ -29,7 +29,6 @@ interface MarketCardProps {
 }
 
 export function MarketCard({ market, livePrices, lastPurchaseAt }: MarketCardProps) {
-  // tRPC serializes dates as strings; convert to Date for badge logic
   const openedAt = market.openedAt ? new Date(market.openedAt) : null;
   const showNew = isNewMarket(openedAt);
   const showLowActivity =
@@ -42,44 +41,38 @@ export function MarketCard({ market, livePrices, lastPurchaseAt }: MarketCardPro
     <Link
       href={`/markets/${market.id}`}
       className={cn(
-        "block rounded-2xl border bg-white shadow-sm",
-        "hover:shadow-md active:scale-[0.99] transition-all duration-150",
+        "block rounded-xl border bg-white shadow-card",
+        "hover:shadow-card-hover active:scale-[0.99] transition-all duration-150",
         "p-4 sm:p-5",
-        isResolved && "opacity-80",
-        showNew && "border-rose-300 shadow-rose-100"
+        isResolved && "opacity-75",
+        showNew ? "border-[#c8a45c]" : "border-[#e8e4df]"
       )}
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-2 mb-3">
-        <h3 className="text-base font-semibold text-gray-900 leading-snug flex-1">
+        <h3 className="text-base font-semibold text-[#1a1a2e] leading-snug flex-1 tracking-tight">
           {market.question}
         </h3>
         <div className="flex flex-col items-end gap-1 shrink-0">
           {showNew && (
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 rounded-full px-2 py-0.5",
-                "bg-rose-100 text-rose-700 text-xs font-bold uppercase tracking-wide",
-                "animate-pulse_soft"
-              )}
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-ping" />
+            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 bg-[#f5efd9] text-[#8a6d30] text-xs font-semibold uppercase tracking-wide">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#c8a45c]" />
               New
             </span>
           )}
           {showLowActivity && (
-            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 bg-gray-100 text-gray-500 text-xs font-medium">
-              <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
+            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 bg-[#f5f5f5] text-[#8a8a9a] text-xs font-medium">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#c8c8d0]" />
               Low activity
             </span>
           )}
           {isResolved && (
-            <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold">
+            <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-[#f5efd9] text-[#8a6d30] text-xs font-semibold">
               Resolved
             </span>
           )}
           {isPaused && (
-            <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-semibold">
+            <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-[#f5f5f5] text-[#8a8a9a] text-xs font-semibold">
               Paused
             </span>
           )}
@@ -109,7 +102,7 @@ export function MarketCard({ market, livePrices, lastPurchaseAt }: MarketCardPro
       </div>
 
       {/* Footer: volume + time */}
-      <div className="flex items-center justify-between text-xs text-gray-400 mt-1">
+      <div className="flex items-center justify-between text-xs text-[#8a8a9a] mt-1">
         <span className="font-medium">{formatVolume(market.totalVolume)} volume</span>
         {openedAt && (
           <span>Opened {timeSince(openedAt)}</span>

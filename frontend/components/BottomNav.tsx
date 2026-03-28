@@ -91,10 +91,9 @@ const TABS = [
 ] as const;
 
 /**
- * Fixed bottom navigation bar — Markets, My Bets, Wallet, Leaderboard.
- * Active tab is highlighted in brand pink.
- *
- * Task 4.2
+ * Slim fixed bottom navigation bar — icons only, no text labels.
+ * Active tab: royal blue icon + gold dot indicator.
+ * Blur backdrop for a premium feel.
  */
 export function BottomNav() {
   const pathname = usePathname();
@@ -108,8 +107,12 @@ export function BottomNav() {
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200
-                    safe-area-inset-bottom">
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-40
+                 bg-white/85 backdrop-blur-md
+                 border-t border-[#e8e4df]
+                 safe-area-inset-bottom"
+    >
       <div className="flex items-stretch max-w-lg mx-auto">
         {TABS.map((tab) => {
           const active = isActive(tab.href);
@@ -117,17 +120,22 @@ export function BottomNav() {
             <Link
               key={tab.href}
               href={tab.href}
-              className={`flex flex-col items-center justify-center flex-1 py-2 gap-0.5
-                          transition-colors min-h-[56px]
-                          ${active ? "text-brand-600" : "text-gray-400 hover:text-gray-600"}`}
+              aria-label={tab.label}
+              className={`flex flex-col items-center justify-center flex-1 pt-3 pb-2 gap-1.5
+                          transition-colors min-h-[52px]
+                          ${
+                            active
+                              ? "text-[#1e3a5f]"
+                              : "text-[#8a8a9a] hover:text-[#4a4a5a]"
+                          }`}
             >
               {tab.icon(active)}
+              {/* Gold indicator dot for active tab */}
               <span
-                className={`text-[10px] font-semibold leading-tight
-                  ${active ? "text-brand-600" : "text-gray-400"}`}
-              >
-                {tab.label}
-              </span>
+                className={`h-1 w-1 rounded-full transition-all duration-200 ${
+                  active ? "bg-[#c8a45c]" : "bg-transparent"
+                }`}
+              />
             </Link>
           );
         })}

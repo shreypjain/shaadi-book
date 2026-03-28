@@ -23,17 +23,15 @@ import { useCallback, useMemo } from "react";
 const COUNTRIES = [
   {
     code: "US" as const,
-    flag: "🇺🇸",
     dial: "+1",
-    label: "US",
+    label: "US +1",
     placeholder: "(555) 555-1234",
     maxDigits: 10,
   },
   {
     code: "IN" as const,
-    flag: "🇮🇳",
     dial: "+91",
-    label: "IN",
+    label: "IN +91",
     placeholder: "98765 43210",
     maxDigits: 10,
   },
@@ -99,7 +97,6 @@ export function PhoneInput({
     [value, country]
   );
 
-  // Extract only digits from whatever the user typed
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const raw = e.target.value.replace(/\D/g, "").slice(0, meta.maxDigits);
@@ -121,9 +118,9 @@ export function PhoneInput({
   return (
     <div className="flex flex-col gap-1.5">
       <div
-        className={`flex items-center rounded-2xl border bg-white overflow-hidden
+        className={`flex items-center rounded-lg border bg-white overflow-hidden
           transition-colors
-          ${hasError ? "border-red-400 ring-1 ring-red-400" : "border-gray-200 focus-within:border-brand-400 focus-within:ring-1 focus-within:ring-brand-400"}
+          ${hasError ? "border-[#dc2626] ring-1 ring-[#dc2626]" : "border-[#e8e4df] focus-within:border-[#1e3a5f] focus-within:ring-1 focus-within:ring-[#1e3a5f]"}
           ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
       >
         {/* Country selector */}
@@ -133,21 +130,21 @@ export function PhoneInput({
             onChange={handleCountryChange}
             disabled={disabled}
             aria-label="Select country"
-            className="appearance-none bg-amber-50 border-r border-gray-200 pl-3 pr-7 py-3.5
-                       text-sm font-semibold text-gray-700 cursor-pointer
-                       focus:outline-none focus:bg-amber-100
+            className="appearance-none bg-cream-100 border-r border-[#e8e4df] pl-3 pr-7 py-3.5
+                       text-sm font-medium text-[#1a1a2e] cursor-pointer
+                       focus:outline-none focus:bg-cream-200
                        disabled:cursor-not-allowed"
           >
             {COUNTRIES.map((c) => (
               <option key={c.code} value={c.code}>
-                {c.flag} {c.dial}
+                {c.label}
               </option>
             ))}
           </select>
           {/* Chevron icon */}
           <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
             <svg
-              className="w-3.5 h-3.5 text-gray-400"
+              className="w-3 h-3 text-[#8a8a9a]"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -174,14 +171,14 @@ export function PhoneInput({
           aria-label="Phone number"
           aria-invalid={hasError}
           className="flex-1 px-4 py-3.5 text-sm bg-transparent focus:outline-none
-                     placeholder:text-gray-300 text-gray-800
+                     placeholder:text-[#c8c8d0] text-[#1a1a2e]
                      disabled:cursor-not-allowed"
         />
       </div>
 
       {/* Error message */}
       {error && (
-        <p className="text-xs text-red-500 px-1" role="alert">
+        <p className="text-xs text-[#dc2626] px-1" role="alert">
           {error}
         </p>
       )}
