@@ -1,23 +1,25 @@
 /**
- * Ledger Service Tests — Task 2.3
+ * Ledger Service Tests — Task 2.3 + stripe-fee-from-charity
  *
  * Tests for:
  *  - computeTxHash (pure function — no DB)
  *  - appendTransaction (hash chain, genesis, chaining)
  *  - getUserBalance (credits add, debits subtract)
  *  - getCharityPoolTotal / getTotalDeposits / getTotalWithdrawals
- *  - runReconciliation (balanced / imbalanced)
+ *  - getStripeFees / getNetCharityAmount
+ *  - runReconciliation (balanced / imbalanced, includes stripe fees)
  *  - verifyChainIntegrity (valid chain, bad txHash, bad prevHash link)
  *
  * These are integration tests requiring a live PostgreSQL connection.
  * DATABASE_URL is overridden to the test DB by setup.ts.
  *
  * Accounting convention used throughout:
- *   DEPOSIT:     debit=house_amm,  credit=user:{id}       → balance +
- *   PURCHASE:    debit=user:{id},  credit=house_amm       → balance -
- *   PAYOUT:      debit=house_amm,  credit=user:{id}       → balance +
- *   CHARITY_FEE: debit=house_amm,  credit=charity_pool    → no user effect
- *   WITHDRAWAL:  debit=user:{id},  credit=withdrawal:ref  → balance -
+ *   DEPOSIT:     debit=stripe,          credit=user:{id}        → balance +
+ *   PURCHASE:    debit=user:{id},       credit=house_amm        → balance -
+ *   PAYOUT:      debit=house_amm,       credit=user:{id}        → balance +
+ *   CHARITY_FEE: debit=house_amm,       credit=charity_pool     → no user effect
+ *   WITHDRAWAL:  debit=user:{id},       credit=withdrawal:ref   → balance -
+ *   STRIPE_FEE:  debit=charity_pool,    credit=stripe_processor → stripe fees tracked
  */
 
 import { afterAll, beforeAll, describe, expect, it, beforeEach } from "vitest";
@@ -29,6 +31,8 @@ import {
   appendTransaction,
   getUserBalance,
   getCharityPoolTotal,
+  getStripeFees,
+  getNetCharityAmount,
   getTotalDeposits,
   getTotalWithdrawals,
   runReconciliation,
@@ -375,6 +379,65 @@ describe("Aggregate ledger queries", () => {
 });
 
 // ---------------------------------------------------------------------------
+// getStripeFees / getNetCharityAmount
+// ---------------------------------------------------------------------------
+
+describe("getStripeFees / getNetCharityAmount", () => {
+  let stripeFeeUserId: string;
+
+  beforeAll(async () => {
+    const user = await createTestUser("SF");
+    stripeFeeUserId = user.id;
+
+    // Simulate a deposit with an accompanying stripe fee.
+    await appendTransaction({
+      userId: stripeFeeUserId,
+      debitAccount: "stripe",
+      creditAccount: `user:${stripeFeeUserId}`,
+      type: "DEPOSIT",
+      amount: "25.00",
+    });
+    // Stripe fee: 2.9% * 2500 + 30 = 103 cents = $1.03
+    await appendTransaction({
+      userId: stripeFeeUserId,
+      debitAccount: "charity_pool",
+      creditAccount: "stripe_processor",
+      type: "STRIPE_FEE",
+      amount: "1.03",
+    });
+    // Also add a charity fee so we can verify net calculation.
+    await appendTransaction({
+      userId: stripeFeeUserId,
+      debitAccount: "house_amm",
+      creditAccount: "charity_pool",
+      type: "CHARITY_FEE",
+      amount: "5.00",
+    });
+  });
+
+  it("getStripeFees sums only STRIPE_FEE rows", async () => {
+    const fees = await getStripeFees();
+    // Our test user contributed $1.03 in stripe fees.
+    expect(fees.toNumber()).toBeGreaterThanOrEqual(1.03);
+  });
+
+  it("getNetCharityAmount = getCharityPoolTotal − getStripeFees", async () => {
+    const [gross, fees, net] = await Promise.all([
+      getCharityPoolTotal(),
+      getStripeFees(),
+      getNetCharityAmount(),
+    ]);
+    expect(net.minus(gross.minus(fees)).abs().toNumber()).toBeLessThan(0.000001);
+  });
+
+  it("STRIPE_FEE does not affect user balance", async () => {
+    // STRIPE_FEE debits charity_pool, not user account — balance unaffected.
+    const bal = await getUserBalance(stripeFeeUserId);
+    expect(bal.toNumber()).toBeGreaterThanOrEqual(25); // only the DEPOSIT matters
+  });
+});
+
+// ---------------------------------------------------------------------------
 // runReconciliation
 // ---------------------------------------------------------------------------
 
@@ -392,21 +455,30 @@ describe("runReconciliation", () => {
       isBalanced: expect.any(Boolean),
       totalDeposits: expect.any(Object), // Decimal
       totalUserBalances: expect.any(Object),
-      charityPool: expect.any(Object),
+      charityPool: expect.any(Object),       // gross CHARITY_FEE total
+      stripeFees: expect.any(Object),        // STRIPE_FEE total
+      netCharityAmount: expect.any(Object),  // charityPool − stripeFees
       withdrawalsPaid: expect.any(Object),
       housePool: expect.any(Object),
       checkedAt: expect.any(Date),
     });
   });
 
-  it("housePool = deposits − userBalances − charity − withdrawals", async () => {
+  it("housePool = deposits − userBalances − charity − stripeFees − withdrawals", async () => {
     const r = await runReconciliation();
     const computed = r.totalDeposits
       .minus(r.totalUserBalances)
       .minus(r.charityPool)
+      .minus(r.stripeFees)
       .minus(r.withdrawalsPaid);
     // Should match within floating-point tolerance.
     expect(r.housePool.minus(computed).abs().toNumber()).toBeLessThan(0.000001);
+  });
+
+  it("netCharityAmount = charityPool − stripeFees", async () => {
+    const r = await runReconciliation();
+    const expected = r.charityPool.minus(r.stripeFees);
+    expect(r.netCharityAmount.minus(expected).abs().toNumber()).toBeLessThan(0.000001);
   });
 });
 

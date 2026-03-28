@@ -17,7 +17,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { router, adminProcedure } from "../trpc.js";
-import { runReconciliation, getTotalDeposits } from "../services/ledger.js";
+import { runReconciliation, getTotalDeposits, getNetCharityAmount } from "../services/ledger.js";
 import { verifyChainIntegrity } from "../services/hashChainVerifier.js";
 import { getRecentAuditLog } from "../services/auditLog.js";
 import { prisma } from "../db.js";
@@ -41,6 +41,8 @@ export const adminRouter = router({
         totalDeposits: result.totalDeposits.toFixed(6),
         totalUserBalances: result.totalUserBalances.toFixed(6),
         charityPool: result.charityPool.toFixed(6),
+        stripeFees: result.stripeFees.toFixed(6),
+        netCharityAmount: result.netCharityAmount.toFixed(6),
         withdrawalsPaid: result.withdrawalsPaid.toFixed(6),
         housePool: result.housePool.toFixed(6),
         checkedAt: result.checkedAt.toISOString(),
@@ -175,7 +177,14 @@ export const adminRouter = router({
         activeMarketCount: activeMarketsResult.length,
         totalVolume: totalVolume.toFixed(2),
         totalHouseExposure: totalHouseExposure.toFixed(2),
+        /** Gross charity pool: total 20% fees collected across all market resolutions. */
         charityPool: reconciliation.charityPool.toFixed(2),
+        /** Gross alias — same as charityPool, explicit for dashboard clarity. */
+        grossCharityPool: reconciliation.charityPool.toFixed(2),
+        /** Total Stripe processing fees absorbed from the charity pool. */
+        stripeFees: reconciliation.stripeFees.toFixed(2),
+        /** Net charity amount available for donation = grossCharityPool − stripeFees. */
+        netCharityAmount: reconciliation.netCharityAmount.toFixed(2),
         housePool: reconciliation.housePool.toFixed(2),
         totalUserBalances: reconciliation.totalUserBalances.toFixed(2),
         isReconciled: reconciliation.isBalanced,
