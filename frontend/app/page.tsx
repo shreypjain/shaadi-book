@@ -14,7 +14,6 @@ import { trpc } from "@/lib/trpc";
 import { ensureConnected, subscribeToFeed, getSocket } from "@/lib/socket";
 import type { WsPriceUpdatePayload, WsMarketEventPayload } from "@/lib/api-types";
 
-// Live price state: marketId → (outcomeId → priceCents)
 type LivePrices = Record<string, Record<string, number>>;
 
 export default function MarketFeedPage() {
@@ -23,7 +22,6 @@ export default function MarketFeedPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const touchStartY = useRef(0);
 
-  // Fetch all active markets (no filter — show ACTIVE + PAUSED + RESOLVED)
   const { data: markets, isLoading, error, refetch } = trpc.market.list.useQuery(
     {},
     { refetchOnWindowFocus: false }
@@ -36,27 +34,20 @@ export default function MarketFeedPage() {
   useEffect(() => {
     ensureConnected();
 
-    // Subscribe to global market feed events
     const unsubFeed = subscribeToFeed(
       (event: WsMarketEventPayload) => {
-        // Refresh market list on any market lifecycle change
         if (["created", "resolved", "paused", "voided"].includes(event.type)) {
           void refetch();
         }
       }
     );
 
-    return () => {
-      unsubFeed();
-    };
+    return () => { unsubFeed(); };
   }, [refetch]);
 
-  // Subscribe to price updates for each market
   useEffect(() => {
     if (!markets?.length) return;
-
     const socket = getSocket();
-
     const handlers: Array<(p: WsPriceUpdatePayload) => void> = [];
 
     markets.forEach((market) => {
@@ -141,7 +132,7 @@ export default function MarketFeedPage() {
           style={{ height: pullY }}
         >
           <div
-            className={`w-6 h-6 border-2 border-brand-300 border-t-brand-600 rounded-full ${
+            className={`w-5 h-5 border-2 border-brand-200 border-t-brand-600 rounded-full ${
               pullY > 40 ? "animate-spin" : ""
             }`}
           />
@@ -149,19 +140,21 @@ export default function MarketFeedPage() {
       )}
 
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-amber-50/95 backdrop-blur border-b border-amber-100 px-4 py-3">
+      <header className="sticky top-0 z-10 bg-cream-100/95 backdrop-blur border-b border-[#e8e4df] px-4 py-3">
         <div className="max-w-lg mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-brand-700">Shaadi Book</h1>
-            <p className="text-xs text-gray-400">Parsh &amp; Spoorthi · Udaipur</p>
+            <h1 className="text-xl font-bold text-[#1a1a2e] tracking-tight">Shaadi Book</h1>
+            <p className="text-xs text-[#8a8a9a]">Parsh &amp; Spoorthi &bull; Udaipur</p>
           </div>
           <button
             onClick={() => void refetch()}
-            className="p-2 rounded-xl hover:bg-amber-100 transition-colors"
+            className="p-2 rounded-lg hover:bg-[#e8e4df]/60 transition-colors"
             aria-label="Refresh markets"
           >
             <svg
-              className={`w-5 h-5 text-gray-500 ${isRefreshing ? "animate-spin" : ""}`}
+              className={`w-4 h-4 text-[#4a4a5a] ${
+                isRefreshing ? "animate-spin" : ""
+              }`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -182,10 +175,10 @@ export default function MarketFeedPage() {
         {isLoading && (
           <div className="flex flex-col gap-3">
             {[1, 2, 3].map((n) => (
-              <div key={n} className="rounded-2xl border bg-white p-5 animate-pulse">
-                <div className="h-4 bg-gray-200 rounded w-3/4 mb-3" />
-                <div className="h-2 bg-gray-100 rounded w-full mb-2" />
-                <div className="h-2 bg-gray-100 rounded w-5/6" />
+              <div key={n} className="rounded-xl border border-[#e8e4df] bg-white p-5 animate-pulse">
+                <div className="h-4 bg-[#e8e4df] rounded w-3/4 mb-3" />
+                <div className="h-2 bg-[#f0ece7] rounded w-full mb-2" />
+                <div className="h-2 bg-[#f0ece7] rounded w-5/6" />
               </div>
             ))}
           </div>
@@ -193,13 +186,13 @@ export default function MarketFeedPage() {
 
         {/* Error state */}
         {error && !isLoading && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
-            <p className="text-sm text-red-600 font-medium mb-3">
+          <div className="rounded-xl border border-[#dc2626]/20 bg-red-50 p-6 text-center">
+            <p className="text-sm text-[#dc2626] font-medium mb-3">
               Couldn&apos;t load markets
             </p>
             <button
               onClick={() => void refetch()}
-              className="text-sm font-semibold text-red-700 underline"
+              className="text-sm font-semibold text-[#dc2626] underline"
             >
               Try again
             </button>
@@ -209,10 +202,15 @@ export default function MarketFeedPage() {
         {/* Empty state */}
         {!isLoading && !error && sortedMarkets.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
-            <div className="text-5xl">💍</div>
+            <div className="w-16 h-16 rounded-full bg-brand-50 flex items-center justify-center">
+              <svg className="w-8 h-8 text-brand-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                  d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
+              </svg>
+            </div>
             <div className="text-center">
-              <p className="font-semibold text-gray-700">No markets yet</p>
-              <p className="text-sm text-gray-400 mt-1">
+              <p className="font-semibold text-[#1a1a2e]">No markets yet</p>
+              <p className="text-sm text-[#8a8a9a] mt-1">
                 Check back when the celebration starts!
               </p>
             </div>
@@ -225,8 +223,8 @@ export default function MarketFeedPage() {
             {/* Section label for active markets */}
             {sortedMarkets.some((m) => m.status === "ACTIVE") && (
               <div className="flex items-center gap-2 px-1">
-                <span className="h-2 w-2 rounded-full bg-green-400 animate-pulse" />
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                <span className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider">
                   Live Markets
                 </span>
               </div>

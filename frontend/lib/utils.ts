@@ -111,15 +111,15 @@ export function isLowActivity(
 }
 
 // ---------------------------------------------------------------------------
-// Outcome color palette — wedding rose/amber theme
+// Outcome color palette — Leela Palace blue/gold theme
 // ---------------------------------------------------------------------------
 
 const OUTCOME_COLORS = [
-  { bg: "bg-rose-500", bar: "bg-rose-400", text: "text-rose-700", light: "bg-rose-50", border: "border-rose-200" },
-  { bg: "bg-amber-500", bar: "bg-amber-400", text: "text-amber-700", light: "bg-amber-50", border: "border-amber-200" },
-  { bg: "bg-violet-500", bar: "bg-violet-400", text: "text-violet-700", light: "bg-violet-50", border: "border-violet-200" },
-  { bg: "bg-emerald-500", bar: "bg-emerald-400", text: "text-emerald-700", light: "bg-emerald-50", border: "border-emerald-200" },
-  { bg: "bg-sky-500", bar: "bg-sky-400", text: "text-sky-700", light: "bg-sky-50", border: "border-sky-200" },
+  { bg: "bg-brand-600", bar: "bg-brand-400", text: "text-brand-700", light: "bg-brand-50", border: "border-brand-200" },
+  { bg: "bg-amber-600", bar: "bg-amber-400", text: "text-amber-800", light: "bg-amber-50", border: "border-amber-200" },
+  { bg: "bg-teal-600", bar: "bg-teal-400", text: "text-teal-700", light: "bg-teal-50", border: "border-teal-200" },
+  { bg: "bg-emerald-600", bar: "bg-emerald-400", text: "text-emerald-700", light: "bg-emerald-50", border: "border-emerald-200" },
+  { bg: "bg-violet-600", bar: "bg-violet-400", text: "text-violet-700", light: "bg-violet-50", border: "border-violet-200" },
 ];
 
 export function outcomeColor(index: number) {
