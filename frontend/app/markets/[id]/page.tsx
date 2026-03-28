@@ -12,7 +12,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ProbabilityBar } from "@/components/ProbabilityBar";
 import { BuyForm } from "@/components/BuyForm";
-import { trpc } from "@/lib/trpc";
+import { api } from "@/lib/api";
 import {
   ensureConnected,
   subscribeToMarket,
@@ -93,15 +93,26 @@ export default function MarketDetailPage() {
   const [activityFeed, setActivityFeed] = useState<ActivityItem[]>([]);
   const [priceHistory, setPriceHistory] = useState<Record<string, number[]>>({});
 
-  const {
-    data: market,
-    isLoading,
-    error,
-    refetch,
-  } = trpc.market.getById.useQuery(
-    { id: marketId },
-    { enabled: !!marketId, refetchOnWindowFocus: false }
-  );
+  const [market, setMarket] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const refetch = useCallback(async () => {
+    if (!marketId) return;
+    try {
+      const data = await api.market.getById({ id: marketId });
+      setMarket(data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error("Failed to load market"));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [marketId]);
+
+  useEffect(() => {
+    void refetch();
+  }, [refetch]);
 
   useEffect(() => {
     if (!market) return;
