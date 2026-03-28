@@ -104,7 +104,7 @@ export function WithdrawalForm({
           <div className="flex justify-between text-sm">
             <span className="text-[#8a6d30]">20% charity fee</span>
             <span className="font-semibold text-[#8a6d30]">
-              − {formatDollars(charityInfo.charityRemainingCents)}
+              − {formatDollars(charityInfo.charityOwedCents)}
             </span>
           </div>
           <div className="border-t border-[#e8dbb8] pt-1.5 flex justify-between text-sm">
