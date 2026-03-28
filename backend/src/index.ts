@@ -32,7 +32,7 @@ const app = express();
 
 app.use(
   cors({
-    origin: process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:3000",
+    origin: process.env["CORS_ORIGIN"] ?? "http://localhost:3000",
     credentials: true,
   })
 );
@@ -118,7 +118,7 @@ const httpServer = http.createServer(app);
 // createWebSocketServer is async (Redis adapter setup)
 createWebSocketServer(httpServer)
   .then(() => {
-    httpServer.listen(PORT, () => {
+    httpServer.listen(PORT, "0.0.0.0", () => {
       console.log(`[server] Backend running on http://localhost:${PORT}`);
       console.log(`[server] Health: http://localhost:${PORT}/health`);
       console.log(`[server] tRPC: http://localhost:${PORT}/trpc`);

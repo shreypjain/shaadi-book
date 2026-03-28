@@ -1,0 +1,16 @@
+markets.parshandspoorthi.com {
+	# Frontend
+	reverse_proxy /api/* api:3001
+	reverse_proxy /trpc/* api:3001
+	reverse_proxy /socket.io/* api:3001
+
+	# WebSocket support for socket.io
+	@websocket {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	reverse_proxy @websocket api:3001
+
+	# Everything else goes to Next.js
+	reverse_proxy web:3000
+}

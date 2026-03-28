@@ -2,17 +2,21 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files + prisma schema
 COPY package*.json ./
+COPY prisma ./prisma/
 
-# Install production dependencies
-RUN npm ci --omit=dev
+# Install all deps (need devDeps for build), generate Prisma client
+RUN npm ci && npx prisma generate
 
 # Copy source
 COPY . .
 
 # Build TypeScript
 RUN npm run build
+
+# Remove devDeps
+RUN npm prune --omit=dev
 
 EXPOSE 3001
 
