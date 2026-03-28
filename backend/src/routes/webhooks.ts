@@ -1,5 +1,5 @@
 /**
- * Stripe Webhook Route — Task 3.1
+ * Stripe Webhook Route — stripe-js-integration
  *
  * Express route (NOT tRPC) mounted at /api/webhooks/stripe.
  *
@@ -9,17 +9,20 @@
  * configured in src/index.ts.
  *
  * Handled events:
- *   checkout.session.completed → credit user balance via ledger DEPOSIT
+ *   payment_intent.succeeded → credit user balance via ledger DEPOSIT
  *
  * All other event types receive a 200 (acknowledged but ignored).
  *
- * PRD §7.2, Appendix A.1
+ * PRD §7.2
  */
 
 import { Router } from "express";
 import type { Request, Response } from "express";
 import Stripe from "stripe";
-import { createStripeClient, handleCheckoutCompleted } from "../services/stripe.js";
+import {
+  createStripeClient,
+  handlePaymentIntentSucceeded,
+} from "../services/stripe.js";
 
 // ---------------------------------------------------------------------------
 // Request type augmentation — rawBody is attached by express.json() verify
@@ -38,7 +41,7 @@ const webhookRouter = Router();
  *
  * 1. Extract Stripe-Signature header.
  * 2. Verify signature with STRIPE_WEBHOOK_SECRET + raw request body.
- * 3. Dispatch checkout.session.completed to handleCheckoutCompleted.
+ * 3. Dispatch payment_intent.succeeded to handlePaymentIntentSucceeded.
  * 4. Return 200 { received: true } to Stripe.
  *
  * Returns 400 on signature failure (so Stripe marks the delivery as failed
@@ -68,7 +71,6 @@ webhookRouter.post(
 
     const rawBody = req.rawBody;
     if (!rawBody) {
-      // Should never happen if express.json() is configured with verify callback.
       console.error("[webhook] rawBody is missing on request");
       res.status(400).json({ error: "Missing raw request body" });
       return;
@@ -86,7 +88,9 @@ webhookRouter.post(
       const msg =
         err instanceof Error ? err.message : "Signature verification failed";
       console.error("[webhook] Stripe signature verification failed:", msg);
-      res.status(400).json({ error: `Webhook signature verification failed: ${msg}` });
+      res
+        .status(400)
+        .json({ error: `Webhook signature verification failed: ${msg}` });
       return;
     }
 
@@ -94,9 +98,9 @@ webhookRouter.post(
     // 3. Handle event
     // -----------------------------------------------------------------------
     try {
-      if (event.type === "checkout.session.completed") {
-        const session = event.data.object as Stripe.Checkout.Session;
-        await handleCheckoutCompleted(session);
+      if (event.type === "payment_intent.succeeded") {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+        await handlePaymentIntentSucceeded(paymentIntent);
       }
       // Other event types acknowledged but not acted on.
     } catch (err) {
@@ -104,7 +108,9 @@ webhookRouter.post(
         `[webhook] Error handling Stripe event ${event.type}:`,
         err
       );
-      res.status(500).json({ error: "Internal server error processing webhook" });
+      res
+        .status(500)
+        .json({ error: "Internal server error processing webhook" });
       return;
     }
 
