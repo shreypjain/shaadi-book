@@ -13,6 +13,9 @@ import { marketRouter } from "./routers/market.js";
 import { adminRouter } from "./routers/admin.js";
 import { withdrawalRouter } from "./routers/withdrawal.js";
 import { paymentRouter } from "./routers/payment.js";
+import { betsRouter } from "./routers/bets.js";
+import { leaderboardRouter } from "./routers/leaderboard.js";
+import { walletRouter } from "./routers/wallet.js";
 import webhookRouter from "./routes/webhooks.js";
 import smsRouter from "./routes/sms.js";
 import { startIntegrityMonitor } from "./services/hashChainVerifier.js";
@@ -90,6 +93,9 @@ const appRouter = router({
   admin: adminRouter,
   withdrawal: withdrawalRouter,
   payment: paymentRouter,
+  bets: betsRouter,
+  leaderboard: leaderboardRouter,
+  wallet: walletRouter,
 });
 
 export type AppRouter = typeof appRouter;
