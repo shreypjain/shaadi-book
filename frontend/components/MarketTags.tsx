@@ -1,21 +1,21 @@
 /**
  * MarketTags.tsx — Renders event tag, family side badge, and custom tag pills.
  *
- * Tag pill style: rounded-full px-2.5 py-0.5 text-xs font-medium
+ * Tag pill style: rounded border border-[#e8e4df] px-2 py-0.5 text-[10px] font-medium
  *
- * Event colors:
- *   Sangeet          → purple-100 / purple-700
- *   Haldi            → yellow-100 / yellow-700
- *   Baraat           → red-100    / red-700
- *   Wedding Ceremony → pink-100   / pink-700
- *   Reception        → blue-100   / blue-700
- *   After Party      → emerald-100/ emerald-700
- *   General          → gray-100   / gray-700
+ * Event colors (muted pastels):
+ *   Sangeet          → #f0ecf5 / #7a5a8a
+ *   Haldi            → #f5f0d9 / #7a6830
+ *   Baraat           → #f5e8e8 / #8a4a4a
+ *   Wedding Ceremony → #f5ebee / #7a4a60
+ *   Reception        → #e8edf3 / #3a5a78
+ *   After Party      → #e8f0e8 / #3a6848
+ *   General          → #faf8f4 / #8a8a9a
  *
- * Family side colors:
- *   Spoorthi         → rose-100   / rose-700
- *   Parsh            → sky-100    / sky-700
- *   Both             → amber-100  / amber-700
+ * Family side colors (muted pastels):
+ *   Spoorthi         → #f5e8e8 / #8a4a5a
+ *   Parsh            → #e8edf3 / #3a5a78
+ *   Both             → #f5efd9 / #7a6830
  */
 
 import type { MarketWithPrices } from "@/lib/api-types";
@@ -25,19 +25,19 @@ import type { MarketWithPrices } from "@/lib/api-types";
 // ---------------------------------------------------------------------------
 
 const EVENT_COLORS: Record<string, { bg: string; text: string }> = {
-  Sangeet: { bg: "bg-purple-100", text: "text-purple-700" },
-  Haldi: { bg: "bg-yellow-100", text: "text-yellow-700" },
-  Baraat: { bg: "bg-red-100", text: "text-red-700" },
-  "Wedding Ceremony": { bg: "bg-pink-100", text: "text-pink-700" },
-  Reception: { bg: "bg-blue-100", text: "text-blue-700" },
-  "After Party": { bg: "bg-emerald-100", text: "text-emerald-700" },
-  General: { bg: "bg-gray-100", text: "text-gray-700" },
+  Sangeet: { bg: "bg-[#f0ecf5]", text: "text-[#7a5a8a]" },
+  Haldi: { bg: "bg-[#f5f0d9]", text: "text-[#7a6830]" },
+  Baraat: { bg: "bg-[#f5e8e8]", text: "text-[#8a4a4a]" },
+  "Wedding Ceremony": { bg: "bg-[#f5ebee]", text: "text-[#7a4a60]" },
+  Reception: { bg: "bg-[#e8edf3]", text: "text-[#3a5a78]" },
+  "After Party": { bg: "bg-[#e8f0e8]", text: "text-[#3a6848]" },
+  General: { bg: "bg-[#faf8f4]", text: "text-[#8a8a9a]" },
 };
 
 const FAMILY_COLORS: Record<string, { bg: string; text: string }> = {
-  Spoorthi: { bg: "bg-rose-100", text: "text-rose-700" },
-  Parsh: { bg: "bg-sky-100", text: "text-sky-700" },
-  Both: { bg: "bg-amber-100", text: "text-amber-700" },
+  Spoorthi: { bg: "bg-[#f5e8e8]", text: "text-[#8a4a5a]" },
+  Parsh: { bg: "bg-[#e8edf3]", text: "text-[#3a5a78]" },
+  Both: { bg: "bg-[#f5efd9]", text: "text-[#7a6830]" },
 };
 
 // ---------------------------------------------------------------------------
@@ -55,7 +55,7 @@ function Pill({
 }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${bg} ${text}`}
+      className={`inline-flex items-center rounded border border-[#e8e4df] px-2 py-0.5 text-[10px] font-medium ${bg} ${text}`}
     >
       {label}
     </span>
@@ -79,11 +79,11 @@ export function MarketTags({ market, className = "" }: MarketTagsProps) {
   if (!hasAny) return null;
 
   const eventColors = eventTag
-    ? EVENT_COLORS[eventTag] ?? { bg: "bg-gray-100", text: "text-gray-700" }
+    ? EVENT_COLORS[eventTag] ?? { bg: "bg-[#faf8f4]", text: "text-[#8a8a9a]" }
     : null;
 
   const familyColors = familySide
-    ? FAMILY_COLORS[familySide] ?? { bg: "bg-gray-100", text: "text-gray-700" }
+    ? FAMILY_COLORS[familySide] ?? { bg: "bg-[#faf8f4]", text: "text-[#8a8a9a]" }
     : null;
 
   const familyLabel =
@@ -112,8 +112,8 @@ export function MarketTags({ market, className = "" }: MarketTagsProps) {
           <Pill
             key={tag}
             label={tag}
-            bg="bg-gray-100"
-            text="text-gray-600"
+            bg="bg-[#faf8f4]"
+            text="text-[#8a8a9a]"
           />
         ))}
     </div>

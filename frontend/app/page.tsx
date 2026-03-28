@@ -153,20 +153,20 @@ export default function MarketFeedPage() {
     setActiveEventTag(null);
   }
 
-  const EVENT_COLORS: Record<EventTag, { bg: string; activeBg: string; text: string; activeText: string }> = {
-    Sangeet: { bg: "bg-purple-50", activeBg: "bg-purple-600", text: "text-purple-700", activeText: "text-white" },
-    Haldi: { bg: "bg-yellow-50", activeBg: "bg-yellow-500", text: "text-yellow-700", activeText: "text-white" },
-    Baraat: { bg: "bg-red-50", activeBg: "bg-red-600", text: "text-red-700", activeText: "text-white" },
-    "Wedding Ceremony": { bg: "bg-pink-50", activeBg: "bg-pink-600", text: "text-pink-700", activeText: "text-white" },
-    Reception: { bg: "bg-blue-50", activeBg: "bg-blue-600", text: "text-blue-700", activeText: "text-white" },
-    "After Party": { bg: "bg-emerald-50", activeBg: "bg-emerald-600", text: "text-emerald-700", activeText: "text-white" },
-    General: { bg: "bg-gray-100", activeBg: "bg-gray-600", text: "text-gray-700", activeText: "text-white" },
+  const EVENT_COLORS: Record<EventTag, { bg: string; text: string }> = {
+    Sangeet: { bg: "bg-[#f0ecf5]", text: "text-[#7a5a8a]" },
+    Haldi: { bg: "bg-[#f5f0d9]", text: "text-[#7a6830]" },
+    Baraat: { bg: "bg-[#f5e8e8]", text: "text-[#8a4a4a]" },
+    "Wedding Ceremony": { bg: "bg-[#f5ebee]", text: "text-[#7a4a60]" },
+    Reception: { bg: "bg-[#e8edf3]", text: "text-[#3a5a78]" },
+    "After Party": { bg: "bg-[#e8f0e8]", text: "text-[#3a6848]" },
+    General: { bg: "bg-[#f5efd9]", text: "text-[#6a6a7a]" },
   };
 
-  const FAMILY_COLORS: Record<FamilySide, { bg: string; activeBg: string; text: string; activeText: string }> = {
-    Spoorthi: { bg: "bg-rose-50", activeBg: "bg-rose-600", text: "text-rose-700", activeText: "text-white" },
-    Parsh: { bg: "bg-sky-50", activeBg: "bg-sky-600", text: "text-sky-700", activeText: "text-white" },
-    Both: { bg: "bg-amber-50", activeBg: "bg-amber-500", text: "text-amber-700", activeText: "text-white" },
+  const FAMILY_COLORS: Record<FamilySide, { bg: string; text: string }> = {
+    Spoorthi: { bg: "bg-[#f5e8e8]", text: "text-[#8a4a5a]" },
+    Parsh: { bg: "bg-[#e8edf3]", text: "text-[#3a5a78]" },
+    Both: { bg: "bg-[#f5efd9]", text: "text-[#7a6830]" },
   };
 
   // -------------------------------------------------------------------------
@@ -227,23 +227,23 @@ export default function MarketFeedPage() {
         {/* Filter tabs */}
         <div className="max-w-lg mx-auto mt-3 space-y-2">
           {/* Mode selector */}
-          <div className="flex gap-2">
+          <div className="flex gap-4 border-b border-[#e8e4df]">
             <button
               onClick={() => { setFilterMode("event"); setActiveFamilySide(null); }}
-              className={`text-xs font-semibold px-3 py-1 rounded-full transition-colors ${
+              className={`text-sm pb-2 transition-colors ${
                 filterMode === "event"
-                  ? "bg-[#1a1a2e] text-white"
-                  : "text-[#8a8a9a] hover:text-[#4a4a5a]"
+                  ? "text-[#1a1a2e] font-semibold border-b-2 border-[#c8a45c]"
+                  : "text-[#8a8a9a] font-medium hover:text-[#4a4a5a]"
               }`}
             >
               By Event
             </button>
             <button
               onClick={() => { setFilterMode("family"); setActiveEventTag(null); }}
-              className={`text-xs font-semibold px-3 py-1 rounded-full transition-colors ${
+              className={`text-sm pb-2 transition-colors ${
                 filterMode === "family"
-                  ? "bg-[#1a1a2e] text-white"
-                  : "text-[#8a8a9a] hover:text-[#4a4a5a]"
+                  ? "text-[#1a1a2e] font-semibold border-b-2 border-[#c8a45c]"
+                  : "text-[#8a8a9a] font-medium hover:text-[#4a4a5a]"
               }`}
             >
               By Family
@@ -251,7 +251,7 @@ export default function MarketFeedPage() {
             {(activeEventTag || activeFamilySide) && (
               <button
                 onClick={() => { setActiveEventTag(null); setActiveFamilySide(null); }}
-                className="text-xs text-[#8a8a9a] hover:text-[#4a4a5a] underline ml-auto"
+                className="text-xs text-[#8a8a9a] hover:text-[#4a4a5a] underline ml-auto pb-2"
               >
                 Clear filter
               </button>
@@ -260,7 +260,7 @@ export default function MarketFeedPage() {
 
           {/* Event tag pills */}
           {filterMode === "event" && (
-            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
               {EVENT_TAGS.map((tag) => {
                 const colors = EVENT_COLORS[tag];
                 const isActive = activeEventTag === tag;
@@ -268,10 +268,10 @@ export default function MarketFeedPage() {
                   <button
                     key={tag}
                     onClick={() => selectEventTag(tag)}
-                    className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${
+                    className={`shrink-0 rounded-md px-3 py-1 text-xs font-medium border transition-colors ${
                       isActive
-                        ? `${colors.activeBg} ${colors.activeText}`
-                        : `${colors.bg} ${colors.text} hover:opacity-80`
+                        ? "border-[#c8a45c] bg-[#faf7f0] text-[#8a6d30]"
+                        : `border-[#e8e4df] ${colors.bg} ${colors.text} hover:border-[#d0c8ba]`
                     }`}
                   >
                     {tag}
@@ -283,7 +283,7 @@ export default function MarketFeedPage() {
 
           {/* Family side pills */}
           {filterMode === "family" && (
-            <div className="flex gap-1.5">
+            <div className="flex gap-2 flex-wrap">
               {FAMILY_SIDES.map((side) => {
                 const colors = FAMILY_COLORS[side];
                 const isActive = activeFamilySide === side;
@@ -297,10 +297,10 @@ export default function MarketFeedPage() {
                   <button
                     key={side}
                     onClick={() => selectFamilySide(side)}
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${
+                    className={`rounded-md px-3 py-1 text-xs font-medium border transition-colors ${
                       isActive
-                        ? `${colors.activeBg} ${colors.activeText}`
-                        : `${colors.bg} ${colors.text} hover:opacity-80`
+                        ? "border-[#c8a45c] bg-[#faf7f0] text-[#8a6d30]"
+                        : `border-[#e8e4df] ${colors.bg} ${colors.text} hover:border-[#d0c8ba]`
                     }`}
                   >
                     {label}
