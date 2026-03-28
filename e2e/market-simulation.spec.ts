@@ -11,7 +11,7 @@
 import { test, expect } from "@playwright/test";
 
 const BACKEND = "http://localhost:3001";
-const JWT_SECRET = "8c823526052005393dccb78507cc64ba3be333a31f3d0c68672f2206beb1f53a";
+const JWT_SECRET = process.env.JWT_SECRET ?? "";
 
 // We'll use the admin's real JWT by logging in
 let adminToken = "";
@@ -64,23 +64,19 @@ test.describe.serial("Market Simulation with 10 Users", () => {
 
     const { execSync } = require("child_process");
 
-    // Create admin user if not exists
-    const adminInsert = `
-      INSERT INTO users (id, name, phone, country, role, created_at)
-      VALUES (
-        'a0000000-0000-0000-0000-000000000001',
-        'Shrey Admin',
-        '+17327998071',
-        'US',
-        'ADMIN',
-        NOW()
-      ) ON CONFLICT (phone) DO UPDATE SET role = 'ADMIN'
-      RETURNING id;
-    `;
+    // Find existing admin user (created via real OTP login)
     const adminId = execSync(
-      `psql -t -A postgres://shreyjain@localhost:5432/shaadi_book -c "${adminInsert.replace(/\n/g, " ")}"`,
+      `psql -t -A postgres://shreyjain@localhost:5432/shaadi_book -c "SELECT id FROM users WHERE phone = '+17327998071' LIMIT 1"`,
       { encoding: "utf-8" }
     ).trim();
+
+    if (!adminId) {
+      // Create admin if doesn't exist
+      execSync(
+        `psql -t -A postgres://shreyjain@localhost:5432/shaadi_book -c "INSERT INTO users (id, name, phone, country, role, created_at) VALUES (gen_random_uuid(), 'Shrey Admin', '+17327998071', 'US', 'ADMIN', NOW()) RETURNING id"`,
+        { encoding: "utf-8" }
+      );
+    }
 
     // Sign admin JWT
     const jwt = require("jsonwebtoken");
