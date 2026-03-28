@@ -198,4 +198,79 @@ export const adminRouter = router({
       });
     }
   }),
+
+  // -------------------------------------------------------------------------
+  // admin.listUsers — all users with balance info
+  // -------------------------------------------------------------------------
+  listUsers: adminProcedure.query(async () => {
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        phone: true,
+        name: true,
+        country: true,
+        role: true,
+        createdAt: true,
+        _count: { select: { purchases: true } },
+      },
+    });
+
+    const balances = await prisma.$queryRaw<
+      Array<{ user_id: string; balance: string }>
+    >`
+      SELECT
+        SUBSTRING(credit_account FROM 6) AS user_id,
+        COALESCE(
+          SUM(CASE WHEN credit_account LIKE 'user:%' THEN amount ELSE 0 END) -
+          SUM(CASE WHEN debit_account  LIKE 'user:%' THEN amount ELSE 0 END),
+          0
+        ) AS balance
+      FROM transactions
+      WHERE credit_account LIKE 'user:%' OR debit_account LIKE 'user:%'
+      GROUP BY user_id
+    `;
+
+    const balanceMap = new Map(
+      balances.map((b) => [b.user_id, parseFloat(b.balance)])
+    );
+
+    return users.map((u) => ({
+      id: u.id,
+      name: u.name,
+      phone: u.phone,
+      country: u.country,
+      role: u.role.toLowerCase() as "guest" | "admin",
+      totalBets: u._count.purchases,
+      suspicious: false,
+      balanceCents: Math.round((balanceMap.get(u.id) ?? 0) * 100),
+      createdAt: u.createdAt.toISOString(),
+    }));
+  }),
+
+  // -------------------------------------------------------------------------
+  // admin.listWithdrawals — all withdrawal requests
+  // -------------------------------------------------------------------------
+  listWithdrawals: adminProcedure.query(async () => {
+    const withdrawals = await prisma.withdrawalRequest.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: { select: { name: true, phone: true } },
+        admin: { select: { name: true } },
+      },
+    });
+
+    return withdrawals.map((w) => ({
+      id: w.id,
+      userName: w.user.name,
+      userPhone: w.user.phone,
+      amountCents: Math.round(Number(w.amount) * 100),
+      venmoHandle: w.venmoHandle,
+      zelleContact: w.zelleContact,
+      status: w.status.toLowerCase() as "pending" | "approved" | "rejected" | "completed",
+      adminName: w.admin?.name ?? null,
+      createdAt: w.createdAt.toISOString(),
+      processedAt: w.processedAt?.toISOString() ?? null,
+    }));
+  }),
 });
