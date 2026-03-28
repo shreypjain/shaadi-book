@@ -18,10 +18,9 @@ services:
 
   web:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ""
         NEXT_PUBLIC_WS_URL: https://markets.parshandspoorthi.com
     restart: unless-stopped
     environment:

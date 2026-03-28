@@ -2,10 +2,22 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm install
+# Copy full monorepo for type resolution (frontend imports types from backend)
+COPY frontend/package*.json ./frontend/
+COPY backend/package*.json ./backend/
+COPY backend/prisma ./backend/prisma/
 
-COPY . .
+# Install deps for both
+RUN cd frontend && npm install
+RUN cd backend && npm install && npx prisma generate
+
+# Copy source
+COPY frontend/ ./frontend/
+COPY backend/src/ ./backend/src/
+COPY backend/tsconfig.json ./backend/
+COPY shared/ ./shared/
+
+WORKDIR /app/frontend
 
 # Build-time env vars baked into client JS bundles
 ARG NEXT_PUBLIC_WS_URL=https://markets.parshandspoorthi.com
@@ -18,10 +30,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Standalone output includes only what's needed
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
+COPY --from=builder /app/frontend/.next/standalone ./
+COPY --from=builder /app/frontend/.next/static ./.next/static
+COPY --from=builder /app/frontend/public ./public
 
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0

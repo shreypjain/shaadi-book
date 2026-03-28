@@ -1,0 +1,26 @@
+name: Deploy to DigitalOcean
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: REDACTED_DROPLET_IP
+          username: root
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          command_timeout: 10m
+          script: |
+            cd /opt/shaadi-book
+            git pull origin main
+            docker compose -f docker-compose.prod.yml build
+            docker compose -f docker-compose.prod.yml up -d
+            # Run migrations after DB is healthy
+            sleep 5
+            docker compose -f docker-compose.prod.yml exec -T api npx prisma migrate deploy
+            docker image prune -f
