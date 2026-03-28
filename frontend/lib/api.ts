@@ -30,7 +30,11 @@ export interface TransactionItem {
 }
 
 export interface DepositResult {
-  checkoutUrl: string;
+  clientSecret: string;
+}
+
+export interface PublishableKeyResult {
+  publishableKey: string;
 }
 
 export interface WithdrawalRequestResult {
@@ -147,7 +151,11 @@ export const api = {
 
     createDeposit: (input: { amountCents: number }): Promise<DepositResult> =>
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-      (_client as any).wallet.createDeposit.mutate(input) as Promise<DepositResult>,
+      (_client as any).payment.createDeposit.mutate(input) as Promise<DepositResult>,
+
+    getPublishableKey: (): Promise<PublishableKeyResult> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).payment.getPublishableKey.query() as Promise<PublishableKeyResult>,
 
     requestWithdrawal: (input: {
       amountCents: number;
