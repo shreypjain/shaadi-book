@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <!-- Background -->
+  <rect width="1200" height="630" fill="#faf8f5"/>
+  <!-- Top gold accent -->
+  <rect width="1200" height="4" fill="#c8a45c"/>
+  <!-- Bottom gold accent -->
+  <rect y="626" width="1200" height="4" fill="#c8a45c"/>
+
+  <!-- Title -->
+  <text x="600" y="230" text-anchor="middle" font-family="system-ui, sans-serif" font-size="72" font-weight="700" fill="#1a1a2e" letter-spacing="-2">Shaadi Book</text>
+
+  <!-- Gold underline -->
+  <rect x="520" y="250" width="160" height="3" rx="1.5" fill="#c8a45c"/>
+
+  <!-- Subtitle -->
+  <text x="600" y="310" text-anchor="middle" font-family="system-ui, sans-serif" font-size="28" font-weight="400" fill="#4a4a5a">Parsh &amp; Spoorthi · Leela Palace, Udaipur</text>
+
+  <!-- Description -->
+  <text x="600" y="380" text-anchor="middle" font-family="system-ui, sans-serif" font-size="22" fill="#8a8a9a">Live Prediction Markets for the Wedding</text>
+
+  <!-- Sample odds -->
+  <rect x="320" y="420" width="560" height="70" rx="12" fill="white" stroke="#e8e4df" stroke-width="1"/>
+  <text x="360" y="462" font-family="system-ui, sans-serif" font-size="20" font-weight="600" fill="#1a1a2e">Will the groom cry?</text>
+  <text x="750" y="455" font-family="system-ui, sans-serif" font-size="16" font-weight="600" fill="#1e3a5f">Yes 62¢</text>
+  <text x="750" y="478" font-family="system-ui, sans-serif" font-size="16" font-weight="400" fill="#8a8a9a">No 38¢</text>
+
+  <!-- Charity badge -->
+  <text x="600" y="550" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18" fill="#059669">20% of winnings go to charity</text>
+</svg>

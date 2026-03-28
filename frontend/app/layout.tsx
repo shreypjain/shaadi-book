@@ -6,9 +6,39 @@ import { BottomNav } from "@/components/BottomNav";
 import { UserMenu } from "@/components/UserMenu";
 
 export const metadata: Metadata = {
-  title: "Shaadi Book",
-  description: "Live prediction market for Parsh & Spoorthi's wedding in Udaipur",
+  title: "Shaadi Book | Parsh & Spoorthi's Wedding",
+  description:
+    "Place your bets on wedding moments at Leela Palace, Udaipur. Live prediction markets for Parsh & Spoorthi's shaadi — real stakes, real fun, real charity.",
   manifest: "/manifest.json",
+  metadataBase: new URL("https://parshandspoorthi.com"),
+  openGraph: {
+    title: "Shaadi Book",
+    description:
+      "Live prediction markets for Parsh & Spoorthi's wedding at Leela Palace, Udaipur. Bet on wedding moments. 20% of winnings go to charity.",
+    url: "https://parshandspoorthi.com",
+    siteName: "Shaadi Book",
+    images: [
+      {
+        url: "/og-image.svg",
+        width: 1200,
+        height: 630,
+        alt: "Shaadi Book — Prediction Markets for Parsh & Spoorthi's Wedding",
+      },
+    ],
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Shaadi Book",
+    description:
+      "Live prediction markets for Parsh & Spoorthi's wedding at Leela Palace, Udaipur.",
+    images: ["/og-image.svg"],
+  },
+  icons: {
+    icon: "/favicon.svg",
+    apple: "/apple-touch-icon.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
