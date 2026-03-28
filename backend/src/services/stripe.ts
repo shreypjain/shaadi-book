@@ -1,13 +1,22 @@
 /**
- * Stripe service — Task stripe-js-integration
+ * Stripe service — Stripe.js PaymentIntent + fee tracking
  *
  * Handles all Stripe-related operations:
  *  - createPaymentIntent: Creates a Stripe PaymentIntent for inline Payment Element.
- *    Returns { clientSecret, paymentIntentId } to the client.
  *  - handlePaymentIntentSucceeded: Idempotent handler for payment_intent.succeeded webhook.
- *    Credits user balance via ledger DEPOSIT transaction.
+ *    Credits user balance via ledger DEPOSIT transaction, then records a STRIPE_FEE
+ *    transaction to track the processing cost absorbed by the charity pool.
+ *  - estimateStripeFee: Pure helper — computes the estimated Stripe fee in cents.
  *
- * PRD §7.2
+ * Double-entry convention for STRIPE_FEE:
+ *   debitAccount  = 'charity_pool'     (charity absorbs the processing cost)
+ *   creditAccount = 'stripe_processor' (Stripe retains the fee)
+ *
+ * Reconciliation invariant:
+ *   SUM(user balances) + SUM(charity_fees) + SUM(stripe_fees) + SUM(withdrawals) + house_pool
+ *     = SUM(deposits)
+ *
+ * PRD §7.2, §7.5, Appendix A.1
  */
 
 import Stripe from "stripe";
@@ -16,13 +25,26 @@ import { prisma } from "../db.js";
 import { computeHash, getLastHash } from "./hashChain.js";
 
 // ---------------------------------------------------------------------------
-// Client factory
+// Fee helpers
 // ---------------------------------------------------------------------------
 
 /**
- * Instantiate a Stripe client using the server-side secret key.
- * Called lazily so tests can set STRIPE_SECRET_KEY before the first call.
+ * Estimate the Stripe processing fee for a given deposit amount.
+ *
+ * Stripe charges 2.9% + $0.30 per successful card/Apple Pay transaction.
+ * The result is rounded to the nearest cent.
+ *
+ * @param amountCents - Deposit amount in cents (integer, e.g. 2500 = $25.00)
+ * @returns Estimated fee in cents (integer)
  */
+export function estimateStripeFee(amountCents: number): number {
+  return Math.round(amountCents * 0.029 + 30);
+}
+
+// ---------------------------------------------------------------------------
+// Client factory
+// ---------------------------------------------------------------------------
+
 export function createStripeClient(): Stripe {
   const key = process.env["STRIPE_SECRET_KEY"];
   if (!key) {
@@ -41,10 +63,6 @@ export function createStripeClient(): Stripe {
  * Uses automatic_payment_methods so Apple Pay, Google Pay, and cards are
  * all handled without extra configuration. The client completes payment
  * via the Stripe.js Payment Element — no redirect required.
- *
- * @param amountCents  Integer amount in cents (e.g. 2500 = $25.00)
- * @param userId       UUID of the depositing user — stored in metadata
- * @returns { clientSecret, paymentIntentId }
  */
 export async function createPaymentIntent(
   amountCents: number,
@@ -76,18 +94,10 @@ export async function createPaymentIntent(
 /**
  * Idempotent handler for the payment_intent.succeeded Stripe webhook event.
  *
- * Flow:
- *  1. Extract userId from paymentIntent.metadata.userId.
- *  2. Idempotency check: return early if this paymentIntentId was already
- *     processed (stored in stripeSessionId column of the transactions table).
- *  3. Credit user balance: INSERT a DEPOSIT transaction row with proper
- *     double-entry accounts and a hash-chain entry.
- *
- * Double-entry for DEPOSIT:
- *   debitAccount  = 'stripe'        (money flows IN from Stripe)
- *   creditAccount = 'user:{userId}' (user balance increases)
- *
- * @param paymentIntent - The Stripe.PaymentIntent from the webhook payload
+ * 1. Extract userId from paymentIntent.metadata.userId.
+ * 2. Idempotency check: return early if already processed.
+ * 3. Credit user balance: INSERT a DEPOSIT transaction.
+ * 4. Record STRIPE_FEE: INSERT a fee transaction absorbed by charity pool.
  */
 export async function handlePaymentIntentSucceeded(
   paymentIntent: Stripe.PaymentIntent
@@ -102,38 +112,35 @@ export async function handlePaymentIntentSucceeded(
     );
   }
 
-  // -------------------------------------------------------------------------
-  // Idempotency check — skip if this PaymentIntent was already processed.
-  // We store paymentIntentId in the stripeSessionId column for consistency.
-  // -------------------------------------------------------------------------
+  // Idempotency check
   const existing = await prisma.transaction.findFirst({
     where: { stripeSessionId: paymentIntentId },
     select: { id: true },
   });
 
   if (existing) {
-    // Already credited — no-op to prevent double-crediting
     return;
   }
 
-  // -------------------------------------------------------------------------
-  // Credit user balance inside an atomic transaction
-  // -------------------------------------------------------------------------
+  // Credit user balance + record Stripe fee atomically
   const amountDollars = new Decimal(amountCents).div(100);
+  const stripeFeeCents = estimateStripeFee(amountCents);
+  const stripeFeeDollars = new Decimal(stripeFeeCents).div(100);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (prisma.$transaction as any)(async (tx: any) => {
     const prevHash = await getLastHash(tx);
-    const createdAt = new Date();
+    const depositAt = new Date();
 
-    const txHash = computeHash(
+    const depositHash = computeHash(
       prevHash,
       "DEPOSIT",
       amountDollars.toFixed(6),
       userId,
-      createdAt.toISOString()
+      depositAt.toISOString()
     );
 
+    // 1. DEPOSIT — credit user the full gross amount
     await tx.transaction.create({
       data: {
         userId,
@@ -142,9 +149,33 @@ export async function handlePaymentIntentSucceeded(
         type: "DEPOSIT",
         amount: amountDollars,
         prevHash,
-        txHash,
+        txHash: depositHash,
         stripeSessionId: paymentIntentId,
-        createdAt,
+        createdAt: depositAt,
+      },
+    });
+
+    // 2. STRIPE_FEE — record processing cost absorbed by charity pool
+    const feeAt = new Date();
+    const feeHash = computeHash(
+      depositHash,
+      "STRIPE_FEE",
+      stripeFeeDollars.toFixed(6),
+      userId,
+      feeAt.toISOString()
+    );
+
+    await tx.transaction.create({
+      data: {
+        userId,
+        debitAccount: "charity_pool",
+        creditAccount: "stripe_processor",
+        type: "STRIPE_FEE",
+        amount: stripeFeeDollars,
+        prevHash: depositHash,
+        txHash: feeHash,
+        stripeSessionId: paymentIntentId,
+        createdAt: feeAt,
       },
     });
   });
