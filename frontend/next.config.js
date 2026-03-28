@@ -1,20 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: "standalone",
   async rewrites() {
+    const backend = process.env.BACKEND_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
     return [
-      // Specific tRPC proxy — backend mounts tRPC at /trpc
       {
         source: "/api/trpc/:path*",
-        destination: `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"}/trpc/:path*`,
-      },
-      // General API proxy for other routes
-      {
-        source: "/api/trpc/:path*",
-        destination: `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"}/trpc/:path*`,
+        destination: `${backend}/trpc/:path*`,
       },
       {
         source: "/api/:path*",
-        destination: `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"}/api/:path*`,
+        destination: `${backend}/api/:path*`,
       },
     ];
   },

@@ -69,7 +69,7 @@ export async function createWebSocketServer(
 
   const io = new SocketIOServer(httpServer, {
     cors: {
-      origin: process.env["NEXT_PUBLIC_APP_URL"] ?? "http://localhost:3000",
+      origin: process.env["CORS_ORIGIN"] ?? "http://localhost:3000",
       methods: ["GET", "POST"],
       credentials: true,
     },
