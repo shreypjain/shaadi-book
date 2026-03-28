@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: var(--font-space-grotesk), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 * {
@@ -24,8 +24,7 @@ html {
   font-size: 16px;
 }
 
-/* Touch-friendly tap targets */
-button, a, [role="button"] {
+/* Touch-friendly tap targets — only for interactive elements not inside inputs */
+button:not([class*="otp"]), a, [role="button"] {
   min-height: 44px;
-  min-width: 44px;
 }
