@@ -16,14 +16,12 @@
  *   PRD §6.6 — real-time update architecture
  */
 
-import twilio from "twilio";
 import type { Server as SocketIOServer } from "socket.io";
-import type { PrismaClient } from "@prisma/client";
-import { prisma as defaultPrisma } from "../db.js";
 import {
   broadcastMarketEvent,
   broadcastMarketNotification,
 } from "../ws/broadcaster.js";
+import { notifyNewMarket as smsSendNewMarket } from "./smsNotifier.js";
 
 // ---------------------------------------------------------------------------
 // Public notification functions
@@ -41,11 +39,8 @@ import {
  */
 export async function notifyNewMarket(
   market: { id: string; question: string },
-  io?: SocketIOServer,
-  prismaClient?: PrismaClient
+  io?: SocketIOServer
 ): Promise<void> {
-  const db = prismaClient ?? defaultPrisma;
-
   // WebSocket broadcast
   if (io) {
     broadcastMarketEvent(io, {
@@ -60,11 +55,8 @@ export async function notifyNewMarket(
     });
   }
 
-  // SMS all registered users — fire-and-forget, errors are logged not thrown
-  await sendSmsToAll(
-    "New bet just dropped on Shaadi Book! Open the app to place your bet.",
-    db
-  );
+  // SMS all registered users — fire-and-forget via smsNotifier (rate-limited, non-blocking)
+  smsSendNewMarket(market.question);
 }
 
 /**
@@ -148,42 +140,4 @@ export function scheduleMarketOpen(
   return () => timers.forEach(clearTimeout);
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
 
-/** Send an SMS to every registered user's phone. Errors are logged, not thrown. */
-async function sendSmsToAll(body: string, db: PrismaClient): Promise<void> {
-  const accountSid = process.env["TWILIO_ACCOUNT_SID"];
-  const authToken = process.env["TWILIO_AUTH_TOKEN"];
-  const fromPhone = process.env["TWILIO_PHONE_NUMBER"];
-
-  if (!accountSid || !authToken || !fromPhone) {
-    // Twilio not configured — skip SMS (common in tests and local dev)
-    return;
-  }
-
-  let users: Array<{ phone: string }>;
-  try {
-    users = await db.user.findMany({ select: { phone: true } });
-  } catch (err) {
-    console.error("[notifications] Failed to fetch users for SMS:", err);
-    return;
-  }
-
-  if (users.length === 0) return;
-
-  const client = twilio(accountSid, authToken);
-  const results = await Promise.allSettled(
-    users.map((u) =>
-      client.messages.create({ to: u.phone, from: fromPhone, body })
-    )
-  );
-
-  const failures = results.filter((r) => r.status === "rejected");
-  if (failures.length > 0) {
-    console.error(
-      `[notifications] ${failures.length}/${users.length} SMS messages failed`
-    );
-  }
-}
