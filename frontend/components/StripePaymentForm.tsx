@@ -7,6 +7,8 @@ interface StripePaymentFormProps {
   amountCents: number;
   onSuccess: () => void;
   onCancel: () => void;
+  /** Return URL for redirect-based payment methods (Apple Pay, etc.). Defaults to /wallet?deposit=success. */
+  returnUrl?: string;
 }
 
 /**
@@ -23,6 +25,7 @@ export function StripePaymentForm({
   amountCents,
   onSuccess,
   onCancel,
+  returnUrl,
 }: StripePaymentFormProps) {
   const stripe = useStripe();
   const elements = useElements();
@@ -43,9 +46,9 @@ export function StripePaymentForm({
       // Apple Pay / Google Pay redirect automatically — they return to this page.
       confirmParams: {
         // Return URL for redirect-based payment methods (Apple Pay, etc.)
-        return_url: typeof window !== "undefined"
+        return_url: returnUrl ?? (typeof window !== "undefined"
           ? `${window.location.origin}/wallet?deposit=success`
-          : "/wallet?deposit=success",
+          : "/wallet?deposit=success"),
       },
       redirect: "if_required",
     });

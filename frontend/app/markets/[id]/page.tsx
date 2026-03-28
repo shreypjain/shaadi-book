@@ -98,6 +98,9 @@ export default function MarketDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
+  // User balance — used by BuyForm for the insufficient-balance flow
+  const [balanceCents, setBalanceCents] = useState<number | undefined>(undefined);
+
   const refetch = useCallback(async () => {
     if (!marketId) return;
     try {
@@ -111,9 +114,19 @@ export default function MarketDetailPage() {
     }
   }, [marketId]);
 
+  const refetchBalance = useCallback(async () => {
+    try {
+      const data = await api.wallet.balance();
+      setBalanceCents(data.balanceCents);
+    } catch {
+      // Ignore — user may not be authenticated yet
+    }
+  }, []);
+
   useEffect(() => {
     void refetch();
-  }, [refetch]);
+    void refetchBalance();
+  }, [refetch, refetchBalance]);
 
   useEffect(() => {
     if (!market) return;
@@ -344,7 +357,9 @@ export default function MarketDetailPage() {
               outcomes={market.outcomes}
               currentB={market.currentB}
               remainingCapCents={20000}
+              balanceCents={balanceCents}
               onSuccess={handleBuySuccess}
+              onDepositSuccess={refetchBalance}
             />
           </div>
         )}
