@@ -8,10 +8,11 @@
  * and a mini price history chart (sparkline).
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ProbabilityBar } from "@/components/ProbabilityBar";
 import { BuyForm } from "@/components/BuyForm";
+import { PriceChart, type ChartDataPoint } from "@/components/PriceChart";
 import { api } from "@/lib/api";
 import {
   ensureConnected,
@@ -92,6 +93,10 @@ export default function MarketDetailPage() {
   const [livePrices, setLivePrices] = useState<Record<string, number>>({});
   const [activityFeed, setActivityFeed] = useState<ActivityItem[]>([]);
   const [priceHistory, setPriceHistory] = useState<Record<string, number[]>>({});
+  const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
+
+  // Stable ref for outcomeId→label mapping, avoids stale closures in WS handlers
+  const outcomeMapRef = useRef<Record<string, string>>({});
 
   const [market, setMarket] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -116,11 +121,51 @@ export default function MarketDetailPage() {
 
   useEffect(() => {
     if (!market) return;
+
+    // Update sparkline history
     const initial: Record<string, number[]> = {};
     market.outcomes.forEach((o) => {
       initial[o.id] = [o.priceCents];
     });
     setPriceHistory(initial);
+
+    // Keep outcomeId→label map fresh for WS handlers
+    const idToLabel: Record<string, string> = {};
+    market.outcomes.forEach((o) => { idToLabel[o.id] = o.label; });
+    outcomeMapRef.current = idToLabel;
+
+    // Build price chart data
+    const numOutcomes = market.outcomes.length;
+    const openTime = market.openedAt
+      ? new Date(market.openedAt).getTime()
+      : Date.now();
+
+    // Point 0: market open — all outcomes at equal initial price
+    const initialPoint: ChartDataPoint = { time: openTime };
+    market.outcomes.forEach((o) => {
+      initialPoint[o.id] = Math.round(100 / numOutcomes);
+    });
+
+    // Subsequent points: one per historical purchase (sorted oldest→newest)
+    const purchases = [...(market.recentPurchases ?? [] as RecentPurchase[])].sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+
+    const points: ChartDataPoint[] = [initialPoint];
+    purchases.forEach((p: RecentPurchase) => {
+      const prev = points[points.length - 1]!;
+      const point: ChartDataPoint = {
+        ...prev,
+        time: new Date(p.createdAt).getTime(),
+        [p.outcomeId]: Math.round(p.priceAfter * 100),
+      };
+      points.push(point);
+    });
+
+    setChartData(points);
+
+    // Activity feed
     if (market.recentPurchases?.length) {
       setActivityFeed(
         (market.recentPurchases as RecentPurchase[]).slice(0, 10).map((p) => ({
@@ -157,6 +202,16 @@ export default function MarketDetailPage() {
             next[outcomeId] = hist.slice(-20);
           });
           return next;
+        });
+        // Append a new chart data point with updated prices
+        setChartData((prev) => {
+          if (!prev.length) return prev;
+          const lastPoint = prev[prev.length - 1]!;
+          const newPoint: ChartDataPoint = { ...lastPoint, time: payload.timestamp };
+          payload.prices.forEach(({ outcomeId, priceCents }) => {
+            newPoint[outcomeId] = priceCents;
+          });
+          return [...prev, newPoint];
         });
       },
       onPurchase: (payload: WsPurchasePayload) => {
@@ -330,6 +385,21 @@ export default function MarketDetailPage() {
             })}
           </div>
         </div>
+
+        {/* Price history chart */}
+        {chartData.length >= 2 && (
+          <div className="rounded-xl bg-white border border-[#e8e4df] px-5 py-4 shadow-card">
+            <h2 className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider mb-3">
+              Price History
+            </h2>
+            <PriceChart
+              data={chartData}
+              outcomes={market.outcomes.map(
+                (o: { id: string; label: string }) => ({ id: o.id, label: o.label })
+              )}
+            />
+          </div>
+        )}
 
         {/* Buy form */}
         {isActive && (
