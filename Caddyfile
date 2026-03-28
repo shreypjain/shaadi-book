@@ -1,16 +1,32 @@
 markets.parshandspoorthi.com {
-	# Frontend
-	reverse_proxy /api/* api:3001
-	reverse_proxy /trpc/* api:3001
-	reverse_proxy /socket.io/* api:3001
-
-	# WebSocket support for socket.io
-	@websocket {
-		header Connection *Upgrade*
-		header Upgrade websocket
+	# Rewrite /api/trpc/* to /trpc/* for the backend
+	handle /api/trpc/* {
+		uri strip_prefix /api
+		reverse_proxy api:3001
 	}
-	reverse_proxy @websocket api:3001
+
+	# Direct API routes (webhooks, health, etc.)
+	handle /api/* {
+		reverse_proxy api:3001
+	}
+
+	# Direct tRPC calls
+	handle /trpc/* {
+		reverse_proxy api:3001
+	}
+
+	# Health endpoint
+	handle /health {
+		reverse_proxy api:3001
+	}
+
+	# Socket.io WebSocket + polling
+	handle /socket.io/* {
+		reverse_proxy api:3001
+	}
 
 	# Everything else goes to Next.js
-	reverse_proxy web:3000
+	handle {
+		reverse_proxy web:3000
+	}
 }
