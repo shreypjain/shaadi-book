@@ -10,7 +10,7 @@
  *   Mutation → POST /api/trpc/<proc>  body: {"0":{"json":{...}}}
  */
 
-import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
+import { createTRPCProxyClient, httpLink } from "@trpc/client";
 import { getToken } from "./auth";
 
 // ---------------------------------------------------------------------------
@@ -88,7 +88,7 @@ export interface CharityTotal {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const _client = createTRPCProxyClient<any>({
   links: [
-    httpBatchLink({
+    httpLink({
       url: "/api/trpc",
       headers() {
         const token = getToken();
