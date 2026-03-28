@@ -12,13 +12,32 @@ import Link from "next/link";
 import { trpc } from "@/lib/trpc";
 import DashboardStat from "@/components/admin/DashboardStat";
 
-type DashboardData = Awaited<ReturnType<typeof trpc.admin.dashboard.query>>;
+interface DashboardData {
+  totalDeposits: string;
+  totalUsers: number;
+  activeMarketCount: number;
+  totalVolume: string;
+  totalHouseExposure: string;
+  charityPool: string;
+  grossCharityPool: string;
+  stripeFees: string;
+  netCharityAmount: string;
+  housePool: string;
+  totalUserBalances: string;
+  isReconciled: boolean;
+  marketExposures: Array<{
+    marketId: string;
+    question: string;
+    volume: string;
+    worstCaseLoss: string;
+    b: string;
+  }>;
+}
 
-function formatUSD(cents: number) {
-  return `$${(cents / 100).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+function formatUSD(dollars: string | number) {
+  const n = typeof dollars === "string" ? parseFloat(dollars) : dollars;
+  if (isNaN(n)) return "$0.00";
+  return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export default function AdminDashboardPage() {
@@ -66,29 +85,25 @@ export default function AdminDashboardPage() {
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <DashboardStat
           label="Total Volume"
-          value={data ? formatUSD(data.totalVolumeCents) : "—"}
+          value={data ? formatUSD(data.totalVolume) : "—"}
           subtext="all-time purchases"
           accent="text-gray-900"
         />
         <DashboardStat
-          label="Active Bettors"
-          value={data ? String(data.activeUsersCount) : "—"}
-          subtext="users with ≥1 bet"
+          label="Total Users"
+          value={data ? String(data.totalUsers) : "—"}
+          subtext={`${data?.activeMarketCount ?? 0} active markets`}
           accent="text-gray-900"
         />
         <DashboardStat
-          label="Charity Pool"
-          value={data ? formatUSD(data.charityPoolCents) : "—"}
-          subtext="20% of resolved payouts"
+          label="Net Charity"
+          value={data ? formatUSD(data.netCharityAmount) : "—"}
+          subtext={data ? `gross ${formatUSD(data.grossCharityPool)} − fees ${formatUSD(data.stripeFees)}` : "20% of resolved payouts"}
           accent="text-emerald-600"
         />
         <DashboardStat
           label="House Exposure"
-          value={
-            data
-              ? `$${data.totalHouseExposureDollars.toFixed(2)}`
-              : "—"
-          }
+          value={data ? formatUSD(data.totalHouseExposure) : "—"}
           subtext="aggregate worst-case loss"
           accent="text-amber-600"
         />
@@ -99,7 +114,7 @@ export default function AdminDashboardPage() {
         <h2 className="text-sm font-semibold text-gray-700 mb-3">
           Active Market Exposure
         </h2>
-        {!data || data.houseExposure.length === 0 ? (
+        {!data || data.marketExposures.length === 0 ? (
           <p className="text-sm text-gray-400">No active markets.</p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
@@ -113,7 +128,7 @@ export default function AdminDashboardPage() {
                     b
                   </th>
                   <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">
-                    Outcomes
+                    Volume
                   </th>
                   <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">
                     Max Loss
@@ -121,7 +136,7 @@ export default function AdminDashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.houseExposure.map((m) => (
+                {data.marketExposures.map((m) => (
                   <tr
                     key={m.marketId}
                     className="border-b border-gray-100 last:border-0 hover:bg-gray-50"
@@ -130,13 +145,13 @@ export default function AdminDashboardPage() {
                       {m.question}
                     </td>
                     <td className="px-4 py-2 text-right text-gray-600 tabular-nums">
-                      {m.b.toFixed(1)}
+                      {parseFloat(m.b).toFixed(1)}
                     </td>
                     <td className="px-4 py-2 text-right text-gray-600">
-                      {m.numOutcomes}
+                      {formatUSD(m.volume)}
                     </td>
                     <td className="px-4 py-2 text-right font-semibold text-amber-700 tabular-nums">
-                      ${m.exposureDollars.toFixed(2)}
+                      {formatUSD(m.worstCaseLoss)}
                     </td>
                   </tr>
                 ))}
