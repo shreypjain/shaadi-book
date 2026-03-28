@@ -18,15 +18,15 @@ const NAV_LINKS = [
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-cream-100">
       {/* Sidebar */}
-      <aside className="w-52 shrink-0 border-r border-gray-200 bg-white flex flex-col">
+      <aside className="w-52 shrink-0 border-r border-[#e8e4df] bg-white flex flex-col">
         {/* Brand */}
-        <div className="px-5 py-4 border-b border-gray-100">
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+        <div className="px-5 py-4 border-b border-[#f0ece7]">
+          <p className="text-xs font-semibold uppercase tracking-widest text-[#8a8a9a]">
             Shaadi Book
           </p>
-          <p className="text-base font-bold text-gray-800 mt-0.5">Admin</p>
+          <p className="text-base font-bold text-[#1e3a5f] mt-0.5">Admin</p>
         </div>
 
         {/* Nav */}
@@ -35,7 +35,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <Link
               key={link.href}
               href={link.href}
-              className="flex items-center rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+              className="flex items-center rounded-lg px-3 py-2 text-sm text-[#4a4a5a] hover:bg-cream-100 hover:text-[#1a1a2e] transition-colors"
             >
               {link.label}
             </Link>
@@ -43,10 +43,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </nav>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-gray-100">
+        <div className="px-4 py-3 border-t border-[#f0ece7]">
           <Link
             href="/"
-            className="text-xs text-gray-400 hover:text-gray-600"
+            className="text-xs text-[#8a8a9a] hover:text-[#4a4a5a]"
           >
             ← Back to app
           </Link>

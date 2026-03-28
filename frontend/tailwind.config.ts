@@ -12,34 +12,47 @@ const config: Config = {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
       },
       colors: {
-        // Brand: rose/pink — primary actions, headers
+        // Primary — Deep royal blue (Lake Pichola at dusk)
         brand: {
-          50: "#fdf2f8",
-          100: "#fce7f3",
-          200: "#fbb6de",
-          300: "#f985c5",
-          400: "#f452ab",
-          500: "#ec4899",
-          600: "#db2777",
-          700: "#be185d",
-          800: "#9d174d",
-          900: "#831843",
+          50: "#eef4f9",
+          100: "#d4e3f0",
+          200: "#a8c5dc",
+          300: "#6b9cc4",
+          400: "#3b6fa3",
+          500: "#254f7a",
+          600: "#1e3a5f",
+          700: "#152f52",
+          800: "#0f2540",
+          900: "#0a1829",
         },
-        // Cream — page backgrounds, card surfaces
+        // Gold — Rajasthani palace gilding
+        gold: {
+          50: "#fbf8f1",
+          100: "#f5efd9",
+          200: "#ead9b0",
+          300: "#dfc391",
+          400: "#d4b576",
+          500: "#c8a45c",
+          600: "#b08940",
+          700: "#8a6d30",
+          800: "#6d5726",
+          900: "#4d3e1b",
+        },
+        // Warm whites — marble/sandstone warmth
         cream: {
-          50: "#fffbf5",
-          100: "#fef6e8",
-          200: "#fdecd2",
-          300: "#fcd9a8",
+          50: "#fffbf7",
+          100: "#faf8f5",
+          200: "#f5f0e8",
+          300: "#ede5d6",
         },
-        // Amber — secondary accents, volume badges
+        // Legacy wedding aliases — now map to royal blue & gold
         wedding: {
-          gold: "#d97706",
-          "gold-light": "#fbbf24",
-          "gold-pale": "#fef3c7",
-          rose: "#be185d",
-          "rose-pale": "#fce7f3",
-          marigold: "#f59e0b",
+          gold: "#c8a45c",
+          "gold-light": "#dfc391",
+          "gold-pale": "#f5efd9",
+          rose: "#1e3a5f",
+          "rose-pale": "#eef4f9",
+          marigold: "#c8a45c",
         },
       },
       keyframes: {
@@ -66,6 +79,10 @@ const config: Config = {
         "slide-up": "slide-up 0.25s ease-out",
         "fade-in": "fade-in 0.2s ease-out",
         "success-pop": "success-pop 0.4s ease-out",
+      },
+      boxShadow: {
+        card: "0 1px 3px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.04)",
+        "card-hover": "0 4px 16px rgba(0,0,0,0.09), 0 1px 4px rgba(0,0,0,0.05)",
       },
     },
   },
