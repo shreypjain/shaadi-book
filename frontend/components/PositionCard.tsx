@@ -149,14 +149,17 @@ export function PositionCard({ position }: PositionCardProps) {
         </div>
 
         {/* Potential payout for active/pending */}
-        {position.marketStatus === "active" && (
+        {(position.marketStatus === "active" || position.marketStatus === "pending") && (
           <div className="mt-3 pt-3 border-t border-[#f0ece7]">
-            <p className="text-xs text-[#8a8a9a]">
-              Potential payout if wins{" "}
-              <span className="font-semibold text-[#1a1a2e]">
+            <p className="text-xs bg-[#f5efd9] text-[#8a6d30] rounded-lg px-2.5 py-1.5">
+              Payout if wins:{" "}
+              <span className="font-bold">
                 {formatDollars(position.potentialPayoutCents)}
-              </span>{" "}
-              <span className="text-[#c8c8d0]">(after 20% charity)</span>
+              </span>
+              {" · "}Profit:{" "}
+              <span className="font-bold">
+                {formatDollars(position.potentialPayoutCents - position.totalCostCents)}
+              </span>
             </p>
           </div>
         )}
