@@ -14,6 +14,9 @@
     "build:frontend": "npm run build --workspace=frontend",
     "test:backend": "npm run test --workspace=backend",
     "test:frontend": "npm run test --workspace=frontend",
+    "test:e2e": "playwright test",
+    "test:e2e:payment": "playwright test e2e/payment-flow.spec.ts",
+    "test:e2e:ui": "playwright test --ui",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "engines": {
