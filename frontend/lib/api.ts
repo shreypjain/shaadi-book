@@ -170,6 +170,20 @@ export const api = {
       (_client as any).wallet.withdrawals.query() as Promise<WithdrawalItem[]>,
   },
 
+  market: {
+    list: (input: { status?: string }): Promise<any[]> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).market.list.query(input) as Promise<any[]>,
+
+    getById: (input: { id: string }): Promise<any> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).market.getById.query(input) as Promise<any>,
+
+    buy: (input: { marketId: string; outcomeId: string; dollarAmountCents: number }): Promise<any> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).market.buy.mutate(input) as Promise<any>,
+  },
+
   bets: {
     myPositions: (): Promise<PositionItem[]> =>
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
