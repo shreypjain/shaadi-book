@@ -215,7 +215,7 @@ export function BuyForm({
 
         {/* Preview */}
         {preview && !amountError && (
-          <div className="rounded-xl bg-brand-50 border border-brand-100 p-3 mb-4 animate-fade-in">
+          <div className="rounded-xl bg-brand-50 border border-brand-100 p-3 mb-4 animate-fade-in space-y-2">
             <p className="text-sm text-[#4a4a5a] leading-relaxed">
               You&apos;ll get{" "}
               <span className="font-bold text-[#1a1a2e]">
@@ -235,6 +235,16 @@ export function BuyForm({
                 <span className="font-semibold text-[#4a4a5a]">
                   {Math.round(preview.priceAfter * 100)}¢
                 </span>
+              </span>
+            </p>
+            <p className="text-xs bg-[#f5efd9] text-[#8a6d30] rounded-lg px-2.5 py-1.5">
+              If{" "}
+              <span className="font-semibold">{selectedOutcome?.label}</span>{" "}
+              wins, you&apos;d get{" "}
+              <span className="font-bold">{formatDollars(preview.shares)}</span>
+              {" · "}Profit:{" "}
+              <span className="font-bold">
+                {formatDollars(preview.shares - dollarAmount)}
               </span>
             </p>
           </div>
