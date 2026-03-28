@@ -37,7 +37,32 @@ export interface MarketWithPrices {
   outcomes: OutcomeWithPrice[];
   currentB: number;
   totalVolume: number;
+  /** Wedding event tag (e.g. 'Sangeet', 'Haldi', 'Reception'). */
+  eventTag: string | null;
+  /** Family side ('Spoorthi', 'Parsh', 'Both'). */
+  familySide: string | null;
+  /** Freeform custom tags. */
+  customTags: string[];
 }
+
+// ---------------------------------------------------------------------------
+// Market tag constants (mirrors backend Zod schemas)
+// ---------------------------------------------------------------------------
+
+export const EVENT_TAGS = [
+  "Sangeet",
+  "Haldi",
+  "Baraat",
+  "Wedding Ceremony",
+  "Reception",
+  "After Party",
+  "General",
+] as const;
+
+export type EventTag = typeof EVENT_TAGS[number];
+
+export const FAMILY_SIDES = ["Spoorthi", "Parsh", "Both"] as const;
+export type FamilySide = typeof FAMILY_SIDES[number];
 
 export interface RecentPurchase {
   id: string;

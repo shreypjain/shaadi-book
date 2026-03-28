@@ -171,7 +171,7 @@ export const api = {
   },
 
   market: {
-    list: (input: { status?: string }): Promise<any[]> =>
+    list: (input: { status?: string; eventTag?: string; familySide?: string }): Promise<any[]> =>
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       (_client as any).market.list.query(input) as Promise<any[]>,
 

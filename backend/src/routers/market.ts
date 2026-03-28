@@ -24,6 +24,7 @@ import {
   getMarketWithPrices,
   listMarkets,
   openMarket,
+  type ListMarketsFilters,
 } from "../services/marketService.js";
 import {
   notifyNewMarket,
@@ -67,6 +68,18 @@ const MarketStatusSchema = z.enum([
   "VOIDED",
 ]);
 
+const EventTagSchema = z.enum([
+  "Sangeet",
+  "Haldi",
+  "Baraat",
+  "Wedding Ceremony",
+  "Reception",
+  "After Party",
+  "General",
+]);
+
+const FamilySideSchema = z.enum(["Spoorthi", "Parsh", "Both"]);
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -79,10 +92,17 @@ export const marketRouter = router({
     .input(
       z.object({
         status: MarketStatusSchema.optional(),
+        eventTag: EventTagSchema.optional(),
+        familySide: FamilySideSchema.optional(),
       })
     )
     .query(async ({ input }) => {
-      const markets = await listMarkets(input.status);
+      const filters: ListMarketsFilters = {
+        status: input.status,
+        eventTag: input.eventTag,
+        familySide: input.familySide,
+      };
+      const markets = await listMarkets(filters);
       return markets;
     }),
 
@@ -217,6 +237,9 @@ export const marketRouter = router({
         outcomeLabels: z.array(z.string().min(1).max(100)).min(2).max(5),
         bFloorOverride: z.number().positive().optional(),
         scheduledOpenAt: z.coerce.date().optional(),
+        eventTag: EventTagSchema.optional(),
+        familySide: FamilySideSchema.optional(),
+        customTags: z.array(z.string().min(1).max(50)).max(10).optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -230,6 +253,9 @@ export const marketRouter = router({
           bFloorOverride: input.bFloorOverride,
           scheduledOpenAt: input.scheduledOpenAt,
           ipAddress,
+          eventTag: input.eventTag,
+          familySide: input.familySide,
+          customTags: input.customTags,
         }
       );
 
