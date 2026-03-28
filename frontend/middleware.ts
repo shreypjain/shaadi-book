@@ -27,7 +27,7 @@ function decodeJwtPayload(token: string): { role?: string } | null {
 }
 
 // Routes that are always public — no token required
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/api"];
 
 export function middleware(req: NextRequest): NextResponse {
   const { pathname } = req.nextUrl;
