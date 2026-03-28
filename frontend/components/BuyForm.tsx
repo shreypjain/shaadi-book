@@ -28,6 +28,9 @@ type FormStep = "select" | "amount" | "confirm" | "success";
 
 const PRESET_AMOUNTS = [5, 10, 25, 50] as const;
 
+// Hex values aligned to OUTCOME_COLORS bar variants for inline border styling
+const OUTCOME_BAR_HEX = ["#3b6fa3", "#fbbf24", "#2dd4bf", "#34d399", "#a78bfa"];
+
 export function BuyForm({
   marketId,
   outcomes,
@@ -102,10 +105,13 @@ export function BuyForm({
   if (step === "select") {
     return (
       <div className="animate-slide-up">
-        <p className="text-sm font-medium text-[#4a4a5a] mb-3">Pick your outcome</p>
+        <p className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider mb-3">
+          Pick your outcome
+        </p>
         <div className="flex flex-col gap-2">
           {outcomes.map((outcome, i) => {
             const colors = outcomeColor(i);
+            const barHex = OUTCOME_BAR_HEX[i % OUTCOME_BAR_HEX.length]!;
             return (
               <button
                 key={outcome.id}
@@ -115,13 +121,14 @@ export function BuyForm({
                 }}
                 className={cn(
                   "flex items-center justify-between w-full rounded-xl px-4 py-3",
-                  "border text-left transition-all duration-150",
-                  "active:scale-[0.98] hover:shadow-sm",
-                  colors.light,
-                  "border-[#e8e4df] hover:border-current"
+                  "border border-[#e8e4df] bg-white text-left transition-all duration-150",
+                  "hover:shadow-card-hover active:scale-[0.98]"
                 )}
+                style={{ borderLeft: `4px solid ${barHex}` }}
               >
-                <span className={cn("font-semibold text-sm", colors.text)}>{outcome.label}</span>
+                <span className={cn("font-semibold text-sm", colors.text)}>
+                  {outcome.label}
+                </span>
                 <span className={cn("text-base font-bold tabular-nums", colors.text)}>
                   {Math.round(outcome.priceCents)}¢
                 </span>
@@ -139,40 +146,44 @@ export function BuyForm({
 
   if (step === "amount") {
     const colors = selectedIndex >= 0 ? outcomeColor(selectedIndex) : outcomeColor(0);
+    const barHex = OUTCOME_BAR_HEX[selectedIndex >= 0 ? selectedIndex % OUTCOME_BAR_HEX.length : 0]!;
+
     return (
-      <div className="animate-slide-up">
-        {/* Back + selected outcome */}
-        <div className="flex items-center gap-2 mb-4">
+      <div className="flex flex-col gap-4 animate-slide-up">
+
+        {/* 1. Outcome header card */}
+        <div
+          className="rounded-xl border border-[#e8e4df] bg-white px-4 py-3 flex items-center gap-3"
+          style={{ borderLeft: `4px solid ${barHex}` }}
+        >
           <button
             onClick={() => setStep("select")}
-            className="p-1.5 rounded-lg hover:bg-[#e8e4df]/60 transition-colors"
+            className="p-1 rounded-lg hover:bg-[#e8e4df]/60 transition-colors flex-shrink-0"
             aria-label="Back"
           >
             <svg className="w-4 h-4 text-[#4a4a5a]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <span
-            className={cn(
-              "inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold",
-              colors.light,
-              colors.text
-            )}
-          >
+          <span className={cn("font-bold text-base flex-1 leading-tight", colors.text)}>
             {selectedOutcome?.label}
           </span>
-          <span className={cn("ml-auto text-base font-bold tabular-nums", colors.text)}>
+          <span className={cn("text-lg font-bold tabular-nums flex-shrink-0", colors.text)}>
             {selectedOutcome ? Math.round(selectedOutcome.priceCents) : 0}¢
           </span>
         </div>
 
-        {/* Amount input */}
-        <div className="mb-3">
-          <label className="text-sm font-medium text-[#4a4a5a] block mb-1.5">
-            Bet amount (max {formatDollars(maxDollars)})
-          </label>
+        {/* 2. Amount section */}
+        <div className="rounded-xl border border-[#e8e4df] bg-[#faf8f5] px-4 py-4 space-y-3">
+          <p className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider">
+            Bet Amount <span className="normal-case font-normal">(max {formatDollars(maxDollars)})</span>
+          </p>
+
+          {/* Dollar input */}
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a8a9a] font-semibold">$</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a8a9a] font-semibold text-lg">
+              $
+            </span>
             <input
               type="number"
               min={1}
@@ -181,7 +192,7 @@ export function BuyForm({
               value={dollarAmountStr}
               onChange={(e) => setDollarAmountStr(e.target.value)}
               className={cn(
-                "w-full pl-8 pr-4 py-3 rounded-xl border-2 bg-white text-lg font-semibold",
+                "w-full pl-8 pr-4 py-3 rounded-xl border-2 bg-white text-xl font-bold",
                 "focus:outline-none focus:ring-0",
                 amountError
                   ? "border-[#dc2626] text-[#dc2626]"
@@ -191,82 +202,109 @@ export function BuyForm({
             />
           </div>
           {amountError && (
-            <p className="text-xs text-[#dc2626] mt-1">{amountError}</p>
+            <p className="text-xs text-[#dc2626] -mt-1">{amountError}</p>
           )}
+
+          {/* Preset pills */}
+          <div className="flex gap-2">
+            {PRESET_AMOUNTS.filter((a) => a <= maxDollars).map((amt) => (
+              <button
+                key={amt}
+                onClick={() => setDollarAmountStr(String(amt))}
+                className={cn(
+                  "flex-1 py-2 rounded-full text-sm font-semibold transition-all duration-150",
+                  dollarAmountStr === String(amt)
+                    ? "bg-[#1e3a5f] text-white shadow-sm"
+                    : "bg-white border border-[#e8e4df] text-[#4a4a5a] hover:border-[#1e3a5f] hover:text-[#1e3a5f]"
+                )}
+              >
+                ${amt}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Presets */}
-        <div className="flex gap-2 mb-4">
-          {PRESET_AMOUNTS.filter((a) => a <= maxDollars).map((amt) => (
-            <button
-              key={amt}
-              onClick={() => setDollarAmountStr(String(amt))}
-              className={cn(
-                "flex-1 py-2 rounded-lg text-sm font-semibold border transition-colors",
-                dollarAmountStr === String(amt)
-                  ? "border-[#1e3a5f] bg-brand-50 text-brand-700"
-                  : "border-[#e8e4df] bg-white text-[#4a4a5a] hover:bg-cream-100"
-              )}
-            >
-              ${amt}
-            </button>
-          ))}
-        </div>
-
-        {/* Preview */}
+        {/* 3. Preview card */}
         {preview && !amountError && (
-          <div className="rounded-xl bg-brand-50 border border-brand-100 p-3 mb-4 animate-fade-in space-y-2">
-            <p className="text-sm text-[#4a4a5a] leading-relaxed">
-              You&apos;ll get{" "}
-              <span className="font-bold text-[#1a1a2e]">
-                {formatShares(preview.shares)} shares
-              </span>{" "}
-              at avg{" "}
-              <span className="font-bold text-[#1a1a2e]">
-                {formatDollars(preview.avgPrice)}
-              </span>
-              .{" "}
-              <span className="text-[#8a8a9a]">
-                Price moves{" "}
-                <span className="font-semibold text-[#4a4a5a]">
-                  {Math.round(preview.priceBefore * 100)}¢
-                </span>{" "}
-                →{" "}
-                <span className="font-semibold text-[#4a4a5a]">
-                  {Math.round(preview.priceAfter * 100)}¢
+          <div
+            className="rounded-xl border border-[#e8e4df] bg-[#faf7f0] px-4 py-4 space-y-3 animate-fade-in"
+            style={{ borderLeft: '3px solid #c8a45c' }}
+          >
+            {/* Top row: shares + avg price */}
+            <div className="flex items-baseline justify-between">
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-2xl font-bold text-[#1a1a2e]">
+                  {formatShares(preview.shares)}
                 </span>
+                <span className="text-sm font-medium text-[#4a4a5a]">shares</span>
+              </div>
+              <div className="text-right">
+                <span className="text-xs text-[#8a8a9a]">avg price </span>
+                <span className="text-base font-bold text-[#1a1a2e]">
+                  {formatDollars(preview.avgPrice)}
+                </span>
+              </div>
+            </div>
+
+            {/* Middle: price movement */}
+            <div className="flex items-center gap-2 text-sm">
+              <svg
+                className="w-3.5 h-3.5 text-[#c8a45c] flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
+                  d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+              <span className="text-[#4a4a5a] tabular-nums">
+                {Math.round(preview.priceBefore * 100)}¢
               </span>
-            </p>
-            <p className="text-xs bg-[#f5efd9] text-[#8a6d30] rounded-lg px-2.5 py-1.5">
-              If{" "}
-              <span className="font-semibold">{selectedOutcome?.label}</span>{" "}
-              wins, you&apos;d get{" "}
-              <span className="font-bold">{formatDollars(preview.shares)}</span>
-              {" · "}Profit:{" "}
-              <span className="font-bold">
-                {formatDollars(preview.shares - dollarAmount)}
+              <span className="text-[#8a8a9a]">→</span>
+              <span className="text-[#1a1a2e] font-semibold tabular-nums">
+                {Math.round(preview.priceAfter * 100)}¢
               </span>
-            </p>
+              <span className="text-xs text-[#8a8a9a] ml-auto">price impact</span>
+            </div>
+
+            {/* Bottom: gold payout banner */}
+            <div className="rounded-lg bg-[#f5efd9] px-3 py-2.5 flex items-center justify-between">
+              <span className="text-sm text-[#8a6d30]">
+                If{" "}
+                <span className="font-semibold">{selectedOutcome?.label}</span>{" "}
+                wins
+              </span>
+              <div className="text-right">
+                <span className="text-sm font-bold text-[#8a6d30]">
+                  +{formatDollars(preview.shares - dollarAmount)}
+                </span>
+                <span className="text-xs text-[#b08940] ml-1">profit</span>
+              </div>
+            </div>
           </div>
         )}
 
         {/* Error */}
         {error && (
-          <div className="rounded-xl bg-red-50 border border-red-100 px-3 py-2 mb-3 text-sm text-[#dc2626]">
+          <div className="rounded-xl bg-red-50 border border-red-100 px-3 py-2.5 text-sm text-[#dc2626]">
             {error}
           </div>
         )}
 
-        {/* Confirm button */}
+        {/* 4. Confirm button */}
         <button
           onClick={handleConfirm}
           disabled={!!amountError || dollarAmount <= 0}
           className={cn(
-            "w-full py-3.5 rounded-xl font-medium text-sm transition-all duration-150",
+            "w-full py-4 rounded-xl font-semibold text-sm transition-all duration-200",
             "active:scale-[0.98]",
             amountError || dollarAmount <= 0
               ? "bg-[#f0ece7] text-[#8a8a9a] cursor-not-allowed"
-              : "bg-[#1e3a5f] text-white hover:bg-[#152f52] shadow-sm"
+              : [
+                  "bg-[#1e3a5f] text-white",
+                  "hover:bg-[#152f52] hover:-translate-y-0.5",
+                  "shadow-sm hover:shadow-card",
+                ]
           )}
         >
           Confirm {formatDollars(dollarAmount)} on {selectedOutcome?.label}
