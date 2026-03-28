@@ -1,12 +1,13 @@
 /**
- * Stripe service — Task 3.1
+ * Stripe service — Task stripe-js-integration
  *
  * Handles all Stripe-related operations:
- *  - createDepositSession: Creates a Stripe Checkout Session for guest deposits.
- *  - handleCheckoutCompleted: Idempotent handler for checkout.session.completed webhook.
- *    Inserts a DEPOSIT transaction into the append-only ledger (double-entry, hash-chained).
+ *  - createPaymentIntent: Creates a Stripe PaymentIntent for inline Payment Element.
+ *    Returns { clientSecret, paymentIntentId } to the client.
+ *  - handlePaymentIntentSucceeded: Idempotent handler for payment_intent.succeeded webhook.
+ *    Credits user balance via ledger DEPOSIT transaction.
  *
- * PRD §7.2, Appendix A.1
+ * PRD §7.2
  */
 
 import Stripe from "stripe";
@@ -27,76 +28,58 @@ export function createStripeClient(): Stripe {
   if (!key) {
     throw new Error("STRIPE_SECRET_KEY environment variable is not set");
   }
-  // The Stripe constructor accepts (key, config?) — config is optional.
-  // We follow the PRD Appendix A.1 pattern exactly.
   return new Stripe(key);
 }
 
 // ---------------------------------------------------------------------------
-// createDepositSession
+// createPaymentIntent
 // ---------------------------------------------------------------------------
 
 /**
- * Create a Stripe Checkout Session for a guest deposit.
+ * Create a Stripe PaymentIntent for a guest deposit.
  *
- * Configuration (per PRD Appendix A.1):
- *  - mode: 'payment' (one-time charge, not subscription)
- *  - currency: 'usd'
- *  - line_items: single item named 'Shaadi Book Credits'
- *  - client_reference_id: userId — links session to our user in the webhook
- *  - success_url / cancel_url: wallet page redirects
+ * Uses automatic_payment_methods so Apple Pay, Google Pay, and cards are
+ * all handled without extra configuration. The client completes payment
+ * via the Stripe.js Payment Element — no redirect required.
  *
- * Apple Pay, Google Pay, and credit cards are all available automatically
- * via Stripe Checkout — no extra config needed on the server.
- *
- * @param userId     - UUID of the depositing user
- * @param amountCents - Integer amount in cents (e.g. 2500 = $25.00)
- * @returns Stripe Checkout URL to redirect the guest to
+ * @param amountCents  Integer amount in cents (e.g. 2500 = $25.00)
+ * @param userId       UUID of the depositing user — stored in metadata
+ * @returns { clientSecret, paymentIntentId }
  */
-export async function createDepositSession(
-  userId: string,
-  amountCents: number
-): Promise<string> {
+export async function createPaymentIntent(
+  amountCents: number,
+  userId: string
+): Promise<{ clientSecret: string; paymentIntentId: string }> {
   const stripe = createStripeClient();
-  const appUrl =
-    process.env["NEXT_PUBLIC_APP_URL"] ?? "http://localhost:3000";
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: amountCents,
     currency: "usd",
-    line_items: [
-      {
-        price_data: {
-          currency: "usd",
-          product_data: { name: "Shaadi Book Credits" },
-          unit_amount: amountCents,
-        },
-        quantity: 1,
-      },
-    ],
-    client_reference_id: userId,
-    success_url: `${appUrl}/wallet?deposit=success`,
-    cancel_url: `${appUrl}/wallet?deposit=cancelled`,
+    automatic_payment_methods: { enabled: true },
+    metadata: { userId },
   });
 
-  if (!session.url) {
-    throw new Error("Stripe Checkout did not return a session URL");
+  if (!paymentIntent.client_secret) {
+    throw new Error("Stripe PaymentIntent did not return a client_secret");
   }
 
-  return session.url;
+  return {
+    clientSecret: paymentIntent.client_secret,
+    paymentIntentId: paymentIntent.id,
+  };
 }
 
 // ---------------------------------------------------------------------------
-// handleCheckoutCompleted
+// handlePaymentIntentSucceeded
 // ---------------------------------------------------------------------------
 
 /**
- * Idempotent handler for the checkout.session.completed Stripe webhook event.
+ * Idempotent handler for the payment_intent.succeeded Stripe webhook event.
  *
  * Flow:
- *  1. Validate required fields are present on the session.
- *  2. Idempotency check: return early if stripeSessionId already exists in
- *     the transactions table (handles duplicate Stripe deliveries).
+ *  1. Extract userId from paymentIntent.metadata.userId.
+ *  2. Idempotency check: return early if this paymentIntentId was already
+ *     processed (stored in stripeSessionId column of the transactions table).
  *  3. Credit user balance: INSERT a DEPOSIT transaction row with proper
  *     double-entry accounts and a hash-chain entry.
  *
@@ -104,31 +87,27 @@ export async function createDepositSession(
  *   debitAccount  = 'stripe'        (money flows IN from Stripe)
  *   creditAccount = 'user:{userId}' (user balance increases)
  *
- * @param session - The Stripe Checkout.Session from the webhook payload
+ * @param paymentIntent - The Stripe.PaymentIntent from the webhook payload
  */
-export async function handleCheckoutCompleted(
-  session: Stripe.Checkout.Session
+export async function handlePaymentIntentSucceeded(
+  paymentIntent: Stripe.PaymentIntent
 ): Promise<void> {
-  const userId = session.client_reference_id;
-  const amountCents = session.amount_total;
-  const stripeSessionId = session.id;
+  const userId = paymentIntent.metadata["userId"];
+  const amountCents = paymentIntent.amount;
+  const paymentIntentId = paymentIntent.id;
 
   if (!userId) {
     throw new Error(
-      `Stripe session ${stripeSessionId} is missing client_reference_id`
-    );
-  }
-  if (amountCents == null) {
-    throw new Error(
-      `Stripe session ${stripeSessionId} is missing amount_total`
+      `PaymentIntent ${paymentIntentId} is missing metadata.userId`
     );
   }
 
   // -------------------------------------------------------------------------
-  // Idempotency check — skip if this session was already processed
+  // Idempotency check — skip if this PaymentIntent was already processed.
+  // We store paymentIntentId in the stripeSessionId column for consistency.
   // -------------------------------------------------------------------------
   const existing = await prisma.transaction.findFirst({
-    where: { stripeSessionId },
+    where: { stripeSessionId: paymentIntentId },
     select: { id: true },
   });
 
@@ -144,8 +123,6 @@ export async function handleCheckoutCompleted(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (prisma.$transaction as any)(async (tx: any) => {
-    // Retrieve the hash of the most recent transaction to build the chain.
-    // getLastHash must be called inside the transaction for consistency.
     const prevHash = await getLastHash(tx);
     const createdAt = new Date();
 
@@ -166,7 +143,7 @@ export async function handleCheckoutCompleted(
         amount: amountDollars,
         prevHash,
         txHash,
-        stripeSessionId,
+        stripeSessionId: paymentIntentId,
         createdAt,
       },
     });
