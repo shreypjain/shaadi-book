@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { MarketCard } from "@/components/MarketCard";
-import { trpc } from "@/lib/trpc";
+import { api } from "@/lib/api";
 import { ensureConnected, subscribeToFeed, getSocket } from "@/lib/socket";
 import type { WsPriceUpdatePayload, WsMarketEventPayload } from "@/lib/api-types";
 
@@ -21,11 +21,25 @@ export default function MarketFeedPage() {
   const [pullY, setPullY] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const touchStartY = useRef(0);
+  const [markets, setMarkets] = useState<any[] | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
-  const { data: markets, isLoading, error, refetch } = trpc.market.list.useQuery(
-    {},
-    { refetchOnWindowFocus: false }
-  );
+  const refetch = useCallback(async () => {
+    try {
+      const data = await api.market.list({});
+      setMarkets(data as any[]);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error("Failed to load markets"));
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refetch();
+  }, [refetch]);
 
   // -------------------------------------------------------------------------
   // WebSocket: global feed + per-market price subscriptions
