@@ -42,6 +42,7 @@ enum TransactionType {
   CHARITY_FEE
   WITHDRAWAL
   REFUND
+  STRIPE_FEE
 }
 
 enum AdminAction {

@@ -1,7 +1,13 @@
 /**
- * Stripe service tests — Task 3.1
+ * Stripe service tests — Task 3.1 + stripe-fee-from-charity
  *
  * Coverage:
+ *   estimateStripeFee:
+ *     - $25 deposit → correct fee (2.9% + $0.30)
+ *     - $10 deposit → correct fee
+ *     - $50 deposit → correct fee
+ *     - returns integer cents
+ *
  *   createDepositSession:
  *     - creates session with correct Stripe parameters
  *     - returns the checkout URL
@@ -12,10 +18,14 @@
  *     - propagates Stripe API errors
  *
  *   handleCheckoutCompleted:
- *     - inserts DEPOSIT transaction for a new session
- *     - credits the correct user with the correct amount (cents → dollars)
- *     - uses correct double-entry accounts (debit: stripe, credit: user:{id})
- *     - stores stripeSessionId on the row for future idempotency lookups
+ *     - inserts DEPOSIT + STRIPE_FEE transactions for a new session
+ *     - DEPOSIT credits the correct user with the full gross amount
+ *     - DEPOSIT uses correct double-entry accounts (debit: stripe, credit: user:{id})
+ *     - STRIPE_FEE uses correct double-entry (debit: charity_pool, credit: stripe_processor)
+ *     - STRIPE_FEE amount = estimateStripeFee(amountCents) / 100
+ *     - STRIPE_FEE chains from DEPOSIT txHash (prevHash = DEPOSIT txHash)
+ *     - Both rows share the same stripeSessionId
+ *     - stores stripeSessionId on both rows for idempotency
  *     - builds the hash chain (prevHash/txHash)
  *     - is idempotent: second call with same session does NOT insert again
  *     - does not throw on duplicate delivery (returns cleanly)
@@ -88,7 +98,7 @@ vi.mock("../hashChain.js", () => ({
 // Imports (after mocks are in place)
 // ---------------------------------------------------------------------------
 
-import { createDepositSession, handleCheckoutCompleted } from "../stripe.js";
+import { createDepositSession, handleCheckoutCompleted, estimateStripeFee } from "../stripe.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -133,6 +143,32 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env["STRIPE_SECRET_KEY"];
   delete process.env["NEXT_PUBLIC_APP_URL"];
+});
+
+// ---------------------------------------------------------------------------
+// estimateStripeFee
+// ---------------------------------------------------------------------------
+
+describe("estimateStripeFee", () => {
+  it("$25 deposit (2500 cents) → 103 cents (2.9% × 2500 + 30 = 102.5 → rounded to 103)", () => {
+    // 2500 * 0.029 = 72.5, + 30 = 102.5 → round → 103
+    expect(estimateStripeFee(2500)).toBe(103);
+  });
+
+  it("$10 deposit (1000 cents) → 59 cents (2.9% × 1000 + 30 = 59)", () => {
+    // 1000 * 0.029 = 29, + 30 = 59
+    expect(estimateStripeFee(1000)).toBe(59);
+  });
+
+  it("$50 deposit (5000 cents) → 175 cents (2.9% × 5000 + 30 = 175)", () => {
+    // 5000 * 0.029 = 145, + 30 = 175
+    expect(estimateStripeFee(5000)).toBe(175);
+  });
+
+  it("returns an integer (no fractional cents)", () => {
+    const fee = estimateStripeFee(1234);
+    expect(Number.isInteger(fee)).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -240,7 +276,7 @@ describe("createDepositSession", () => {
 // ---------------------------------------------------------------------------
 
 describe("handleCheckoutCompleted", () => {
-  it("inserts a DEPOSIT transaction for a new (unprocessed) session", async () => {
+  it("inserts DEPOSIT + STRIPE_FEE transactions for a new (unprocessed) session", async () => {
     mockTransactionFindFirst.mockResolvedValueOnce(null);
 
     await handleCheckoutCompleted(makeSession());
@@ -254,17 +290,25 @@ describe("handleCheckoutCompleted", () => {
     // The Prisma transaction was started
     expect(mockPrismaTransaction).toHaveBeenCalledOnce();
 
-    // A transaction row was created
-    expect(mockTxCreate).toHaveBeenCalledOnce();
-    const { data } = mockTxCreate.mock.calls[0]?.[0] as {
+    // Two rows inserted: DEPOSIT + STRIPE_FEE
+    expect(mockTxCreate).toHaveBeenCalledTimes(2);
+
+    const { data: depositData } = mockTxCreate.mock.calls[0]?.[0] as {
       data: Record<string, unknown>;
     };
-    expect(data["type"]).toBe("DEPOSIT");
-    expect(data["userId"]).toBe("user-456");
-    expect(data["stripeSessionId"]).toBe("cs_test_abc123");
+    expect(depositData["type"]).toBe("DEPOSIT");
+    expect(depositData["userId"]).toBe("user-456");
+    expect(depositData["stripeSessionId"]).toBe("cs_test_abc123");
+
+    const { data: feeData } = mockTxCreate.mock.calls[1]?.[0] as {
+      data: Record<string, unknown>;
+    };
+    expect(feeData["type"]).toBe("STRIPE_FEE");
+    expect(feeData["userId"]).toBe("user-456");
+    expect(feeData["stripeSessionId"]).toBe("cs_test_abc123");
   });
 
-  it("uses correct double-entry accounts (debit: stripe, credit: user:{id})", async () => {
+  it("DEPOSIT uses correct double-entry accounts (debit: stripe, credit: user:{id})", async () => {
     mockTransactionFindFirst.mockResolvedValueOnce(null);
 
     await handleCheckoutCompleted(makeSession());
@@ -276,7 +320,50 @@ describe("handleCheckoutCompleted", () => {
     expect(data["creditAccount"]).toBe("user:user-456");
   });
 
-  it("converts amountCents to dollars (2500 cents → 25)", async () => {
+  it("STRIPE_FEE uses correct double-entry (debit: charity_pool, credit: stripe_processor)", async () => {
+    mockTransactionFindFirst.mockResolvedValueOnce(null);
+
+    await handleCheckoutCompleted(makeSession());
+
+    const { data } = mockTxCreate.mock.calls[1]?.[0] as {
+      data: Record<string, unknown>;
+    };
+    expect(data["debitAccount"]).toBe("charity_pool");
+    expect(data["creditAccount"]).toBe("stripe_processor");
+  });
+
+  it("STRIPE_FEE amount = estimateStripeFee(2500) / 100 = 1.03", async () => {
+    mockTransactionFindFirst.mockResolvedValueOnce(null);
+
+    await handleCheckoutCompleted(makeSession({ amount_total: 2500 }));
+
+    const { data } = mockTxCreate.mock.calls[1]?.[0] as {
+      data: Record<string, unknown>;
+    };
+    // estimateStripeFee(2500) = round(2500*0.029+30) = 103 cents = $1.03
+    expect(Number(data["amount"])).toBeCloseTo(1.03, 5);
+  });
+
+  it("STRIPE_FEE prevHash chains from the DEPOSIT txHash", async () => {
+    mockTransactionFindFirst.mockResolvedValueOnce(null);
+    const depositHash = "d".repeat(64);
+    const feeHash = "f".repeat(64);
+    // computeHash called twice: first for DEPOSIT, then for STRIPE_FEE
+    mockComputeHash
+      .mockReturnValueOnce(depositHash)
+      .mockReturnValueOnce(feeHash);
+
+    await handleCheckoutCompleted(makeSession());
+
+    const { data: feeData } = mockTxCreate.mock.calls[1]?.[0] as {
+      data: Record<string, unknown>;
+    };
+    // STRIPE_FEE must use DEPOSIT's txHash as its prevHash
+    expect(feeData["prevHash"]).toBe(depositHash);
+    expect(feeData["txHash"]).toBe(feeHash);
+  });
+
+  it("converts amountCents to dollars for DEPOSIT (2500 cents → 25)", async () => {
     mockTransactionFindFirst.mockResolvedValueOnce(null);
 
     await handleCheckoutCompleted(makeSession({ amount_total: 2500 }));
@@ -288,28 +375,37 @@ describe("handleCheckoutCompleted", () => {
     expect(Number(data["amount"])).toBe(25);
   });
 
-  it("stores stripeSessionId on the row for future idempotency checks", async () => {
+  it("stores stripeSessionId on both DEPOSIT and STRIPE_FEE rows", async () => {
     mockTransactionFindFirst.mockResolvedValueOnce(null);
 
     await handleCheckoutCompleted(makeSession({ id: "cs_unique_999" }));
 
-    const { data } = mockTxCreate.mock.calls[0]?.[0] as {
+    const { data: depositData } = mockTxCreate.mock.calls[0]?.[0] as {
       data: Record<string, unknown>;
     };
-    expect(data["stripeSessionId"]).toBe("cs_unique_999");
+    const { data: feeData } = mockTxCreate.mock.calls[1]?.[0] as {
+      data: Record<string, unknown>;
+    };
+    expect(depositData["stripeSessionId"]).toBe("cs_unique_999");
+    expect(feeData["stripeSessionId"]).toBe("cs_unique_999");
   });
 
-  it("builds the hash chain: calls getLastHash then computeHash with correct args", async () => {
+  it("builds the hash chain: computeHash called twice (DEPOSIT then STRIPE_FEE)", async () => {
     mockTransactionFindFirst.mockResolvedValueOnce(null);
     const fakePrevHash = "f".repeat(64);
-    const fakeTxHash = "e".repeat(64);
+    const fakeDepositHash = "e".repeat(64);
+    const fakeFeeHash = "a".repeat(64);
     mockGetLastHash.mockResolvedValueOnce(fakePrevHash);
-    mockComputeHash.mockReturnValueOnce(fakeTxHash);
+    mockComputeHash
+      .mockReturnValueOnce(fakeDepositHash)
+      .mockReturnValueOnce(fakeFeeHash);
 
     await handleCheckoutCompleted(makeSession());
 
-    // computeHash called with: prevHash, type='DEPOSIT', amount string, userId
-    expect(mockComputeHash).toHaveBeenCalledOnce();
+    // computeHash called twice
+    expect(mockComputeHash).toHaveBeenCalledTimes(2);
+
+    // First call: DEPOSIT
     const [prevArg, typeArg, , userIdArg] = mockComputeHash.mock.calls[0] as [
       string,
       string,
@@ -320,12 +416,20 @@ describe("handleCheckoutCompleted", () => {
     expect(typeArg).toBe("DEPOSIT");
     expect(userIdArg).toBe("user-456");
 
-    // Both hashes land on the created row
-    const { data } = mockTxCreate.mock.calls[0]?.[0] as {
+    // Second call: STRIPE_FEE, prevHash = deposit txHash
+    const [feePrevArg, feeTypeArg] = mockComputeHash.mock.calls[1] as [
+      string,
+      string
+    ];
+    expect(feePrevArg).toBe(fakeDepositHash);
+    expect(feeTypeArg).toBe("STRIPE_FEE");
+
+    // DEPOSIT row hashes
+    const { data: depositData } = mockTxCreate.mock.calls[0]?.[0] as {
       data: Record<string, unknown>;
     };
-    expect(data["prevHash"]).toBe(fakePrevHash);
-    expect(data["txHash"]).toBe(fakeTxHash);
+    expect(depositData["prevHash"]).toBe(fakePrevHash);
+    expect(depositData["txHash"]).toBe(fakeDepositHash);
   });
 
   // -------------------------------------------------------------------------
@@ -333,11 +437,11 @@ describe("handleCheckoutCompleted", () => {
   // -------------------------------------------------------------------------
 
   it("is idempotent — second call with same session does NOT insert another row", async () => {
-    // First call: session not yet in DB
+    // First call: session not yet in DB → inserts DEPOSIT + STRIPE_FEE
     mockTransactionFindFirst.mockResolvedValueOnce(null);
     await handleCheckoutCompleted(makeSession());
     expect(mockPrismaTransaction).toHaveBeenCalledTimes(1);
-    expect(mockTxCreate).toHaveBeenCalledTimes(1);
+    expect(mockTxCreate).toHaveBeenCalledTimes(2); // DEPOSIT + STRIPE_FEE
 
     // Second call with the same session: already processed
     mockTransactionFindFirst.mockResolvedValueOnce({ id: "existing-tx-id" });
@@ -345,8 +449,8 @@ describe("handleCheckoutCompleted", () => {
 
     // $transaction must NOT have been called a second time
     expect(mockPrismaTransaction).toHaveBeenCalledTimes(1);
-    // tx.transaction.create must still only have been called once in total
-    expect(mockTxCreate).toHaveBeenCalledTimes(1);
+    // tx.transaction.create still only 2 total (no new rows)
+    expect(mockTxCreate).toHaveBeenCalledTimes(2);
   });
 
   it("does not throw on duplicate delivery — returns cleanly", async () => {

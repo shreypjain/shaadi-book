@@ -3,15 +3,21 @@
 import { formatDollars } from "@/lib/api";
 
 interface CharityCounterProps {
+  /**
+   * Net charity amount in cents after Stripe processing fees have been
+   * deducted from the gross 20% pool.
+   * net = gross_charity_fees − stripe_processing_fees
+   */
   totalCents: number;
   loading?: boolean;
 }
 
 /**
  * Charity Impact counter displayed at the top of the leaderboard.
- * Shows total fees collected across all resolved markets.
+ * Shows the net donation amount: 20% of all winnings minus Stripe fees.
  *
  * PRD §10 — "A separate 'Charity Impact' counter shows total fees collected"
+ * PRD §7.5 — Charity fee = 20% of gross payout; Stripe fees absorbed from pool
  */
 export function CharityCounter({ totalCents, loading = false }: CharityCounterProps) {
   return (
@@ -30,7 +36,7 @@ export function CharityCounter({ totalCents, loading = false }: CharityCounterPr
             </p>
           )}
           <p className="text-xs text-rose-400 mt-0.5">
-            donated from 20% of all winnings
+            donated from 20% of winnings (net of processing fees)
           </p>
         </div>
       </div>
