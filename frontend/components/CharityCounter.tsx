@@ -42,7 +42,7 @@ export function CharityCounter({ totalCents, loading = false }: CharityCounterPr
             </p>
           )}
           <p className="text-xs text-[#8a8a9a] mt-0.5">
-            donated from 20% of winnings (net of processing fees)
+            donated from 20% of profits at cash-out (net of processing fees)
           </p>
         </div>
 
