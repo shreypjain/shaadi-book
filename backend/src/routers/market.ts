@@ -167,9 +167,10 @@ export const marketRouter = router({
               });
           }
         }
+        console.error("[market.buy] Unexpected error:", err);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "An unexpected error occurred during purchase.",
+          message: `Purchase failed: ${err instanceof Error ? err.message : String(err)}`,
           cause: err,
         });
       }
