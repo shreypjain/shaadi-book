@@ -6,14 +6,23 @@
  *   2. Enter dollar amount (1–200, capped by remaining capacity)
  *   3. Preview shows shares + avg price + slippage
  *   4. Confirm button → loading → success animation
+ *
+ * Insufficient balance flow:
+ *   - When balanceCents < dollarAmountCents an amber warning is shown
+ *   - Preset deposit buttons ($10 / $25 / $50) trigger an inline Stripe payment
+ *   - On deposit success the parent's onDepositSuccess() refreshes the balance
+ *   - The Confirm button is disabled until balance is sufficient
  */
 
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
+import { loadStripe, type Stripe } from "@stripe/stripe-js";
+import { Elements } from "@stripe/react-stripe-js";
 import { cn, formatDollars, formatShares, outcomeColor } from "@/lib/utils";
 import { computePreview } from "@/lib/lmsr";
 import { api } from "@/lib/api";
+import { StripePaymentForm } from "@/components/StripePaymentForm";
 import type { OutcomeWithPrice } from "@/lib/api-types";
 
 interface BuyFormProps {
@@ -21,28 +30,68 @@ interface BuyFormProps {
   outcomes: OutcomeWithPrice[];
   currentB: number;
   remainingCapCents: number;
+  /** User's current balance in cents. When provided, enables the insufficient-balance flow. */
+  balanceCents?: number;
   onSuccess?: (result: { outcomeLabel: string; shares: number; costCents: number }) => void;
+  /** Called after a successful in-form deposit so the parent can refetch balance. */
+  onDepositSuccess?: () => void;
 }
 
 type FormStep = "select" | "amount" | "confirm" | "success";
+type DepositStep = "idle" | "payment" | "success";
 
 const PRESET_AMOUNTS = [5, 10, 25, 50] as const;
 
 // Hex values aligned to OUTCOME_COLORS bar variants for inline border styling
 const OUTCOME_BAR_HEX = ["#3b6fa3", "#fbbf24", "#2dd4bf", "#34d399", "#a78bfa"];
 
+const DEPOSIT_PRESETS = [
+  { label: "$10", cents: 1000 },
+  { label: "$25", cents: 2500 },
+  { label: "$50", cents: 5000 },
+] as const;
+
+const STRIPE_APPEARANCE = {
+  theme: "stripe" as const,
+  variables: {
+    colorPrimary: "#1e3a5f",
+    borderRadius: "12px",
+    fontFamily: "inherit",
+  },
+};
+
 export function BuyForm({
   marketId,
   outcomes,
   currentB,
   remainingCapCents,
+  balanceCents,
   onSuccess,
+  onDepositSuccess,
 }: BuyFormProps) {
+  // -------------------------------------------------------------------------
+  // Bet form state
+  // -------------------------------------------------------------------------
   const [step, setStep] = useState<FormStep>("select");
   const [selectedOutcomeId, setSelectedOutcomeId] = useState<string | null>(null);
   const [dollarAmountStr, setDollarAmountStr] = useState("10");
   const [error, setError] = useState<string | null>(null);
+  const [isBuying, setIsBuying] = useState(false);
 
+  // -------------------------------------------------------------------------
+  // Deposit mini-flow state
+  // -------------------------------------------------------------------------
+  const [depositStep, setDepositStep] = useState<DepositStep>("idle");
+  const [depositAmountCents, setDepositAmountCents] = useState<number | null>(null);
+  const [depositClientSecret, setDepositClientSecret] = useState<string | null>(null);
+  const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);
+  const [depositLoading, setDepositLoading] = useState(false);
+  const [depositLoadingCents, setDepositLoadingCents] = useState<number | null>(null);
+  const [depositError, setDepositError] = useState<string | null>(null);
+
+  // -------------------------------------------------------------------------
+  // Derived values
+  // -------------------------------------------------------------------------
   const maxDollars = Math.min(200, remainingCapCents / 100);
   const dollarAmount = parseFloat(dollarAmountStr) || 0;
   const dollarAmountCents = Math.round(dollarAmount * 100);
@@ -54,6 +103,20 @@ export function BuyForm({
       return `Max remaining: ${formatDollars(remainingCapCents / 100)}`;
     return null;
   }, [dollarAmount, dollarAmountCents, remainingCapCents]);
+
+  // Balance check — only active when balanceCents is provided
+  const isInsufficientBalance =
+    balanceCents !== undefined &&
+    dollarAmount > 0 &&
+    !amountError &&
+    dollarAmountCents > balanceCents;
+
+  const shortfallCents = isInsufficientBalance
+    ? dollarAmountCents - (balanceCents ?? 0)
+    : 0;
+
+  // Deposit presets filtered to those that cover at least the shortfall
+  const suggestedDeposits = DEPOSIT_PRESETS.filter((p) => p.cents >= shortfallCents);
 
   const preview = useMemo(() => {
     if (!selectedOutcomeId || dollarAmount <= 0 || amountError) return null;
@@ -70,10 +133,11 @@ export function BuyForm({
   const selectedOutcome = outcomes.find((o) => o.id === selectedOutcomeId);
   const selectedIndex = outcomes.findIndex((o) => o.id === selectedOutcomeId);
 
-  const [isBuying, setIsBuying] = useState(false);
-
+  // -------------------------------------------------------------------------
+  // Bet handlers
+  // -------------------------------------------------------------------------
   const handleConfirm = useCallback(() => {
-    if (!selectedOutcomeId || amountError || isBuying) return;
+    if (!selectedOutcomeId || amountError || isBuying || isInsufficientBalance) return;
     setError(null);
     setStep("confirm");
     setIsBuying(true);
@@ -96,11 +160,70 @@ export function BuyForm({
     }).finally(() => {
       setIsBuying(false);
     });
-  }, [selectedOutcomeId, amountError, isBuying, dollarAmountCents, marketId, selectedOutcome, onSuccess]);
+  }, [selectedOutcomeId, amountError, isBuying, isInsufficientBalance, dollarAmountCents, marketId, selectedOutcome, onSuccess]);
 
   // -------------------------------------------------------------------------
-  // Render: step = "select"
+  // Deposit handlers
   // -------------------------------------------------------------------------
+  const handleAddFunds = useCallback(async (amountCents: number) => {
+    setDepositError(null);
+    setDepositLoading(true);
+    setDepositLoadingCents(amountCents);
+    try {
+      // Lazy-load Stripe publishable key once
+      let promise = stripePromise;
+      if (!promise) {
+        const { publishableKey } = await api.wallet.getPublishableKey();
+        promise = loadStripe(publishableKey);
+        setStripePromise(promise);
+      }
+      const { clientSecret } = await api.wallet.createDeposit({ amountCents });
+      setDepositAmountCents(amountCents);
+      setDepositClientSecret(clientSecret);
+      setDepositStep("payment");
+    } catch (err) {
+      setDepositError(err instanceof Error ? err.message : "Failed to set up payment. Please try again.");
+    } finally {
+      setDepositLoading(false);
+      setDepositLoadingCents(null);
+    }
+  }, [stripePromise]);
+
+  const handleDepositPaymentSuccess = useCallback(() => {
+    setDepositStep("success");
+    setTimeout(() => {
+      setDepositStep("idle");
+      setDepositClientSecret(null);
+      setDepositAmountCents(null);
+      onDepositSuccess?.();
+    }, 2500);
+  }, [onDepositSuccess]);
+
+  const closeDeposit = useCallback(() => {
+    if (depositStep === "payment") return; // Don't close mid-payment
+    setDepositStep("idle");
+    setDepositClientSecret(null);
+    setDepositAmountCents(null);
+    setDepositError(null);
+  }, [depositStep]);
+
+  const closeDepositOverlay = useCallback(() => {
+    setDepositStep("idle");
+    setDepositClientSecret(null);
+    setDepositAmountCents(null);
+    setDepositError(null);
+  }, []);
+
+  // -------------------------------------------------------------------------
+  // Deposit return URL — bring user back to this market page
+  // -------------------------------------------------------------------------
+  const depositReturnUrl = typeof window !== "undefined"
+    ? `${window.location.href.split("?")[0]}?deposit=success`
+    : "/wallet?deposit=success";
+
+  // =========================================================================
+  // Render: step = "select"
+  // =========================================================================
 
   if (step === "select") {
     return (
@@ -140,73 +263,74 @@ export function BuyForm({
     );
   }
 
-  // -------------------------------------------------------------------------
+  // =========================================================================
   // Render: step = "amount"
-  // -------------------------------------------------------------------------
+  // =========================================================================
 
   if (step === "amount") {
     const colors = selectedIndex >= 0 ? outcomeColor(selectedIndex) : outcomeColor(0);
     const barHex = OUTCOME_BAR_HEX[selectedIndex >= 0 ? selectedIndex % OUTCOME_BAR_HEX.length : 0]!;
 
     return (
-      <div className="flex flex-col gap-4 animate-slide-up">
+      <>
+        <div className="flex flex-col gap-4 animate-slide-up">
 
-        {/* 1. Outcome header card */}
-        <div
-          className="rounded-xl border border-[#e8e4df] bg-white px-4 py-3 flex items-center gap-3"
-          style={{ borderLeft: `4px solid ${barHex}` }}
-        >
-          <button
-            onClick={() => setStep("select")}
-            className="p-1 rounded-lg hover:bg-[#e8e4df]/60 transition-colors flex-shrink-0"
-            aria-label="Back"
+          {/* 1. Outcome header card */}
+          <div
+            className="rounded-xl border border-[#e8e4df] bg-white px-4 py-3 flex items-center gap-3"
+            style={{ borderLeft: `4px solid ${barHex}` }}
           >
-            <svg className="w-4 h-4 text-[#4a4a5a]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <span className={cn("font-bold text-base flex-1 leading-tight", colors.text)}>
-            {selectedOutcome?.label}
-          </span>
-          <span className={cn("text-lg font-bold tabular-nums flex-shrink-0", colors.text)}>
-            {selectedOutcome ? Math.round(selectedOutcome.priceCents) : 0}¢
-          </span>
-        </div>
-
-        {/* 2. Amount section */}
-        <div className="rounded-xl border border-[#e8e4df] bg-[#faf8f5] px-4 py-4 space-y-3">
-          <p className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider">
-            Bet Amount <span className="normal-case font-normal">(max {formatDollars(maxDollars)})</span>
-          </p>
-
-          {/* Dollar input */}
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a8a9a] font-semibold text-lg">
-              $
+            <button
+              onClick={() => setStep("select")}
+              className="p-1 rounded-lg hover:bg-[#e8e4df]/60 transition-colors flex-shrink-0"
+              aria-label="Back"
+            >
+              <svg className="w-4 h-4 text-[#4a4a5a]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <span className={cn("font-bold text-base flex-1 leading-tight", colors.text)}>
+              {selectedOutcome?.label}
             </span>
-            <input
-              type="number"
-              min={1}
-              max={maxDollars}
-              step={1}
-              value={dollarAmountStr}
-              onChange={(e) => setDollarAmountStr(e.target.value)}
-              className={cn(
-                "w-full pl-8 pr-4 py-3 rounded-xl border-2 bg-white text-xl font-bold",
-                "focus:outline-none focus:ring-0",
-                amountError
-                  ? "border-[#dc2626] text-[#dc2626]"
-                  : "border-[#e8e4df] focus:border-[#1e3a5f] text-[#1a1a2e]"
-              )}
-              inputMode="decimal"
-            />
+            <span className={cn("text-lg font-bold tabular-nums flex-shrink-0", colors.text)}>
+              {selectedOutcome ? Math.round(selectedOutcome.priceCents) : 0}¢
+            </span>
           </div>
-          {amountError && (
-            <p className="text-xs text-[#dc2626] -mt-1">{amountError}</p>
-          )}
 
-          {/* Preset pills */}
-          <div className="flex gap-2">
+          {/* 2. Amount section */}
+          <div className="rounded-xl border border-[#e8e4df] bg-[#faf8f5] px-4 py-4 space-y-3">
+            <p className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider">
+              Bet Amount <span className="normal-case font-normal">(max {formatDollars(maxDollars)})</span>
+            </p>
+
+            {/* Dollar input */}
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a8a9a] font-semibold text-lg">
+                $
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={maxDollars}
+                step={1}
+                value={dollarAmountStr}
+                onChange={(e) => setDollarAmountStr(e.target.value)}
+                className={cn(
+                  "w-full pl-8 pr-4 py-3 rounded-xl border-2 bg-white text-xl font-bold",
+                  "focus:outline-none focus:ring-0",
+                  amountError
+                    ? "border-[#dc2626] text-[#dc2626]"
+                    : "border-[#e8e4df] focus:border-[#1e3a5f] text-[#1a1a2e]"
+                )}
+                inputMode="decimal"
+              />
+            </div>
+            {amountError && (
+              <p className="text-xs text-[#dc2626] -mt-1">{amountError}</p>
+            )}
+
+            {/* Preset pills */}
+            <div className="flex gap-2">
             {PRESET_AMOUNTS.filter((a) => a <= maxDollars).map((amt) => (
               <button
                 key={amt}
@@ -221,6 +345,7 @@ export function BuyForm({
                 ${amt}
               </button>
             ))}
+          </div>
           </div>
         </div>
 
@@ -294,11 +419,11 @@ export function BuyForm({
         {/* 4. Confirm button */}
         <button
           onClick={handleConfirm}
-          disabled={!!amountError || dollarAmount <= 0}
+          disabled={!!amountError || dollarAmount <= 0 || isInsufficientBalance}
           className={cn(
             "w-full py-4 rounded-xl font-semibold text-sm transition-all duration-200",
             "active:scale-[0.98]",
-            amountError || dollarAmount <= 0
+            amountError || dollarAmount <= 0 || isInsufficientBalance
               ? "bg-[#f0ece7] text-[#8a8a9a] cursor-not-allowed"
               : [
                   "bg-[#1e3a5f] text-white",
@@ -307,15 +432,125 @@ export function BuyForm({
                 ]
           )}
         >
-          Confirm {formatDollars(dollarAmount)} on {selectedOutcome?.label}
+          {isInsufficientBalance
+            ? "Add funds to continue"
+            : `Confirm ${formatDollars(dollarAmount)} on ${selectedOutcome?.label}`}
         </button>
+
+        {/* Insufficient balance warning + inline deposit */}
+        {isInsufficientBalance && (
+          <div className="rounded-xl bg-amber-50 border border-amber-200 p-3.5 animate-fade-in">
+            <div className="flex items-start gap-2 mb-3">
+              <svg
+                className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+                />
+              </svg>
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Insufficient balance</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  You need{" "}
+                  <span className="font-bold">{formatDollars(shortfallCents / 100)}</span>{" "}
+                  more to place this bet.
+                </p>
+              </div>
+            </div>
+            {depositError && (
+              <p className="text-xs text-[#dc2626] bg-red-50 rounded-lg px-2.5 py-1.5 mb-2.5 border border-red-100">
+                {depositError}
+              </p>
+            )}
+            <p className="text-xs text-amber-700 mb-2 font-medium">Add funds:</p>
+            <div className="flex gap-2">
+              {suggestedDeposits.map((p) => (
+                <button
+                  key={p.cents}
+                  onClick={() => void handleAddFunds(p.cents)}
+                  disabled={depositLoading}
+                  className={cn(
+                    "flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-[0.97]",
+                    "bg-[#c8a45c] hover:bg-[#b8944c] text-white",
+                    depositLoading && "opacity-60 cursor-not-allowed"
+                  )}
+                >
+                  {depositLoading && depositLoadingCents === p.cents ? "…" : `+ ${p.label}`}
+                </button>
+              ))}
+              {suggestedDeposits.length === 0 && (
+                <button
+                  onClick={() => void handleAddFunds(Math.ceil(shortfallCents / 100) * 100)}
+                  disabled={depositLoading}
+                  className={cn(
+                    "flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-[0.97]",
+                    "bg-[#c8a45c] hover:bg-[#b8944c] text-white",
+                    depositLoading && "opacity-60 cursor-not-allowed"
+                  )}
+                >
+                  {depositLoading ? "…" : `+ Add ${formatDollars(Math.ceil(shortfallCents / 100))}`}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Deposit overlay modal */}
+      {depositStep !== "idle" && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={depositStep !== "payment" ? closeDepositOverlay : undefined}
+          />
+          <div className="relative w-full sm:max-w-sm bg-white rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl">
+            {depositStep === "payment" && depositClientSecret && stripePromise && (
+              <>
+                <h2 className="text-lg font-bold text-[#1a1a2e] mb-1">Add Funds</h2>
+                <p className="text-xs text-[#8a8a9a] mb-5">
+                  {depositAmountCents != null ? `$${(depositAmountCents / 100).toFixed(2)}` : ""}{" "}
+                  · Powered by Stripe
+                </p>
+                <Elements
+                  stripe={stripePromise}
+                  options={{ clientSecret: depositClientSecret, appearance: STRIPE_APPEARANCE }}
+                >
+                  <StripePaymentForm
+                    amountCents={depositAmountCents ?? 0}
+                    onSuccess={handleDepositPaymentSuccess}
+                    onCancel={closeDeposit}
+                    returnUrl={depositReturnUrl}
+                  />
+                </Elements>
+              </>
+            )}
+            {depositStep === "success" && (
+              <div className="text-center py-8">
+                <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-7 h-7 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <h2 className="text-lg font-bold text-[#1a1a2e] mb-2">Payment Successful!</h2>
+                <p className="text-sm text-[#8a8a9a]">Your credits will appear shortly.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
     );
   }
 
-  // -------------------------------------------------------------------------
+  // =========================================================================
   // Render: step = "confirm" (loading)
-  // -------------------------------------------------------------------------
+  // =========================================================================
 
   if (step === "confirm") {
     return (
@@ -326,9 +561,9 @@ export function BuyForm({
     );
   }
 
-  // -------------------------------------------------------------------------
+  // =========================================================================
   // Render: step = "success"
-  // -------------------------------------------------------------------------
+  // =========================================================================
 
   if (step === "success" && preview && selectedOutcome) {
     const colors = selectedIndex >= 0 ? outcomeColor(selectedIndex) : outcomeColor(0);

@@ -16,6 +16,10 @@ type Step = "select-amount" | "payment" | "success";
 
 interface DepositButtonProps {
   onSuccess?: () => void;
+  /** Open the deposit modal immediately on mount (e.g. when redirected with ?deposit=true). */
+  defaultOpen?: boolean;
+  /** Pre-select this amount in cents when the modal opens. */
+  defaultAmountCents?: number;
 }
 
 /**
@@ -29,11 +33,11 @@ interface DepositButtonProps {
  *
  * PRD §7.2 — Deposit flow
  */
-export function DepositButton({ onSuccess }: DepositButtonProps) {
-  const [open, setOpen] = useState(false);
+export function DepositButton({ onSuccess, defaultOpen = false, defaultAmountCents }: DepositButtonProps) {
+  const [open, setOpen] = useState(defaultOpen);
   const [step, setStep] = useState<Step>("select-amount");
 
-  const [selectedCents, setSelectedCents] = useState<number | null>(1000);
+  const [selectedCents, setSelectedCents] = useState<number | null>(defaultAmountCents ?? 1000);
   const [customDollars, setCustomDollars] = useState("");
 
   const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);

@@ -79,10 +79,16 @@ export default function WalletPageWrapper() {
 function WalletPage() {
   const searchParams = useSearchParams();
   const depositStatus = searchParams.get("deposit");
+  const depositAmountParam = searchParams.get("amount");
 
   const [showWithdrawal, setShowWithdrawal] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const storedUser = getStoredUser();
+
+  // Parse optional pre-fill amount from URL (?amount=1500 → $15.00)
+  const autoDepositCents = depositAmountParam
+    ? Math.max(500, parseInt(depositAmountParam, 10))
+    : undefined;
 
   useEffect(() => {
     if (depositStatus === "success") {
@@ -151,7 +157,11 @@ function WalletPage() {
 
           {/* Action buttons */}
           <div className="flex gap-3 pb-6">
-            <DepositButton onSuccess={handleDepositSuccess} />
+            <DepositButton
+              onSuccess={handleDepositSuccess}
+              defaultOpen={depositStatus === "true"}
+              defaultAmountCents={autoDepositCents}
+            />
             <button
               onClick={() => setShowWithdrawal((v) => !v)}
               className="flex-1 rounded-xl border border-[#e8e4df] px-5 py-3
