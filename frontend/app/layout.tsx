@@ -1,9 +1,16 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { BottomNav } from "@/components/BottomNav";
 import { UserMenu } from "@/components/UserMenu";
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-space-grotesk",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Shaadi Book",
@@ -30,7 +37,7 @@ export default function RootLayout({
   children: ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={spaceGrotesk.variable}>
       <body className="min-h-screen bg-cream-100 text-[#1a1a2e] font-sans">
         <Providers>
           {/* Auth-aware user menu — hidden on /login */}

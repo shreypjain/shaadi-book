@@ -9,7 +9,7 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        sans: ["var(--font-space-grotesk)", "var(--font-sans)", "system-ui", "sans-serif"],
       },
       colors: {
         // Primary — Deep royal blue (Lake Pichola at dusk)
