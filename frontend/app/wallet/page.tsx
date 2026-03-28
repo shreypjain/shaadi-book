@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api, formatDollars, type TransactionItem } from "@/lib/api";
@@ -68,7 +68,15 @@ function TxRow({ tx }: { tx: TransactionItem }) {
 // Page
 // ---------------------------------------------------------------------------
 
-export default function WalletPage() {
+export default function WalletPageWrapper() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-gray-400">Loading wallet...</div>}>
+      <WalletPage />
+    </Suspense>
+  );
+}
+
+function WalletPage() {
   const searchParams = useSearchParams();
   const depositStatus = searchParams.get("deposit");
 

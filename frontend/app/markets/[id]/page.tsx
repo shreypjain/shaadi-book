@@ -117,7 +117,7 @@ export default function MarketDetailPage() {
   useEffect(() => {
     if (!market) return;
     const initial: Record<string, number[]> = {};
-    market.outcomes.forEach((o) => {
+    market.outcomes.forEach((o: { id: string; priceCents: number }) => {
       initial[o.id] = [o.priceCents];
     });
     setPriceHistory(initial);
