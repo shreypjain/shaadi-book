@@ -7,7 +7,7 @@ COPY package*.json ./
 COPY prisma ./prisma/
 
 # Install all deps (need devDeps for build), generate Prisma client
-RUN npm ci && npx prisma generate
+RUN npm install && npx prisma generate
 
 # Copy source
 COPY . .
@@ -16,7 +16,7 @@ COPY . .
 RUN npm run build
 
 # Remove devDeps
-RUN npm prune --omit=dev
+RUN npm prune --production
 
 EXPOSE 3001
 
