@@ -81,6 +81,13 @@ export interface CharityTotal {
   totalCents: number;
 }
 
+export interface CharityInfo {
+  profitCents: number;
+  charityOwedCents: number;
+  charityPaidCents: number;
+  charityRemainingCents: number;
+}
+
 // ---------------------------------------------------------------------------
 // tRPC proxy client (any-typed — we wrap in typed functions below)
 // ---------------------------------------------------------------------------
@@ -168,6 +175,10 @@ export const api = {
     withdrawals: (): Promise<WithdrawalItem[]> =>
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       (_client as any).wallet.withdrawals.query() as Promise<WithdrawalItem[]>,
+
+    charityInfo: (): Promise<CharityInfo> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).wallet.charityInfo.query() as Promise<CharityInfo>,
   },
 
   market: {

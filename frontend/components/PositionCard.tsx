@@ -155,8 +155,7 @@ export function PositionCard({ position }: PositionCardProps) {
               Potential payout if wins{" "}
               <span className="font-semibold text-[#1a1a2e]">
                 {formatDollars(position.potentialPayoutCents)}
-              </span>{" "}
-              <span className="text-[#c8c8d0]">(after 20% charity)</span>
+              </span>
             </p>
           </div>
         )}

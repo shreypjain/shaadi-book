@@ -361,7 +361,7 @@ export default function MarketDetailPage() {
               <span className="font-bold">
                 {market.outcomes.find((o) => o.id === winningOutcomeId)?.label ?? "Unknown"}
               </span>
-              . Winning shares pay <span className="font-bold">$0.80</span> each (20% charity fee deducted).
+              . Winning shares pay <span className="font-bold">$1.00</span> each.
             </p>
           </div>
         )}

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { api, formatDollars } from "@/lib/api";
+import { useState, useEffect } from "react";
+import { api, formatDollars, type CharityInfo } from "@/lib/api";
 
 interface WithdrawalFormProps {
   balanceCents: number;
@@ -13,6 +13,8 @@ interface WithdrawalFormProps {
  * Withdrawal request form.
  * Accepts amount + Venmo handle OR Zelle email/phone.
  * Submits a pending withdrawal request (admin processes manually post-event).
+ *
+ * Shows charity fee breakdown when the wallet.charityInfo endpoint is available.
  *
  * PRD §7.3 — Withdrawal flow
  */
@@ -27,11 +29,29 @@ export function WithdrawalForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [charityInfo, setCharityInfo] = useState<CharityInfo | null>(null);
+
+  // Fetch charity info conditionally — endpoint may not exist yet, so we
+  // swallow errors and only show the section if data is available.
+  useEffect(() => {
+    api.wallet
+      .charityInfo()
+      .then(setCharityInfo)
+      .catch(() => {
+        // endpoint not yet deployed — gracefully hide the section
+      });
+  }, []);
+
+  // When charityRemainingCents is known, cap withdrawals at balance minus
+  // what is owed to charity.
+  const effectiveMaxCents = charityInfo
+    ? Math.max(0, balanceCents - charityInfo.charityRemainingCents)
+    : balanceCents;
 
   const amountCents = Math.round(parseFloat(amountDollars || "0") * 100);
   const isValid =
     amountCents >= 100 &&
-    amountCents <= balanceCents &&
+    amountCents <= effectiveMaxCents &&
     (venmoHandle.trim().length > 0 || zelleContact.trim().length > 0);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -69,6 +89,35 @@ export function WithdrawalForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Charity fee breakdown — only shown when endpoint is available */}
+      {charityInfo && (
+        <div className="rounded-xl bg-[#f5efd9] border border-[#e8dbb8] px-4 py-3 space-y-1.5">
+          <p className="text-xs font-bold text-[#8a6d30] uppercase tracking-wide mb-2">
+            Charity Breakdown
+          </p>
+          <div className="flex justify-between text-sm">
+            <span className="text-[#8a6d30]">Your profit</span>
+            <span className="font-semibold text-[#8a6d30]">
+              {formatDollars(charityInfo.profitCents)}
+            </span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-[#8a6d30]">20% charity fee</span>
+            <span className="font-semibold text-[#8a6d30]">
+              − {formatDollars(charityInfo.charityRemainingCents)}
+            </span>
+          </div>
+          <div className="border-t border-[#e8dbb8] pt-1.5 flex justify-between text-sm">
+            <span className="font-semibold text-[#8a6d30]">
+              Available to withdraw
+            </span>
+            <span className="font-bold text-[#8a6d30]">
+              {formatDollars(effectiveMaxCents)}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Amount */}
       <div>
         <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
@@ -81,7 +130,7 @@ export function WithdrawalForm({
           <input
             type="number"
             min="1"
-            max={(balanceCents / 100).toFixed(2)}
+            max={(effectiveMaxCents / 100).toFixed(2)}
             step="0.01"
             placeholder="0.00"
             value={amountDollars}
@@ -92,11 +141,11 @@ export function WithdrawalForm({
           />
         </div>
         <p className="text-xs text-gray-400 mt-1">
-          Available: {formatDollars(balanceCents)}
+          Available: {formatDollars(effectiveMaxCents)}
         </p>
-        {amountCents > balanceCents && amountCents > 0 && (
+        {amountCents > effectiveMaxCents && amountCents > 0 && (
           <p className="text-xs text-red-500 mt-1">
-            Amount exceeds your balance.
+            Amount exceeds your available balance.
           </p>
         )}
       </div>
