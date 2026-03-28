@@ -47,3 +47,4 @@ coverage/
 # Misc
 .vercel
 .railway
+.env.production
