@@ -54,6 +54,15 @@ export function MarketCard({ market, livePrices, lastPurchaseAt }: MarketCardPro
           {market.question}
         </h3>
         <div className="flex flex-col items-end gap-1 shrink-0">
+          {market.status === "ACTIVE" && !showNew && !showLowActivity && (
+            <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs font-medium">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+              </span>
+              Live
+            </span>
+          )}
           {showNew && (
             <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 bg-[#f5efd9] text-[#8a6d30] text-xs font-semibold uppercase tracking-wide">
               <span className="h-1.5 w-1.5 rounded-full bg-[#c8a45c]" />

@@ -67,7 +67,7 @@ export const protectedProcedure = t.procedure.use(
  */
 export const adminProcedure = protectedProcedure.use(
   t.middleware(({ ctx, next }) => {
-    if (ctx.userRole !== "admin") {
+    if (ctx.userRole?.toUpperCase() !== "ADMIN") {
       throw new TRPCError({ code: "FORBIDDEN" });
     }
     return next({ ctx });
