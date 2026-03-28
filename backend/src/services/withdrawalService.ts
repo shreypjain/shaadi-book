@@ -262,22 +262,26 @@ export async function approveWithdrawal(
       // 2b. Charity fee calculation (20% of lifetime profit, deducted at
       //     cash-out time — PRD §7.5)
       // ----------------------------------------------------------------------
-      const userTotalsResult = (await tx.$queryRaw`
-        SELECT
-          COALESCE(SUM(CASE WHEN type = 'DEPOSIT'     THEN amount ELSE 0 END), 0) AS total_deposits,
-          COALESCE(SUM(CASE WHEN type = 'CHARITY_FEE' THEN amount ELSE 0 END), 0) AS past_charity_paid,
-          COALESCE(SUM(CASE WHEN type = 'WITHDRAWAL'  THEN amount ELSE 0 END), 0) AS past_withdrawals
+      const depositsResult = (await tx.$queryRaw`
+        SELECT COALESCE(SUM(amount), 0) AS total
         FROM transactions
-        WHERE user_id = ${userId}::uuid
-      `) as Array<{
-        total_deposits: unknown;
-        past_charity_paid: unknown;
-        past_withdrawals: unknown;
-      }>;
+        WHERE user_id = ${userId}::uuid AND type = 'DEPOSIT'
+      `) as Array<{ total: unknown }>;
+      const totalDeposits = new Decimal(toNumber(depositsResult[0]?.total ?? 0));
 
-      const totalDeposits   = new Decimal(toNumber(userTotalsResult[0]?.total_deposits   ?? 0));
-      const pastCharityPaid = new Decimal(toNumber(userTotalsResult[0]?.past_charity_paid ?? 0));
-      const pastWithdrawals = new Decimal(toNumber(userTotalsResult[0]?.past_withdrawals  ?? 0));
+      const charityPaidResult = (await tx.$queryRaw`
+        SELECT COALESCE(SUM(amount), 0) AS total
+        FROM transactions
+        WHERE user_id = ${userId}::uuid AND type = 'CHARITY_FEE'
+      `) as Array<{ total: unknown }>;
+      const pastCharityPaid = new Decimal(toNumber(charityPaidResult[0]?.total ?? 0));
+
+      const pastWithdrawalsResult = (await tx.$queryRaw`
+        SELECT COALESCE(SUM(amount), 0) AS total
+        FROM transactions
+        WHERE user_id = ${userId}::uuid AND type = 'WITHDRAWAL'
+      `) as Array<{ total: unknown }>;
+      const pastWithdrawals = new Decimal(toNumber(pastWithdrawalsResult[0]?.total ?? 0));
       const balanceDecimal  = new Decimal(balanceDollars);
       const amountDecimal   = new Decimal(amountDollars);
 
