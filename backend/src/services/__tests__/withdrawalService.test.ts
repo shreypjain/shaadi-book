@@ -106,28 +106,36 @@ function makeApproveTx() {
 
 function wireApproveTxHappyPath(
   tx: ReturnType<typeof makeApproveTx>,
-  opts: { balanceDollars?: number } = {}
+  opts: { balanceDollars?: number; totalDeposits?: number } = {}
 ) {
-  const { balanceDollars = 100 } = opts;
+  const { balanceDollars = 100, totalDeposits = 100 } = opts;
   // 1. findUnique — request
   tx.withdrawalRequest.findUnique.mockResolvedValue(MOCK_REQUEST_PENDING);
   // 2. $queryRaw balance check
   tx.$queryRaw.mockResolvedValueOnce([{ balance: balanceDollars }]);
-  // 3. transaction.findFirst (prevHash)
+  // 3. $queryRaw user totals (charity fee calculation — new in §7.5)
+  //    With totalDeposits = balanceDollars and no prior payouts, profit = 0
+  //    → charityRemaining = 0 → no CHARITY_FEE tx inserted.
+  tx.$queryRaw.mockResolvedValueOnce([{
+    total_deposits:    totalDeposits,
+    past_charity_paid: 0,
+    past_withdrawals:  0,
+  }]);
+  // 4. transaction.findFirst (prevHash)
   tx.transaction.findFirst.mockResolvedValue(null);
-  // 4. transaction.create
+  // 5. transaction.create — WITHDRAWAL only (no charity owed)
   tx.transaction.create.mockResolvedValue({ id: TX_ID });
-  // 5. withdrawalRequest.update → APPROVED
+  // 6. withdrawalRequest.update → APPROVED
   tx.withdrawalRequest.update.mockResolvedValue({});
-  // 6. adminAuditLog.create
+  // 7. adminAuditLog.create
   tx.adminAuditLog.create.mockResolvedValue({});
-  // 7. reconciliation — balanced: user_bal=$50 withdrawn, deposits=$100
+  // 8. reconciliation — balanced: user_bal=$50 withdrawn, deposits=$100
   tx.$queryRaw.mockResolvedValueOnce([
     {
-      user_balances: 50,
-      house_amm: 0,
-      charity_pool: 0,
-      total_deposits: 100,
+      user_balances:     50,
+      house_amm:         0,
+      charity_pool:      0,
+      total_deposits:    100,
       total_withdrawals: 50,
     },
   ]);
@@ -288,6 +296,67 @@ describe("approveWithdrawal — happy path", () => {
     const txData = tx.transaction.create.mock.calls[0]?.[0]?.data;
     expect(txData?.prevHash).toBe("a".repeat(64));
   });
+
+  it("inserts CHARITY_FEE before WITHDRAWAL when user has profit", async () => {
+    // User deposited $100, has $150 balance (gained $50 from winning bets).
+    // profit = $150 + $0 + $0 - $100 = $50
+    // charityOwed = 20% * $50 = $10
+    // charityRemaining = $10 - $0 = $10
+    // withdrawal amount = $50 (MOCK_REQUEST_PENDING)
+    // balance must cover $50 + $10 = $60 ✓ ($150 >= $60)
+    tx.withdrawalRequest.findUnique.mockResolvedValue(MOCK_REQUEST_PENDING);
+    tx.$queryRaw.mockResolvedValueOnce([{ balance: 150 }]); // balance check
+    tx.$queryRaw.mockResolvedValueOnce([{                   // user totals
+      total_deposits:    100,
+      past_charity_paid: 0,
+      past_withdrawals:  0,
+    }]);
+    tx.transaction.findFirst.mockResolvedValue(null);
+    // transaction.create is called twice: CHARITY_FEE then WITHDRAWAL
+    tx.transaction.create
+      .mockResolvedValueOnce({ id: "charity-tx-id" })
+      .mockResolvedValueOnce({ id: TX_ID });
+    tx.withdrawalRequest.update.mockResolvedValue({});
+    tx.adminAuditLog.create.mockResolvedValue({});
+    // Reconciliation (balanced):
+    //   pre-approval: user_bal=$150, house_amm=-$50, charity_pool=$0, withdrawals=$0, deposits=$100
+    //   lhs = 150 + (-50) + 0 + 0 = 100 = deposits ✓
+    //   After CHARITY_FEE($10) + WITHDRAWAL($50):
+    //   user_bal = 150-10-50 = 90, charity_pool = 10, withdrawals = 50
+    //   lhs = 90 + (-50) + 10 + 50 = 100 = deposits ✓
+    tx.$queryRaw.mockResolvedValueOnce([{
+      user_balances:     90,
+      house_amm:         -50,
+      charity_pool:      10,
+      total_deposits:    100,
+      total_withdrawals: 50,
+    }]);
+
+    const result = await approveWithdrawal(ADMIN_ID, REQUEST_ID, IP);
+
+    // Two transaction rows should have been created
+    expect(tx.transaction.create).toHaveBeenCalledTimes(2);
+
+    // First call must be the CHARITY_FEE
+    const charityData = tx.transaction.create.mock.calls[0]?.[0]?.data;
+    expect(charityData?.type).toBe("CHARITY_FEE");
+    expect(charityData?.creditAccount).toBe("charity_pool");
+    expect(charityData?.debitAccount).toBe(`user:${USER_ID}`);
+    // 20% of $50 profit = $10.000000
+    expect(charityData?.amount.toFixed(6)).toBe("10.000000");
+
+    // Second call must be the WITHDRAWAL, chaining from the CHARITY_FEE hash
+    const withdrawalData = tx.transaction.create.mock.calls[1]?.[0]?.data;
+    expect(withdrawalData?.type).toBe("WITHDRAWAL");
+    expect(withdrawalData?.prevHash).toBe(charityData?.txHash);
+
+    // Return value should be the WITHDRAWAL transaction id
+    expect(result.transactionId).toBe(TX_ID);
+
+    // Audit log should record charityFeeDollars
+    const auditMeta = tx.adminAuditLog.create.mock.calls[0]?.[0]?.data?.metadata;
+    expect(auditMeta?.charityFeeDollars).toBeCloseTo(10, 5);
+  });
 });
 
 describe("approveWithdrawal — error paths", () => {
@@ -322,7 +391,14 @@ describe("approveWithdrawal — error paths", () => {
 
   it("throws INSUFFICIENT_BALANCE when user balance is too low at approval time", async () => {
     tx.withdrawalRequest.findUnique.mockResolvedValue(MOCK_REQUEST_PENDING); // $50
-    tx.$queryRaw.mockResolvedValueOnce([{ balance: 10 }]); // only $10 available
+    // Balance check: only $10 available
+    tx.$queryRaw.mockResolvedValueOnce([{ balance: 10 }]);
+    // User totals: deposits = $10, no prior charity/withdrawals → profit = 0 → no charity owed
+    tx.$queryRaw.mockResolvedValueOnce([{
+      total_deposits:    10,
+      past_charity_paid: 0,
+      past_withdrawals:  0,
+    }]);
 
     await expect(
       approveWithdrawal(ADMIN_ID, REQUEST_ID, IP)
@@ -332,7 +408,14 @@ describe("approveWithdrawal — error paths", () => {
 
   it("throws RECONCILIATION_FAILED when invariant is broken", async () => {
     tx.withdrawalRequest.findUnique.mockResolvedValue(MOCK_REQUEST_PENDING);
-    tx.$queryRaw.mockResolvedValueOnce([{ balance: 100 }]); // balance ok
+    // Balance check: $100 available
+    tx.$queryRaw.mockResolvedValueOnce([{ balance: 100 }]);
+    // User totals: deposits = $100, no prior charity/withdrawals → profit = 0 → no charity owed
+    tx.$queryRaw.mockResolvedValueOnce([{
+      total_deposits:    100,
+      past_charity_paid: 0,
+      past_withdrawals:  0,
+    }]);
     tx.transaction.findFirst.mockResolvedValue(null);
     tx.transaction.create.mockResolvedValue({ id: TX_ID });
     tx.withdrawalRequest.update.mockResolvedValue({});
@@ -341,10 +424,10 @@ describe("approveWithdrawal — error paths", () => {
     // Broken reconciliation: lhs ≠ rhs
     tx.$queryRaw.mockResolvedValueOnce([
       {
-        user_balances: 999,
-        house_amm: 0,
-        charity_pool: 0,
-        total_deposits: 100,
+        user_balances:     999,
+        house_amm:         0,
+        charity_pool:      0,
+        total_deposits:    100,
         total_withdrawals: 50,
       },
     ]);
