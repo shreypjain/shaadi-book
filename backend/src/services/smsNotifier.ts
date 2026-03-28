@@ -1,0 +1,214 @@
+/**
+ * SMS Notifier Service
+ *
+ * Handles outbound SMS notifications to all registered users via the
+ * Twilio Messages API (NOT Twilio Verify — that is OTP-only).
+ *
+ * Functions:
+ *   sendSmsToAll          — rate-limited batch send (~1 msg/sec)
+ *   notifyNewMarket       — fire-and-forget new-market alert
+ *   sendPeriodicUpdate    — build market-summary message and send to all users
+ *   startPeriodicNotifications — setInterval wrapper (call after server start)
+ *
+ * Rate limiting: we send one message per second via a sequential loop + sleep
+ * to avoid hitting Twilio's default 1 msg/sec throughput cap.
+ *
+ * Twilio env vars required:
+ *   TWILIO_ACCOUNT_SID   — Twilio account SID
+ *   TWILIO_AUTH_TOKEN    — Twilio auth token
+ *   TWILIO_PHONE_NUMBER  — Outbound number in E.164 format (+14788127434)
+ *
+ * When those vars are absent (tests, local dev) all functions are no-ops.
+ */
+
+import twilio from "twilio";
+import { prisma } from "../db.js";
+import { listMarkets } from "./marketService.js";
+import type { MarketWithPrices } from "./marketService.js";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ---------------------------------------------------------------------------
+// sendSmsToAll
+// ---------------------------------------------------------------------------
+
+/**
+ * Send `message` to every registered user via Twilio Messages API.
+ *
+ * Rate limited to ~1 msg/sec.  Individual send failures are caught and
+ * logged so a bad number never aborts the rest of the batch.
+ */
+export async function sendSmsToAll(message: string): Promise<void> {
+  const accountSid = process.env["TWILIO_ACCOUNT_SID"];
+  const authToken = process.env["TWILIO_AUTH_TOKEN"];
+  const fromPhone = process.env["TWILIO_PHONE_NUMBER"];
+
+  if (!accountSid || !authToken || !fromPhone) {
+    console.log("[smsNotifier] Twilio env vars not configured — skipping SMS send");
+    return;
+  }
+
+  let users: Array<{ phone: string }>;
+  try {
+    users = await prisma.user.findMany({ select: { phone: true } });
+  } catch (err) {
+    console.error("[smsNotifier] Failed to fetch users for SMS batch:", err);
+    return;
+  }
+
+  if (users.length === 0) {
+    console.log("[smsNotifier] No registered users — nothing to send");
+    return;
+  }
+
+  console.log(`[smsNotifier] Starting SMS batch to ${users.length} users`);
+
+  const client = twilio(accountSid, authToken);
+  let successCount = 0;
+  let failureCount = 0;
+
+  for (let i = 0; i < users.length; i++) {
+    const user = users[i]!;
+    try {
+      await client.messages.create({
+        to: user.phone,
+        from: fromPhone,
+        body: message,
+      });
+      successCount++;
+      console.log(`[smsNotifier] Sent (${i + 1}/${users.length}) → ${user.phone}`);
+    } catch (err) {
+      failureCount++;
+      console.error(`[smsNotifier] Failed to send to ${user.phone}:`, err);
+    }
+
+    // Rate limit: ~1 message per second (skip delay after the last item)
+    if (i < users.length - 1) {
+      await sleep(1000);
+    }
+  }
+
+  console.log(
+    `[smsNotifier] Batch complete — ${successCount} sent, ${failureCount} failed`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// notifyNewMarket
+// ---------------------------------------------------------------------------
+
+/**
+ * Fire-and-forget: notify all users about a newly created/opened market.
+ *
+ * Returns immediately so the API response is not blocked.
+ * The SMS batch continues running in the background.
+ */
+export function notifyNewMarket(question: string): void {
+  const message =
+    `🎰 New market on Shaadi Book! "${question}" — Place your bets now at markets.parshandspoorthi.com`;
+  console.log(`[smsNotifier] New market notification queued: "${question}"`);
+
+  void sendSmsToAll(message).catch((err) => {
+    console.error("[smsNotifier] notifyNewMarket batch error:", err);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// sendPeriodicUpdate
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch all ACTIVE markets with current prices, build a summary SMS, and
+ * send to all registered users.
+ *
+ * Message format:
+ *   📊 Shaadi Book Update!
+ *
+ *   • {question}: {outcome1} {price1}¢ | {outcome2} {price2}¢
+ *   ...
+ *   ...and X more   ← only when truncated to stay under 1 600 chars
+ *
+ *   Place bets: markets.parshandspoorthi.com
+ */
+export async function sendPeriodicUpdate(): Promise<void> {
+  console.log("[smsNotifier] Periodic update cycle starting");
+
+  let markets: MarketWithPrices[];
+  try {
+    markets = await listMarkets({ status: "ACTIVE" });
+  } catch (err) {
+    console.error("[smsNotifier] Failed to fetch active markets:", err);
+    return;
+  }
+
+  if (markets.length === 0) {
+    console.log("[smsNotifier] No active markets — skipping periodic SMS");
+    return;
+  }
+
+  const header = "📊 Shaadi Book Update!\n\n";
+  const footer = "\nPlace bets: markets.parshandspoorthi.com";
+  const MAX_SMS_LENGTH = 1600;
+
+  let body = "";
+  let includedCount = 0;
+
+  for (const market of markets) {
+    const priceParts = market.outcomes
+      .map((o) => `${o.label} ${o.priceCents}¢`)
+      .join(" | ");
+    const line = `• ${market.question}: ${priceParts}\n`;
+
+    // Check whether adding this line would exceed the SMS limit
+    if ((header + body + line + footer).length > MAX_SMS_LENGTH) break;
+
+    body += line;
+    includedCount++;
+  }
+
+  const remaining = markets.length - includedCount;
+  if (remaining > 0) {
+    body += `...and ${remaining} more`;
+  }
+
+  const message = header + body + footer;
+
+  console.log(
+    `[smsNotifier] Periodic update: ${markets.length} active markets, ` +
+      `${includedCount} included, message length ${message.length} chars`
+  );
+
+  await sendSmsToAll(message);
+}
+
+// ---------------------------------------------------------------------------
+// startPeriodicNotifications
+// ---------------------------------------------------------------------------
+
+/**
+ * Start the periodic SMS notification job.
+ *
+ * Should be called once after the HTTP server begins listening.
+ * Controlled by the ENABLE_SMS_NOTIFICATIONS env var in index.ts — this
+ * function itself does not check that flag.
+ *
+ * @param intervalMs — Interval in ms (e.g. 5 * 60 * 60 * 1000 for 5 hours)
+ */
+export function startPeriodicNotifications(intervalMs: number): void {
+  const minutes = Math.round(intervalMs / 60_000);
+  console.log(
+    `[smsNotifier] Periodic notifications started — interval: ${minutes} min`
+  );
+
+  setInterval(() => {
+    void sendPeriodicUpdate().catch((err) => {
+      console.error("[smsNotifier] sendPeriodicUpdate unhandled error:", err);
+    });
+  }, intervalMs);
+}
