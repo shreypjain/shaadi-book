@@ -220,14 +220,13 @@ export const adminRouter = router({
       Array<{ user_id: string; balance: string }>
     >`
       SELECT
-        SUBSTRING(credit_account FROM 6) AS user_id,
+        user_id,
         COALESCE(
-          SUM(CASE WHEN credit_account LIKE 'user:%' THEN amount ELSE 0 END) -
-          SUM(CASE WHEN debit_account  LIKE 'user:%' THEN amount ELSE 0 END),
+          SUM(CASE WHEN credit_account = 'user:' || user_id THEN amount ELSE 0 END) -
+          SUM(CASE WHEN debit_account  = 'user:' || user_id THEN amount ELSE 0 END),
           0
         ) AS balance
       FROM transactions
-      WHERE credit_account LIKE 'user:%' OR debit_account LIKE 'user:%'
       GROUP BY user_id
     `;
 
