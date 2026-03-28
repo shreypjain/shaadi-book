@@ -21,12 +21,10 @@ export function UserMenu() {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Read stored user on mount (localStorage is browser-only)
   useEffect(() => {
     setUser(getStoredUser());
   }, []);
 
-  // Close popover when clicking outside
   useEffect(() => {
     if (!open) return;
     function handleClick(e: MouseEvent) {
@@ -44,7 +42,6 @@ export function UserMenu() {
     router.push("/login");
   }, [router]);
 
-  // Don't render on /login or when no user is found
   if (pathname === "/login" || !user) return null;
 
   const initials = user.name
@@ -56,33 +53,30 @@ export function UserMenu() {
   const firstName = user.name.split(" ")[0] ?? user.name;
 
   return (
-    <div
-      ref={menuRef}
-      className="fixed top-3 right-3 z-50"
-    >
+    <div ref={menuRef} className="fixed top-3 right-3 z-50">
       {/* Avatar button */}
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label="User menu"
         aria-expanded={open}
-        className="flex items-center gap-2 bg-white/90 backdrop-blur border border-brand-100
-                   rounded-full pl-1.5 pr-3 py-1.5 shadow-sm shadow-brand-100/30
-                   hover:bg-brand-50 active:scale-95 transition-all"
+        className="flex items-center gap-2 bg-white/90 backdrop-blur border border-[#e8e4df]
+                   rounded-full pl-1.5 pr-3 py-1.5 shadow-card
+                   hover:bg-cream-100 active:scale-95 transition-all"
       >
         {/* Avatar circle */}
         <div
-          className="w-7 h-7 rounded-full bg-brand-600 flex items-center justify-center
+          className="w-7 h-7 rounded-full bg-[#1e3a5f] flex items-center justify-center
                      text-white text-[11px] font-bold flex-shrink-0"
           aria-hidden
         >
           {initials}
         </div>
-        <span className="text-xs font-semibold text-gray-700 max-w-[80px] truncate">
+        <span className="text-xs font-semibold text-[#1a1a2e] max-w-[80px] truncate">
           {firstName}
         </span>
         {/* Chevron */}
         <svg
-          className={`w-3 h-3 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`w-3 h-3 text-[#8a8a9a] transition-transform ${open ? "rotate-180" : ""}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -100,21 +94,21 @@ export function UserMenu() {
       {/* Popover */}
       {open && (
         <div
-          className="absolute right-0 top-full mt-2 w-52 bg-white rounded-2xl
-                     border border-gray-100 shadow-xl shadow-gray-200/60
+          className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl
+                     border border-[#e8e4df] shadow-xl shadow-black/5
                      animate-slide-up overflow-hidden"
           role="menu"
         >
           {/* User info */}
-          <div className="px-4 py-3 border-b border-gray-50">
-            <p className="text-sm font-semibold text-gray-800 truncate">
+          <div className="px-4 py-3 border-b border-[#f0ece7]">
+            <p className="text-sm font-semibold text-[#1a1a2e] truncate">
               {user.name}
             </p>
-            <p className="text-xs text-gray-400 truncate mt-0.5">{user.phone}</p>
+            <p className="text-xs text-[#8a8a9a] truncate mt-0.5">{user.phone}</p>
             {user.role === "admin" && (
               <span
                 className="inline-block mt-1 text-[10px] font-bold uppercase tracking-wider
-                           bg-amber-100 text-amber-700 rounded-full px-2 py-0.5"
+                           bg-[#f5efd9] text-[#8a6d30] rounded-full px-2 py-0.5"
               >
                 Admin
               </span>
@@ -126,7 +120,7 @@ export function UserMenu() {
             onClick={handleLogout}
             role="menuitem"
             className="w-full flex items-center gap-2.5 px-4 py-3.5 text-sm font-medium
-                       text-red-600 hover:bg-red-50 transition-colors"
+                       text-[#dc2626] hover:bg-red-50 transition-colors"
           >
             <svg
               className="w-4 h-4 flex-shrink-0"

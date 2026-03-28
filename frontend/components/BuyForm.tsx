@@ -4,7 +4,7 @@
  * Steps:
  *   1. Select outcome (tap to pick)
  *   2. Enter dollar amount (1–50, capped by remaining capacity)
- *   3. Preview shows shares + avg price + slippage: "You'll get X shares at avg $Y. Price moves from $A → $B"
+ *   3. Preview shows shares + avg price + slippage
  *   4. Confirm button → loading → success animation
  */
 
@@ -19,9 +19,7 @@ import type { OutcomeWithPrice } from "@/lib/api-types";
 interface BuyFormProps {
   marketId: string;
   outcomes: OutcomeWithPrice[];
-  /** Current LMSR b parameter */
   currentB: number;
-  /** Max remaining spend in cents (5000 = $50 cap minus already spent) */
   remainingCapCents: number;
   onSuccess?: (result: { outcomeLabel: string; shares: number; costCents: number }) => void;
 }
@@ -46,7 +44,6 @@ export function BuyForm({
   const dollarAmount = parseFloat(dollarAmountStr) || 0;
   const dollarAmountCents = Math.round(dollarAmount * 100);
 
-  // Validation
   const amountError = useMemo(() => {
     if (dollarAmount <= 0) return "Enter an amount";
     if (dollarAmount < 1) return "Minimum bet is $1";
@@ -55,12 +52,10 @@ export function BuyForm({
     return null;
   }, [dollarAmount, dollarAmountCents, remainingCapCents]);
 
-  // Slippage preview
   const preview = useMemo(() => {
     if (!selectedOutcomeId || dollarAmount <= 0 || amountError) return null;
     const outcomeIndex = outcomes.findIndex((o) => o.id === selectedOutcomeId);
     if (outcomeIndex === -1) return null;
-
     const q = outcomes.map((o) => o.sharesSold);
     try {
       return computePreview(q, currentB, outcomeIndex, dollarAmount);
@@ -72,7 +67,6 @@ export function BuyForm({
   const selectedOutcome = outcomes.find((o) => o.id === selectedOutcomeId);
   const selectedIndex = outcomes.findIndex((o) => o.id === selectedOutcomeId);
 
-  // tRPC mutation
   const buyMutation = trpc.market.buy.useMutation({
     onSuccess: (result) => {
       setStep("success");
@@ -108,7 +102,7 @@ export function BuyForm({
   if (step === "select") {
     return (
       <div className="animate-slide-up">
-        <p className="text-sm font-medium text-gray-600 mb-3">Pick your outcome</p>
+        <p className="text-sm font-medium text-[#4a4a5a] mb-3">Pick your outcome</p>
         <div className="flex flex-col gap-2">
           {outcomes.map((outcome, i) => {
             const colors = outcomeColor(i);
@@ -121,14 +115,14 @@ export function BuyForm({
                 }}
                 className={cn(
                   "flex items-center justify-between w-full rounded-xl px-4 py-3",
-                  "border-2 text-left transition-all duration-150",
-                  "active:scale-[0.98]",
+                  "border text-left transition-all duration-150",
+                  "active:scale-[0.98] hover:shadow-sm",
                   colors.light,
-                  colors.border
+                  "border-[#e8e4df] hover:border-current"
                 )}
               >
-                <span className={cn("font-semibold", colors.text)}>{outcome.label}</span>
-                <span className={cn("text-lg font-bold tabular-nums", colors.text)}>
+                <span className={cn("font-semibold text-sm", colors.text)}>{outcome.label}</span>
+                <span className={cn("text-base font-bold tabular-nums", colors.text)}>
                   {Math.round(outcome.priceCents)}¢
                 </span>
               </button>
@@ -151,10 +145,10 @@ export function BuyForm({
         <div className="flex items-center gap-2 mb-4">
           <button
             onClick={() => setStep("select")}
-            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            className="p-1.5 rounded-lg hover:bg-[#e8e4df]/60 transition-colors"
             aria-label="Back"
           >
-            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-[#4a4a5a]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
@@ -167,18 +161,18 @@ export function BuyForm({
           >
             {selectedOutcome?.label}
           </span>
-          <span className={cn("ml-auto text-lg font-bold tabular-nums", colors.text)}>
+          <span className={cn("ml-auto text-base font-bold tabular-nums", colors.text)}>
             {selectedOutcome ? Math.round(selectedOutcome.priceCents) : 0}¢
           </span>
         </div>
 
         {/* Amount input */}
         <div className="mb-3">
-          <label className="text-sm font-medium text-gray-600 block mb-1.5">
+          <label className="text-sm font-medium text-[#4a4a5a] block mb-1.5">
             Bet amount (max {formatDollars(maxDollars)})
           </label>
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-semibold">$</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a8a9a] font-semibold">$</span>
             <input
               type="number"
               min={1}
@@ -190,14 +184,14 @@ export function BuyForm({
                 "w-full pl-8 pr-4 py-3 rounded-xl border-2 bg-white text-lg font-semibold",
                 "focus:outline-none focus:ring-0",
                 amountError
-                  ? "border-red-300 focus:border-red-400 text-red-700"
-                  : "border-gray-200 focus:border-brand-400 text-gray-900"
+                  ? "border-[#dc2626] text-[#dc2626]"
+                  : "border-[#e8e4df] focus:border-[#1e3a5f] text-[#1a1a2e]"
               )}
               inputMode="decimal"
             />
           </div>
           {amountError && (
-            <p className="text-xs text-red-600 mt-1">{amountError}</p>
+            <p className="text-xs text-[#dc2626] mt-1">{amountError}</p>
           )}
         </div>
 
@@ -210,8 +204,8 @@ export function BuyForm({
               className={cn(
                 "flex-1 py-2 rounded-lg text-sm font-semibold border transition-colors",
                 dollarAmountStr === String(amt)
-                  ? cn("border-brand-500 bg-brand-50 text-brand-700")
-                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                  ? "border-[#1e3a5f] bg-brand-50 text-brand-700"
+                  : "border-[#e8e4df] bg-white text-[#4a4a5a] hover:bg-cream-100"
               )}
             >
               ${amt}
@@ -221,24 +215,24 @@ export function BuyForm({
 
         {/* Preview */}
         {preview && !amountError && (
-          <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 mb-4 animate-fade-in">
-            <p className="text-sm text-gray-700 leading-relaxed">
+          <div className="rounded-xl bg-brand-50 border border-brand-100 p-3 mb-4 animate-fade-in">
+            <p className="text-sm text-[#4a4a5a] leading-relaxed">
               You&apos;ll get{" "}
-              <span className="font-bold text-gray-900">
+              <span className="font-bold text-[#1a1a2e]">
                 {formatShares(preview.shares)} shares
               </span>{" "}
               at avg{" "}
-              <span className="font-bold text-gray-900">
+              <span className="font-bold text-[#1a1a2e]">
                 {formatDollars(preview.avgPrice)}
               </span>
               .{" "}
-              <span className="text-gray-500">
+              <span className="text-[#8a8a9a]">
                 Price moves{" "}
-                <span className="font-semibold text-gray-700">
+                <span className="font-semibold text-[#4a4a5a]">
                   {Math.round(preview.priceBefore * 100)}¢
                 </span>{" "}
                 →{" "}
-                <span className="font-semibold text-gray-700">
+                <span className="font-semibold text-[#4a4a5a]">
                   {Math.round(preview.priceAfter * 100)}¢
                 </span>
               </span>
@@ -248,7 +242,7 @@ export function BuyForm({
 
         {/* Error */}
         {error && (
-          <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 mb-3 text-sm text-red-700">
+          <div className="rounded-xl bg-red-50 border border-red-100 px-3 py-2 mb-3 text-sm text-[#dc2626]">
             {error}
           </div>
         )}
@@ -258,11 +252,11 @@ export function BuyForm({
           onClick={handleConfirm}
           disabled={!!amountError || dollarAmount <= 0}
           className={cn(
-            "w-full py-3.5 rounded-xl font-bold text-base transition-all duration-150",
+            "w-full py-3.5 rounded-xl font-medium text-sm transition-all duration-150",
             "active:scale-[0.98]",
             amountError || dollarAmount <= 0
-              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-              : "bg-brand-600 text-white hover:bg-brand-700 shadow-sm shadow-brand-200"
+              ? "bg-[#f0ece7] text-[#8a8a9a] cursor-not-allowed"
+              : "bg-[#1e3a5f] text-white hover:bg-[#152f52] shadow-sm"
           )}
         >
           Confirm {formatDollars(dollarAmount)} on {selectedOutcome?.label}
@@ -278,8 +272,8 @@ export function BuyForm({
   if (step === "confirm") {
     return (
       <div className="flex flex-col items-center justify-center py-8 gap-3 animate-fade-in">
-        <div className="w-10 h-10 border-3 border-brand-200 border-t-brand-600 rounded-full animate-spin" />
-        <p className="text-sm text-gray-500 font-medium">Placing your bet…</p>
+        <div className="w-10 h-10 border-2 border-brand-200 border-t-brand-600 rounded-full animate-spin" />
+        <p className="text-sm text-[#8a8a9a] font-medium">Placing your bet…</p>
       </div>
     );
   }
@@ -293,19 +287,19 @@ export function BuyForm({
     return (
       <div className="flex flex-col items-center py-6 gap-4 animate-success-pop">
         {/* Checkmark */}
-        <div className={cn("w-16 h-16 rounded-full flex items-center justify-center", colors.light)}>
-          <svg className={cn("w-8 h-8", colors.text)} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center">
+          <svg className="w-7 h-7 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
           </svg>
         </div>
 
         <div className="text-center">
-          <p className="text-lg font-bold text-gray-900">Bet placed!</p>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-base font-bold text-[#1a1a2e]">Bet placed!</p>
+          <p className="text-sm text-[#4a4a5a] mt-1">
             {formatShares(preview.shares)} shares of{" "}
             <span className={cn("font-semibold", colors.text)}>{selectedOutcome.label}</span>
           </p>
-          <p className="text-xs text-gray-400 mt-0.5">
+          <p className="text-xs text-[#8a8a9a] mt-0.5">
             {formatDollars(dollarAmount)} · avg {formatDollars(preview.avgPrice)}/share
           </p>
         </div>
@@ -316,11 +310,7 @@ export function BuyForm({
             setSelectedOutcomeId(null);
             setDollarAmountStr("10");
           }}
-          className={cn(
-            "w-full py-3 rounded-xl font-semibold text-sm border-2 transition-colors",
-            colors.border, colors.light, colors.text,
-            "hover:opacity-90"
-          )}
+          className="w-full py-3 rounded-xl font-medium text-sm border border-[#e8e4df] bg-cream-100 text-[#1a1a2e] hover:bg-cream-200 transition-colors"
         >
           Place another bet
         </button>
