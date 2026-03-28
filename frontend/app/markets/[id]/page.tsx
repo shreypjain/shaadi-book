@@ -24,6 +24,7 @@ import {
   formatVolume,
   outcomeColor,
 } from "@/lib/utils";
+import { MarketTags } from "@/components/MarketTags";
 import type {
   WsPriceUpdatePayload,
   WsPurchasePayload,
@@ -285,6 +286,7 @@ export default function MarketDetailPage() {
           <h1 className="text-xl font-bold text-[#1a1a2e] leading-snug mb-3 tracking-tight">
             {market.question}
           </h1>
+          <MarketTags market={market} className="mb-3" />
           <div className="flex items-center gap-4 text-xs text-[#8a8a9a]">
             {openedAt && <span>Opened {timeSince(openedAt)}</span>}
             <span>{formatVolume(market.totalVolume)} volume</span>

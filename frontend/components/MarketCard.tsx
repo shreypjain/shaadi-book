@@ -10,6 +10,7 @@
 
 import Link from "next/link";
 import { ProbabilityBar } from "./ProbabilityBar";
+import { MarketTags } from "./MarketTags";
 import {
   cn,
   timeSince,
@@ -87,6 +88,9 @@ export function MarketCard({ market, livePrices, lastPurchaseAt }: MarketCardPro
           )}
         </div>
       </div>
+
+      {/* Tag pills */}
+      <MarketTags market={market} className="mb-3" />
 
       {/* Probability bars */}
       <div className="flex flex-col gap-2 mb-3">

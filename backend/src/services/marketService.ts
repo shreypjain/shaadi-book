@@ -54,6 +54,12 @@ export interface MarketWithPrices {
   currentB: number;
   /** Total dollar volume traded in this market. */
   totalVolume: number;
+  /** Wedding event tag (e.g. 'Sangeet', 'Haldi', 'Reception'). */
+  eventTag: string | null;
+  /** Family side ('Spoorthi', 'Parsh', 'Both'). */
+  familySide: string | null;
+  /** Freeform custom tags. */
+  customTags: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -117,6 +123,9 @@ interface RawMarket {
   winningOutcomeId: string | null;
   outcomes: RawOutcome[];
   purchases: Array<{ cost: { toNumber(): number } | number }>;
+  eventTag: string | null;
+  familySide: string | null;
+  customTags: string[];
 }
 
 function toNum(v: { toNumber(): number } | number): number {
@@ -167,6 +176,9 @@ function buildMarketWithPrices(market: RawMarket): MarketWithPrices {
     })),
     currentB: b,
     totalVolume,
+    eventTag: market.eventTag ?? null,
+    familySide: market.familySide ?? null,
+    customTags: market.customTags ?? [],
   };
 }
 
@@ -191,6 +203,9 @@ export async function createMarket(
     scheduledOpenAt?: Date;
     ipAddress?: string;
     prismaClient?: PrismaClient;
+    eventTag?: string;
+    familySide?: string;
+    customTags?: string[];
   }
 ): Promise<string> {
   if (outcomeLabels.length < 2 || outcomeLabels.length > 5) {
@@ -210,6 +225,9 @@ export async function createMarket(
         openedAt: isImmediate ? now : null,
         scheduledOpenAt: opts?.scheduledOpenAt ?? null,
         bFloorOverride: opts?.bFloorOverride ?? null,
+        eventTag: opts?.eventTag ?? null,
+        familySide: opts?.familySide ?? null,
+        customTags: opts?.customTags ?? [],
         outcomes: {
           create: outcomeLabels.map((label, i) => ({
             label,
@@ -562,18 +580,33 @@ export async function getMarketWithPrices(
 
 type MarketStatus = "PENDING" | "ACTIVE" | "PAUSED" | "RESOLVED" | "VOIDED";
 
+export interface ListMarketsFilters {
+  status?: MarketStatus;
+  eventTag?: string;
+  familySide?: string;
+}
+
 /**
- * List markets with current LMSR prices, optionally filtered by status.
+ * List markets with current LMSR prices, optionally filtered by status, eventTag, familySide.
  * Returns newest-first.
  */
 export async function listMarkets(
-  status?: MarketStatus,
+  filters?: ListMarketsFilters | MarketStatus,
   prismaClient?: PrismaClient
 ): Promise<MarketWithPrices[]> {
   const db = prismaClient ?? defaultPrisma;
 
+  // Support legacy call signature: listMarkets(status?, prismaClient?)
+  const normalised: ListMarketsFilters =
+    typeof filters === "string" ? { status: filters } : (filters ?? {});
+
+  const where: Record<string, unknown> = {};
+  if (normalised.status) where["status"] = normalised.status;
+  if (normalised.eventTag) where["eventTag"] = normalised.eventTag;
+  if (normalised.familySide) where["familySide"] = normalised.familySide;
+
   const markets = await db.market.findMany({
-    where: status ? { status } : undefined,
+    where: Object.keys(where).length ? where : undefined,
     include: {
       outcomes: { orderBy: { position: "asc" } },
       purchases: { select: { cost: true } },

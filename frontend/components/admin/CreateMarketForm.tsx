@@ -1,17 +1,21 @@
 "use client";
 
 /**
- * CreateMarketForm — Task 4.3
+ * CreateMarketForm — Task 4.3 + market tags
  *
  * Allows an admin to create a new market with:
  *   - Question text
  *   - 2–5 outcome labels (dynamic add / remove)
  *   - Optional b_floor override
  *   - Open time: immediate or scheduled datetime
+ *   - Event tag (Sangeet, Haldi, etc.)
+ *   - Family side (Spoorthi / Parsh / Both)
+ *   - Custom freeform tags (comma-separated)
  */
 
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { EVENT_TAGS, FAMILY_SIDES, type EventTag, type FamilySide } from "@/lib/api-types";
 
 interface Props {
   onCreated: () => void;
@@ -26,6 +30,9 @@ export default function CreateMarketForm({ onCreated }: Props) {
   const [bFloor, setBFloor] = useState("");
   const [openMode, setOpenMode] = useState<"now" | "scheduled">("now");
   const [scheduledAt, setScheduledAt] = useState("");
+  const [eventTag, setEventTag] = useState<EventTag | "">("");
+  const [familySide, setFamilySide] = useState<FamilySide | "">("");
+  const [customTagsRaw, setCustomTagsRaw] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,6 +61,11 @@ export default function CreateMarketForm({ onCreated }: Props) {
       return;
     }
 
+    const customTags = customTagsRaw
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+
     setLoading(true);
     try {
       await trpc.market.create.mutate({
@@ -64,6 +76,9 @@ export default function CreateMarketForm({ onCreated }: Props) {
           openMode === "scheduled" && scheduledAt
             ? new Date(scheduledAt)
             : undefined,
+        eventTag: eventTag || undefined,
+        familySide: familySide || undefined,
+        customTags: customTags.length ? customTags : undefined,
       });
       // Reset form
       setQuestion("");
@@ -71,6 +86,9 @@ export default function CreateMarketForm({ onCreated }: Props) {
       setBFloor("");
       setOpenMode("now");
       setScheduledAt("");
+      setEventTag("");
+      setFamilySide("");
+      setCustomTagsRaw("");
       onCreated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create market");
@@ -142,6 +160,73 @@ export default function CreateMarketForm({ onCreated }: Props) {
             + Add outcome
           </button>
         )}
+      </div>
+
+      {/* Event tag */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Wedding Event{" "}
+          <span className="text-gray-400 font-normal">(optional)</span>
+        </label>
+        <select
+          value={eventTag}
+          onChange={(e) => setEventTag(e.target.value as EventTag | "")}
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white"
+        >
+          <option value="">— None —</option>
+          {EVENT_TAGS.map((tag) => (
+            <option key={tag} value={tag}>
+              {tag}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Family side */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Family Side{" "}
+          <span className="text-gray-400 font-normal">(optional)</span>
+        </label>
+        <div className="flex items-center gap-2 flex-wrap">
+          {(["", ...FAMILY_SIDES] as const).map((side) => (
+            <button
+              key={side}
+              type="button"
+              onClick={() => setFamilySide(side as FamilySide | "")}
+              className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                familySide === side
+                  ? side === "Spoorthi"
+                    ? "bg-rose-600 text-white border-rose-600"
+                    : side === "Parsh"
+                    ? "bg-sky-600 text-white border-sky-600"
+                    : side === "Both"
+                    ? "bg-amber-500 text-white border-amber-500"
+                    : "bg-gray-700 text-white border-gray-700"
+                  : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
+              }`}
+            >
+              {side === "" ? "None" : side}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Custom tags */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Custom Tags{" "}
+          <span className="text-gray-400 font-normal">
+            (optional, comma-separated)
+          </span>
+        </label>
+        <input
+          type="text"
+          value={customTagsRaw}
+          onChange={(e) => setCustomTagsRaw(e.target.value)}
+          placeholder="dance, emotional, food"
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+        />
       </div>
 
       {/* b_floor override */}

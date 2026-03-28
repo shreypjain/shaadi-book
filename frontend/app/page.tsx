@@ -6,6 +6,7 @@
  * Lists active markets as cards with real-time price updates via Socket.io.
  * Pull-to-refresh reloads the market list.
  * NEW badge for markets < 5 min old, Low Activity badge for 30+ min stale.
+ * Filter tabs by wedding event or family side.
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -13,8 +14,10 @@ import { MarketCard } from "@/components/MarketCard";
 import { api } from "@/lib/api";
 import { ensureConnected, subscribeToFeed, getSocket } from "@/lib/socket";
 import type { WsPriceUpdatePayload, WsMarketEventPayload } from "@/lib/api-types";
+import { EVENT_TAGS, FAMILY_SIDES, type EventTag, type FamilySide } from "@/lib/api-types";
 
 type LivePrices = Record<string, Record<string, number>>;
+type FilterMode = "event" | "family";
 
 export default function MarketFeedPage() {
   const [livePrices, setLivePrices] = useState<LivePrices>({});
@@ -25,9 +28,17 @@ export default function MarketFeedPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
+  // Active filter state
+  const [filterMode, setFilterMode] = useState<FilterMode>("event");
+  const [activeEventTag, setActiveEventTag] = useState<EventTag | null>(null);
+  const [activeFamilySide, setActiveFamilySide] = useState<FamilySide | null>(null);
+
   const refetch = useCallback(async () => {
     try {
-      const data = await api.market.list({});
+      const data = await api.market.list({
+        eventTag: activeEventTag ?? undefined,
+        familySide: activeFamilySide ?? undefined,
+      });
       setMarkets(data as any[]);
       setError(null);
     } catch (err) {
@@ -35,7 +46,7 @@ export default function MarketFeedPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [activeEventTag, activeFamilySide]);
 
   useEffect(() => {
     void refetch();
@@ -129,6 +140,36 @@ export default function MarketFeedPage() {
   });
 
   // -------------------------------------------------------------------------
+  // Filter helpers
+  // -------------------------------------------------------------------------
+
+  function selectEventTag(tag: EventTag) {
+    setActiveEventTag((prev) => (prev === tag ? null : tag));
+    setActiveFamilySide(null);
+  }
+
+  function selectFamilySide(side: FamilySide) {
+    setActiveFamilySide((prev) => (prev === side ? null : side));
+    setActiveEventTag(null);
+  }
+
+  const EVENT_COLORS: Record<EventTag, { bg: string; activeBg: string; text: string; activeText: string }> = {
+    Sangeet: { bg: "bg-purple-50", activeBg: "bg-purple-600", text: "text-purple-700", activeText: "text-white" },
+    Haldi: { bg: "bg-yellow-50", activeBg: "bg-yellow-500", text: "text-yellow-700", activeText: "text-white" },
+    Baraat: { bg: "bg-red-50", activeBg: "bg-red-600", text: "text-red-700", activeText: "text-white" },
+    "Wedding Ceremony": { bg: "bg-pink-50", activeBg: "bg-pink-600", text: "text-pink-700", activeText: "text-white" },
+    Reception: { bg: "bg-blue-50", activeBg: "bg-blue-600", text: "text-blue-700", activeText: "text-white" },
+    "After Party": { bg: "bg-emerald-50", activeBg: "bg-emerald-600", text: "text-emerald-700", activeText: "text-white" },
+    General: { bg: "bg-gray-100", activeBg: "bg-gray-600", text: "text-gray-700", activeText: "text-white" },
+  };
+
+  const FAMILY_COLORS: Record<FamilySide, { bg: string; activeBg: string; text: string; activeText: string }> = {
+    Spoorthi: { bg: "bg-rose-50", activeBg: "bg-rose-600", text: "text-rose-700", activeText: "text-white" },
+    Parsh: { bg: "bg-sky-50", activeBg: "bg-sky-600", text: "text-sky-700", activeText: "text-white" },
+    Both: { bg: "bg-amber-50", activeBg: "bg-amber-500", text: "text-amber-700", activeText: "text-white" },
+  };
+
+  // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
 
@@ -182,6 +223,93 @@ export default function MarketFeedPage() {
             </svg>
           </button>
         </div>
+
+        {/* Filter tabs */}
+        <div className="max-w-lg mx-auto mt-3 space-y-2">
+          {/* Mode selector */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setFilterMode("event"); setActiveFamilySide(null); }}
+              className={`text-xs font-semibold px-3 py-1 rounded-full transition-colors ${
+                filterMode === "event"
+                  ? "bg-[#1a1a2e] text-white"
+                  : "text-[#8a8a9a] hover:text-[#4a4a5a]"
+              }`}
+            >
+              By Event
+            </button>
+            <button
+              onClick={() => { setFilterMode("family"); setActiveEventTag(null); }}
+              className={`text-xs font-semibold px-3 py-1 rounded-full transition-colors ${
+                filterMode === "family"
+                  ? "bg-[#1a1a2e] text-white"
+                  : "text-[#8a8a9a] hover:text-[#4a4a5a]"
+              }`}
+            >
+              By Family
+            </button>
+            {(activeEventTag || activeFamilySide) && (
+              <button
+                onClick={() => { setActiveEventTag(null); setActiveFamilySide(null); }}
+                className="text-xs text-[#8a8a9a] hover:text-[#4a4a5a] underline ml-auto"
+              >
+                Clear filter
+              </button>
+            )}
+          </div>
+
+          {/* Event tag pills */}
+          {filterMode === "event" && (
+            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+              {EVENT_TAGS.map((tag) => {
+                const colors = EVENT_COLORS[tag];
+                const isActive = activeEventTag === tag;
+                return (
+                  <button
+                    key={tag}
+                    onClick={() => selectEventTag(tag)}
+                    className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${
+                      isActive
+                        ? `${colors.activeBg} ${colors.activeText}`
+                        : `${colors.bg} ${colors.text} hover:opacity-80`
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Family side pills */}
+          {filterMode === "family" && (
+            <div className="flex gap-1.5">
+              {FAMILY_SIDES.map((side) => {
+                const colors = FAMILY_COLORS[side];
+                const isActive = activeFamilySide === side;
+                const label =
+                  side === "Spoorthi"
+                    ? "Spoorthi's side"
+                    : side === "Parsh"
+                    ? "Parsh's side"
+                    : "Both sides";
+                return (
+                  <button
+                    key={side}
+                    onClick={() => selectFamilySide(side)}
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${
+                      isActive
+                        ? `${colors.activeBg} ${colors.activeText}`
+                        : `${colors.bg} ${colors.text} hover:opacity-80`
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </header>
 
       <main className="max-w-lg mx-auto px-4 py-4 pb-24">
@@ -223,9 +351,15 @@ export default function MarketFeedPage() {
               </svg>
             </div>
             <div className="text-center">
-              <p className="font-semibold text-[#1a1a2e]">No markets yet</p>
+              <p className="font-semibold text-[#1a1a2e]">
+                {activeEventTag || activeFamilySide
+                  ? "No markets match this filter"
+                  : "No markets yet"}
+              </p>
               <p className="text-sm text-[#8a8a9a] mt-1">
-                Check back when the celebration starts!
+                {activeEventTag || activeFamilySide
+                  ? "Try a different event or clear the filter."
+                  : "Check back when the celebration starts!"}
               </p>
             </div>
           </div>

@@ -99,6 +99,12 @@ model Market {
   createdAt        DateTime     @default(now()) @map("created_at")
   resolvedAt       DateTime?    @map("resolved_at")
   winningOutcomeId String?      @map("winning_outcome_id")
+  /// Wedding event this market belongs to (e.g. 'Sangeet', 'Haldi', 'Baraat', 'Wedding Ceremony', 'Reception', 'After Party', 'General')
+  eventTag         String?      @map("event_tag")
+  /// Which family side this market is relevant to ('Spoorthi', 'Parsh', 'Both')
+  familySide       String?      @map("family_side")
+  /// Freeform tags like 'dance', 'food', 'emotional'
+  customTags       String[]     @default([]) @map("custom_tags")
 
   // Relations
   createdBy      User       @relation("MarketCreatedBy", fields: [createdById], references: [id])
