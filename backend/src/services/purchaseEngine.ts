@@ -272,7 +272,7 @@ export async function buyShares(
       const lockedOutcomes = (await tx.$queryRaw`
         SELECT id, market_id, position, shares_sold, label
         FROM outcomes
-        WHERE market_id = ${marketId}::uuid
+        WHERE market_id = ${marketId}
         ORDER BY position
         FOR UPDATE
       `) as LockedOutcomeRow[];
@@ -325,8 +325,8 @@ export async function buyShares(
       const spendResult = (await tx.$queryRaw`
         SELECT COALESCE(SUM(cost), 0) AS total_spend
         FROM purchases
-        WHERE user_id  = ${userId}::uuid
-          AND market_id = ${marketId}::uuid
+        WHERE user_id  = ${userId}
+          AND market_id = ${marketId}
       `) as Array<{ total_spend: unknown }>;
 
       const existingSpendDollars = toNumber(spendResult[0]?.total_spend ?? 0);
@@ -348,7 +348,7 @@ export async function buyShares(
       const volumeResult = (await tx.$queryRaw`
         SELECT COALESCE(SUM(cost), 0) AS total_volume
         FROM purchases
-        WHERE market_id = ${marketId}::uuid
+        WHERE market_id = ${marketId}
       `) as Array<{ total_volume: unknown }>;
 
       const totalVolume = toNumber(volumeResult[0]?.total_volume ?? 0);
