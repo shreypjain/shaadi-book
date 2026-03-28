@@ -260,25 +260,27 @@ export const walletRouter = router({
     const balanceCents   = await getUserBalance(userId);
     const balanceDecimal = new Decimal(balanceCents).dividedBy(100);
 
-    // User-specific transaction totals.
-    const result = await prisma.$queryRaw<
-      Array<{
-        total_deposits:    unknown;
-        past_charity_paid: unknown;
-        past_withdrawals:  unknown;
-      }>
-    >`
-      SELECT
-        COALESCE(SUM(CASE WHEN type = 'DEPOSIT'     THEN amount ELSE 0 END), 0) AS total_deposits,
-        COALESCE(SUM(CASE WHEN type = 'CHARITY_FEE' THEN amount ELSE 0 END), 0) AS past_charity_paid,
-        COALESCE(SUM(CASE WHEN type = 'WITHDRAWAL'  THEN amount ELSE 0 END), 0) AS past_withdrawals
+    // User-specific transaction totals (three separate queries per task spec).
+    const depositsResult = await prisma.$queryRaw<Array<{ total: unknown }>>`
+      SELECT COALESCE(SUM(amount), 0) AS total
       FROM transactions
-      WHERE user_id = ${userId}::uuid
+      WHERE user_id = ${userId}::uuid AND type = 'DEPOSIT'
     `;
+    const totalDeposits = new Decimal(toNumber(depositsResult[0]?.total ?? 0));
 
-    const totalDeposits   = new Decimal(toNumber(result[0]?.total_deposits   ?? 0));
-    const pastCharityPaid = new Decimal(toNumber(result[0]?.past_charity_paid ?? 0));
-    const pastWithdrawals = new Decimal(toNumber(result[0]?.past_withdrawals  ?? 0));
+    const charityPaidResult = await prisma.$queryRaw<Array<{ total: unknown }>>`
+      SELECT COALESCE(SUM(amount), 0) AS total
+      FROM transactions
+      WHERE user_id = ${userId}::uuid AND type = 'CHARITY_FEE'
+    `;
+    const pastCharityPaid = new Decimal(toNumber(charityPaidResult[0]?.total ?? 0));
+
+    const pastWithdrawalsResult = await prisma.$queryRaw<Array<{ total: unknown }>>`
+      SELECT COALESCE(SUM(amount), 0) AS total
+      FROM transactions
+      WHERE user_id = ${userId}::uuid AND type = 'WITHDRAWAL'
+    `;
+    const pastWithdrawals = new Decimal(toNumber(pastWithdrawalsResult[0]?.total ?? 0));
 
     // profit = current_balance + past_withdrawals + past_charity_paid − total_deposits
     const profit = balanceDecimal

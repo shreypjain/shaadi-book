@@ -113,14 +113,14 @@ function wireApproveTxHappyPath(
   tx.withdrawalRequest.findUnique.mockResolvedValue(MOCK_REQUEST_PENDING);
   // 2. $queryRaw balance check
   tx.$queryRaw.mockResolvedValueOnce([{ balance: balanceDollars }]);
-  // 3. $queryRaw user totals (charity fee calculation — new in §7.5)
-  //    With totalDeposits = balanceDollars and no prior payouts, profit = 0
-  //    → charityRemaining = 0 → no CHARITY_FEE tx inserted.
-  tx.$queryRaw.mockResolvedValueOnce([{
-    total_deposits:    totalDeposits,
-    past_charity_paid: 0,
-    past_withdrawals:  0,
-  }]);
+  // 3a. $queryRaw — user total deposits
+  tx.$queryRaw.mockResolvedValueOnce([{ total: totalDeposits }]);
+  // 3b. $queryRaw — user past charity fees paid
+  tx.$queryRaw.mockResolvedValueOnce([{ total: 0 }]);
+  // 3c. $queryRaw — user past withdrawals
+  //     With totalDeposits = balanceDollars and no prior payouts, profit = 0
+  //     → charityRemaining = 0 → no CHARITY_FEE tx inserted.
+  tx.$queryRaw.mockResolvedValueOnce([{ total: 0 }]);
   // 4. transaction.findFirst (prevHash)
   tx.transaction.findFirst.mockResolvedValue(null);
   // 5. transaction.create — WITHDRAWAL only (no charity owed)
@@ -306,11 +306,9 @@ describe("approveWithdrawal — happy path", () => {
     // balance must cover $50 + $10 = $60 ✓ ($150 >= $60)
     tx.withdrawalRequest.findUnique.mockResolvedValue(MOCK_REQUEST_PENDING);
     tx.$queryRaw.mockResolvedValueOnce([{ balance: 150 }]); // balance check
-    tx.$queryRaw.mockResolvedValueOnce([{                   // user totals
-      total_deposits:    100,
-      past_charity_paid: 0,
-      past_withdrawals:  0,
-    }]);
+    tx.$queryRaw.mockResolvedValueOnce([{ total: 100  }]); // deposits
+    tx.$queryRaw.mockResolvedValueOnce([{ total: 0    }]); // past charity paid
+    tx.$queryRaw.mockResolvedValueOnce([{ total: 0    }]); // past withdrawals
     tx.transaction.findFirst.mockResolvedValue(null);
     // transaction.create is called twice: CHARITY_FEE then WITHDRAWAL
     tx.transaction.create
@@ -394,11 +392,9 @@ describe("approveWithdrawal — error paths", () => {
     // Balance check: only $10 available
     tx.$queryRaw.mockResolvedValueOnce([{ balance: 10 }]);
     // User totals: deposits = $10, no prior charity/withdrawals → profit = 0 → no charity owed
-    tx.$queryRaw.mockResolvedValueOnce([{
-      total_deposits:    10,
-      past_charity_paid: 0,
-      past_withdrawals:  0,
-    }]);
+    tx.$queryRaw.mockResolvedValueOnce([{ total: 10 }]); // deposits
+    tx.$queryRaw.mockResolvedValueOnce([{ total: 0  }]); // past charity paid
+    tx.$queryRaw.mockResolvedValueOnce([{ total: 0  }]); // past withdrawals
 
     await expect(
       approveWithdrawal(ADMIN_ID, REQUEST_ID, IP)
@@ -410,12 +406,10 @@ describe("approveWithdrawal — error paths", () => {
     tx.withdrawalRequest.findUnique.mockResolvedValue(MOCK_REQUEST_PENDING);
     // Balance check: $100 available
     tx.$queryRaw.mockResolvedValueOnce([{ balance: 100 }]);
-    // User totals: deposits = $100, no prior charity/withdrawals → profit = 0 → no charity owed
-    tx.$queryRaw.mockResolvedValueOnce([{
-      total_deposits:    100,
-      past_charity_paid: 0,
-      past_withdrawals:  0,
-    }]);
+    // User totals (three separate queries): deposits = $100, no prior charity/withdrawals
+    tx.$queryRaw.mockResolvedValueOnce([{ total: 100 }]); // deposits
+    tx.$queryRaw.mockResolvedValueOnce([{ total: 0   }]); // past charity paid
+    tx.$queryRaw.mockResolvedValueOnce([{ total: 0   }]); // past withdrawals
     tx.transaction.findFirst.mockResolvedValue(null);
     tx.transaction.create.mockResolvedValue({ id: TX_ID });
     tx.withdrawalRequest.update.mockResolvedValue({});
