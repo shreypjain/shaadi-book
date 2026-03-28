@@ -1,7 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { loadStripe, type Stripe } from "@stripe/stripe-js";
+import { Elements } from "@stripe/react-stripe-js";
 import { api } from "@/lib/api";
+import { StripePaymentForm } from "./StripePaymentForm";
 
 const PRESETS = [
   { label: "$10", cents: 1000 },
@@ -9,21 +12,36 @@ const PRESETS = [
   { label: "$50", cents: 5000 },
 ];
 
+type Step = "select-amount" | "payment" | "success";
+
 interface DepositButtonProps {
   onSuccess?: () => void;
 }
 
 /**
- * "Add Credits" button that opens a deposit modal.
- * Preset amounts ($10, $25, $50) + custom input.
- * On confirm, creates a Stripe Checkout session and redirects.
+ * "Add Credits" button that opens an inline deposit modal.
+ *
+ * Flow:
+ *  1. Guest picks a preset ($10 / $25 / $50) or enters a custom amount.
+ *  2. On confirmation, calls payment.createDeposit → receives clientSecret.
+ *  3. Renders the Stripe Payment Element inside an <Elements> provider —
+ *     guest pays without leaving the page (Apple Pay / card / etc.).
+ *  4. On success: shows a confirmation state, then calls onSuccess() so
+ *     the parent can refresh the balance display.
  *
  * PRD §7.2 — Deposit flow
  */
 export function DepositButton({ onSuccess }: DepositButtonProps) {
   const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<Step>("select-amount");
+
+  // Amount selection state
   const [selectedCents, setSelectedCents] = useState<number | null>(1000);
   const [customDollars, setCustomDollars] = useState("");
+
+  // Stripe state
+  const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,20 +55,54 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
     effectiveCents >= 500 &&
     effectiveCents <= 50000;
 
-  async function handleDeposit() {
+  // Fetch the Stripe publishable key once when the modal opens.
+  useEffect(() => {
+    if (!open || stripePromise) return;
+    api.wallet.getPublishableKey()
+      .then(({ publishableKey }) => {
+        setStripePromise(loadStripe(publishableKey));
+      })
+      .catch(() => {
+        // Silently fall back — the error will surface when payment is attempted.
+      });
+  }, [open, stripePromise]);
+
+  async function handleContinue() {
     if (!isValidAmount || effectiveCents === null) return;
     setLoading(true);
     setError(null);
     try {
-      const { checkoutUrl } = await api.wallet.createDeposit({
+      const { clientSecret: secret } = await api.wallet.createDeposit({
         amountCents: effectiveCents,
       });
-      onSuccess?.();
-      window.location.href = checkoutUrl;
+      setClientSecret(secret);
+      setStep("payment");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Payment setup failed.");
+    } finally {
       setLoading(false);
     }
+  }
+
+  function handlePaymentSuccess() {
+    setStep("success");
+    // Give the guest a moment to see the success state, then close.
+    setTimeout(() => {
+      handleClose();
+      onSuccess?.();
+    }, 2000);
+  }
+
+  function handleClose() {
+    setOpen(false);
+    // Reset to initial state after the close animation.
+    setTimeout(() => {
+      setStep("select-amount");
+      setClientSecret(null);
+      setError(null);
+      setSelectedCents(1000);
+      setCustomDollars("");
+    }, 300);
   }
 
   return (
@@ -69,89 +121,149 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/50"
-            onClick={() => setOpen(false)}
+            onClick={step !== "payment" ? handleClose : undefined}
           />
 
           {/* Sheet */}
           <div className="relative w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-2xl p-6 shadow-2xl">
-            <h2 className="text-lg font-bold text-gray-900 mb-1">
-              Add Credits
-            </h2>
-            <p className="text-xs text-gray-400 mb-5">
-              Charged in USD via Stripe (Apple Pay / card)
-            </p>
+            {/* ----------------------------------------------------------------
+                Step 1: Amount selection
+            ---------------------------------------------------------------- */}
+            {step === "select-amount" && (
+              <>
+                <h2 className="text-lg font-bold text-gray-900 mb-1">
+                  Add Credits
+                </h2>
+                <p className="text-xs text-gray-400 mb-5">
+                  Charged in USD via Stripe (Apple Pay / card)
+                </p>
 
-            {/* Preset amounts */}
-            <div className="grid grid-cols-3 gap-3 mb-4">
-              {PRESETS.map((p) => (
+                {/* Preset amounts */}
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  {PRESETS.map((p) => (
+                    <button
+                      key={p.cents}
+                      onClick={() => {
+                        setSelectedCents(p.cents);
+                        setCustomDollars("");
+                      }}
+                      className={`rounded-xl py-3 text-sm font-semibold border-2 transition-all
+                        ${
+                          !customDollars && selectedCents === p.cents
+                            ? "border-brand-600 bg-brand-50 text-brand-700"
+                            : "border-gray-200 text-gray-700 hover:border-brand-300"
+                        }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Custom amount */}
+                <div className="relative mb-4">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">
+                    $
+                  </span>
+                  <input
+                    type="number"
+                    min="5"
+                    max="500"
+                    step="1"
+                    placeholder="Custom amount"
+                    value={customDollars}
+                    onChange={(e) => {
+                      setCustomDollars(e.target.value);
+                      setSelectedCents(null);
+                    }}
+                    className="w-full pl-7 pr-4 py-3 border-2 border-gray-200 rounded-xl text-sm
+                               focus:outline-none focus:border-brand-400 transition"
+                  />
+                </div>
+
+                <p className="text-xs text-gray-400 mb-4">Min $5 · Max $500</p>
+
+                {error && (
+                  <p className="text-xs text-red-600 mb-3 bg-red-50 rounded-lg px-3 py-2">
+                    {error}
+                  </p>
+                )}
+
                 <button
-                  key={p.cents}
-                  onClick={() => {
-                    setSelectedCents(p.cents);
-                    setCustomDollars("");
-                  }}
-                  className={`rounded-xl py-3 text-sm font-semibold border-2 transition-all
-                    ${
-                      !customDollars && selectedCents === p.cents
-                        ? "border-brand-600 bg-brand-50 text-brand-700"
-                        : "border-gray-200 text-gray-700 hover:border-brand-300"
-                    }`}
+                  onClick={handleContinue}
+                  disabled={!isValidAmount || loading}
+                  className="w-full rounded-xl bg-brand-600 py-3.5 text-white font-semibold
+                             disabled:opacity-50 hover:bg-brand-700 active:scale-95 transition-all"
                 >
-                  {p.label}
+                  {loading
+                    ? "Setting up payment…"
+                    : `Continue with ${
+                        isValidAmount && effectiveCents
+                          ? `$${(effectiveCents / 100).toFixed(2)}`
+                          : ""
+                      } →`}
                 </button>
-              ))}
-            </div>
 
-            {/* Custom amount */}
-            <div className="relative mb-4">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">
-                $
-              </span>
-              <input
-                type="number"
-                min="5"
-                max="500"
-                step="1"
-                placeholder="Custom amount"
-                value={customDollars}
-                onChange={(e) => {
-                  setCustomDollars(e.target.value);
-                  setSelectedCents(null);
-                }}
-                className="w-full pl-7 pr-4 py-3 border-2 border-gray-200 rounded-xl text-sm
-                           focus:outline-none focus:border-brand-400 transition"
-              />
-            </div>
-
-            <p className="text-xs text-gray-400 mb-4">Min $5 · Max $500</p>
-
-            {error && (
-              <p className="text-xs text-red-600 mb-3 bg-red-50 rounded-lg px-3 py-2">
-                {error}
-              </p>
+                <button
+                  onClick={handleClose}
+                  className="w-full mt-3 py-2 text-sm text-gray-400 hover:text-gray-600 transition"
+                >
+                  Cancel
+                </button>
+              </>
             )}
 
-            <button
-              onClick={handleDeposit}
-              disabled={!isValidAmount || loading}
-              className="w-full rounded-xl bg-brand-600 py-3.5 text-white font-semibold
-                         disabled:opacity-50 hover:bg-brand-700 active:scale-95 transition-all"
-            >
-              {loading
-                ? "Redirecting to Stripe…"
-                : `Pay ${
-                    isValidAmount && effectiveCents
-                      ? `$${(effectiveCents / 100).toFixed(2)}`
-                      : ""
-                  } →`}
-            </button>
+            {/* ----------------------------------------------------------------
+                Step 2: Stripe Payment Element
+            ---------------------------------------------------------------- */}
+            {step === "payment" && clientSecret && stripePromise && (
+              <>
+                <h2 className="text-lg font-bold text-gray-900 mb-1">
+                  Payment
+                </h2>
+                <p className="text-xs text-gray-400 mb-5">
+                  {isValidAmount && effectiveCents
+                    ? `$${(effectiveCents / 100).toFixed(2)}`
+                    : ""}{" "}
+                  · Powered by Stripe
+                </p>
 
-            <button
-              onClick={() => setOpen(false)}
-              className="w-full mt-3 py-2 text-sm text-gray-400 hover:text-gray-600 transition"
-            >
-              Cancel
-            </button>
+                <Elements
+                  stripe={stripePromise}
+                  options={{
+                    clientSecret,
+                    appearance: {
+                      theme: "stripe",
+                      variables: {
+                        colorPrimary: "#7c3aed", // brand-600
+                        borderRadius: "12px",
+                        fontFamily: "inherit",
+                      },
+                    },
+                  }}
+                >
+                  <StripePaymentForm
+                    amountCents={effectiveCents ?? 0}
+                    onSuccess={handlePaymentSuccess}
+                    onCancel={() => setStep("select-amount")}
+                  />
+                </Elements>
+              </>
+            )}
+
+            {/* ----------------------------------------------------------------
+                Step 3: Success
+            ---------------------------------------------------------------- */}
+            {step === "success" && (
+              <div className="text-center py-8">
+                <div className="text-5xl mb-4">🎉</div>
+                <h2 className="text-lg font-bold text-gray-900 mb-2">
+                  Payment Successful!
+                </h2>
+                <p className="text-sm text-gray-500">
+                  Your credits will appear in your wallet shortly.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}

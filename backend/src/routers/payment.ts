@@ -1,32 +1,49 @@
 /**
- * Payment tRPC Router — Task 3.1
+ * Payment tRPC Router — stripe-js-integration
  *
  * Endpoints:
- *   payment.createDeposit — protected, creates a Stripe Checkout Session and
- *                           returns the URL to redirect the guest to.
+ *   payment.createDeposit   — protected, creates a Stripe PaymentIntent and
+ *                             returns { clientSecret } for the inline Payment Element.
+ *   payment.getPublishableKey — public, returns the Stripe publishable key so
+ *                              the frontend can initialise loadStripe().
  *
  * Amount presets (per PRD §7.2):
  *   $10 = 1000 cents, $25 = 2500 cents, $50 = 5000 cents, or any custom amount.
  *
- * PRD §7.2, Appendix A.1
+ * PRD §7.2
  */
 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { router, protectedProcedure } from "../trpc.js";
-import { createDepositSession } from "../services/stripe.js";
+import { router, protectedProcedure, publicProcedure } from "../trpc.js";
+import { createPaymentIntent } from "../services/stripe.js";
+
+const STRIPE_PUBLISHABLE_KEY =
+  "pk_test_51TFrKGQ7LUHSmeG49gwZ4G20jYvVySBtlMXXBFzc0N0gW2DPY12XPNk9pKBV7bHSWM5f2z8aeIxhVXHkpNQTgbGR00CSXL9S8R";
 
 export const paymentRouter = router({
   /**
+   * payment.getPublishableKey — public (no auth required)
+   *
+   * Returns the Stripe publishable key so the frontend can call loadStripe().
+   * Falls back to the hard-coded test key when the env var is not set.
+   */
+  getPublishableKey: publicProcedure.query(() => {
+    const key =
+      process.env["NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"] ?? STRIPE_PUBLISHABLE_KEY;
+    return { publishableKey: key };
+  }),
+
+  /**
    * payment.createDeposit — authenticated
    *
-   * Creates a Stripe Checkout Session for the requesting user.
+   * Creates a Stripe PaymentIntent for the requesting user and returns the
+   * client_secret needed by the Stripe.js Payment Element on the frontend.
    * Supports preset amounts ($10 / $25 / $50) and any custom amount.
    * Min: $1.00 (100 cents). Max: $1,000.00 (100,000 cents).
    *
-   * Returns { url } — the hosted Stripe Checkout URL to redirect the guest to.
-   * Balance is only credited after the checkout.session.completed webhook fires
-   * (see POST /api/webhooks/stripe) — never trust the client-side success redirect.
+   * Balance is only credited after the payment_intent.succeeded webhook fires
+   * (see POST /api/webhooks/stripe) — never trust the client-side confirmation alone.
    */
   createDeposit: protectedProcedure
     .input(
@@ -46,20 +63,21 @@ export const paymentRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx;
 
-      let url: string;
+      let clientSecret: string;
       try {
-        url = await createDepositSession(userId, input.amountCents);
+        ({ clientSecret } = await createPaymentIntent(
+          input.amountCents,
+          userId
+        ));
       } catch (err) {
-        // STRIPE_SECRET_KEY missing, Stripe API error, etc.
-        console.error("[payment.createDeposit] Failed to create session:", err);
+        console.error("[payment.createDeposit] Failed to create PaymentIntent:", err);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message:
-            "Failed to create deposit session. Please try again.",
+          message: "Failed to create payment session. Please try again.",
           cause: err,
         });
       }
 
-      return { url };
+      return { clientSecret };
     }),
 });
