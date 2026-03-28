@@ -13,7 +13,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { cn, formatDollars, formatShares, outcomeColor } from "@/lib/utils";
 import { computePreview } from "@/lib/lmsr";
-import { trpc } from "@/lib/trpc";
+import { api } from "@/lib/api";
 import type { OutcomeWithPrice } from "@/lib/api-types";
 
 interface BuyFormProps {
@@ -67,8 +67,18 @@ export function BuyForm({
   const selectedOutcome = outcomes.find((o) => o.id === selectedOutcomeId);
   const selectedIndex = outcomes.findIndex((o) => o.id === selectedOutcomeId);
 
-  const buyMutation = trpc.market.buy.useMutation({
-    onSuccess: (result) => {
+  const [isBuying, setIsBuying] = useState(false);
+
+  const handleConfirm = useCallback(() => {
+    if (!selectedOutcomeId || amountError || isBuying) return;
+    setError(null);
+    setStep("confirm");
+    setIsBuying(true);
+    api.market.buy({
+      marketId,
+      outcomeId: selectedOutcomeId,
+      dollarAmountCents,
+    }).then((result: any) => {
       setStep("success");
       if (selectedOutcome) {
         onSuccess?.({
@@ -77,23 +87,13 @@ export function BuyForm({
           costCents: dollarAmountCents,
         });
       }
-    },
-    onError: (err) => {
+    }).catch((err: Error) => {
       setError(err.message);
       setStep("amount");
-    },
-  });
-
-  const handleConfirm = useCallback(() => {
-    if (!selectedOutcomeId || amountError) return;
-    setError(null);
-    setStep("confirm");
-    buyMutation.mutate({
-      marketId,
-      outcomeId: selectedOutcomeId,
-      dollarAmountCents,
+    }).finally(() => {
+      setIsBuying(false);
     });
-  }, [selectedOutcomeId, amountError, dollarAmountCents, marketId, buyMutation]);
+  }, [selectedOutcomeId, amountError, isBuying, dollarAmountCents, marketId, selectedOutcome, onSuccess]);
 
   // -------------------------------------------------------------------------
   // Render: step = "select"
