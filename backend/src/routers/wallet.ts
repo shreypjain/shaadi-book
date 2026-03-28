@@ -62,7 +62,7 @@ export const walletRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const txs = await prisma.transaction.findMany({
-        where: { userId: ctx.userId },
+        where: { userId: ctx.userId, type: { not: "STRIPE_FEE" } },
         orderBy: { createdAt: "desc" },
         take: input.limit,
         select: {

@@ -122,10 +122,8 @@ export async function handlePaymentIntentSucceeded(
     return;
   }
 
-  // Credit user balance + record Stripe fee atomically
+  // Credit user balance (house eats the Stripe fee)
   const amountDollars = new Decimal(amountCents).div(100);
-  const stripeFeeCents = estimateStripeFee(amountCents);
-  const stripeFeeDollars = new Decimal(stripeFeeCents).div(100);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (prisma.$transaction as any)(async (tx: any) => {
@@ -140,7 +138,7 @@ export async function handlePaymentIntentSucceeded(
       depositAt.toISOString()
     );
 
-    // 1. DEPOSIT — credit user the full gross amount
+    // DEPOSIT — credit user the full amount (house absorbs Stripe fee)
     await tx.transaction.create({
       data: {
         userId,
@@ -152,30 +150,6 @@ export async function handlePaymentIntentSucceeded(
         txHash: depositHash,
         stripeSessionId: paymentIntentId,
         createdAt: depositAt,
-      },
-    });
-
-    // 2. STRIPE_FEE — record processing cost absorbed by charity pool
-    const feeAt = new Date();
-    const feeHash = computeHash(
-      depositHash,
-      "STRIPE_FEE",
-      stripeFeeDollars.toFixed(6),
-      userId,
-      feeAt.toISOString()
-    );
-
-    await tx.transaction.create({
-      data: {
-        userId,
-        debitAccount: "charity_pool",
-        creditAccount: "stripe_processor",
-        type: "STRIPE_FEE",
-        amount: stripeFeeDollars,
-        prevHash: depositHash,
-        txHash: feeHash,
-        stripeSessionId: paymentIntentId,
-        createdAt: feeAt,
       },
     });
   });
