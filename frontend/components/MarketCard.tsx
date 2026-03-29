@@ -44,47 +44,47 @@ export function MarketCard({ market, livePrices, lastPurchaseAt }: MarketCardPro
     <Link
       href={`/markets/${market.id}`}
       className={cn(
-        "block rounded-xl border bg-ivory-card shadow-card",
-        "hover:shadow-card-hover hover:-translate-y-px active:scale-[0.99] transition-all duration-200",
-        "p-4 sm:p-5",
+        "block rounded-2xl border bg-white/80 backdrop-blur-sm",
+        "shadow-[0_2px_16px_rgba(139,109,71,0.06)]",
+        "hover:shadow-[0_4px_24px_rgba(139,109,71,0.10)] hover:-translate-y-0.5",
+        "active:scale-[0.99] transition-all duration-200",
+        "px-6 py-5",
         isResolved && "opacity-75",
-        "border-[rgba(184,134,11,0.12)]"
+        "border-[rgba(184,134,11,0.08)]"
       )}
     >
       {/* Header */}
-      <div className="flex items-start justify-between gap-2 mb-3">
-        <h3 className="font-serif text-base font-semibold text-charcoal leading-snug flex-1">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <h3 className="font-serif text-xl font-semibold text-[#2C2C2C] leading-snug flex-1">
           {market.question}
         </h3>
         <div className="flex flex-col items-end gap-1 shrink-0">
           {market.status === "ACTIVE" && !showNew && !showLowActivity && (
-            <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 bg-[#fdf5f6] text-[#722F37] text-xs font-medium">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#722F37]/50 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#722F37]" />
+            <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 bg-[#FAF7F2] border border-[#D4C5A9]/30 text-[#8B7355] text-[10px] font-sans font-medium">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#B8860B]/50 opacity-75" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#B8860B]" />
               </span>
               Live
             </span>
           )}
           {showNew && (
-            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 bg-gold-pale text-gold text-xs font-semibold uppercase tracking-wide">
-              <span className="h-1.5 w-1.5 rounded-full bg-gold" />
+            <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 bg-[#FAF7F2] border border-[#D4C5A9]/30 text-[#B8860B] text-[10px] font-sans font-medium uppercase tracking-wide">
               New
             </span>
           )}
           {showLowActivity && (
-            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 bg-[#f5f5f5] text-warmGray text-xs font-medium">
-              <span className="h-1.5 w-1.5 rounded-full bg-warmGray/40" />
+            <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 bg-[#FAF7F2] border border-[#D4C5A9]/30 text-[#8B7355] text-[10px] font-sans font-medium">
               Low activity
             </span>
           )}
           {isResolved && (
-            <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-gold-pale text-gold text-xs font-semibold">
+            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 bg-[#FAF7F2] border border-[#D4C5A9]/30 text-[#8B7355] text-[10px] font-sans font-medium">
               Resolved
             </span>
           )}
           {isPaused && (
-            <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-[#f5f5f5] text-warmGray text-xs font-semibold">
+            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 bg-[#FAF7F2] border border-[#D4C5A9]/30 text-[#8B7355] text-[10px] font-sans font-medium">
               Paused
             </span>
           )}
@@ -92,10 +92,10 @@ export function MarketCard({ market, livePrices, lastPurchaseAt }: MarketCardPro
       </div>
 
       {/* Tag pills */}
-      <MarketTags market={market} className="mb-3" />
+      <MarketTags market={market} className="mb-4" />
 
       {/* Probability bars */}
-      <div className="flex flex-col gap-2 mb-3">
+      <div className="flex flex-col gap-3 mb-4">
         {market.outcomes.map((outcome) => {
           const livePrice = livePrices?.[outcome.id];
           const displayPriceCents = livePrice !== undefined ? livePrice : outcome.priceCents;
@@ -112,11 +112,11 @@ export function MarketCard({ market, livePrices, lastPurchaseAt }: MarketCardPro
         })}
       </div>
 
-      {/* Footer: volume + time */}
-      <div className="flex items-center justify-between text-xs text-warmGray mt-1">
-        <span className="font-medium">{formatVolume(market.totalVolume)} volume</span>
+      {/* Footer: volume + time — receded supporting info */}
+      <div className="flex items-center justify-between mt-1">
+        <span className="font-sans text-xs font-normal text-[#8B7355]/60">{formatVolume(market.totalVolume)} volume</span>
         {openedAt && (
-          <span>Opened {timeSince(openedAt)}</span>
+          <span className="font-sans text-xs font-normal text-[#8B7355]/60">Opened {timeSince(openedAt)}</span>
         )}
       </div>
     </Link>

@@ -37,14 +37,14 @@ function TxRow({ tx }: { tx: TransactionItem }) {
   const isPositive = tx.amountCents >= 0;
 
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-[#f0ece7] last:border-0">
+    <div className="flex items-center gap-3 py-3 border-b border-[#EDE8E0] last:border-0">
       {/* Icon */}
       <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${iconColor}`}>
         {meta.icon}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-[#1a1a2e]">{meta.label}</p>
-        <p className="text-xs text-[#8a8a9a]">
+        <p className="font-sans text-sm font-medium text-charcoal">{meta.label}</p>
+        <p className="font-sans text-xs text-[#8B7355]/60">
           {new Date(tx.createdAt).toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",
@@ -54,8 +54,8 @@ function TxRow({ tx }: { tx: TransactionItem }) {
         </p>
       </div>
       <p
-        className={`text-sm font-bold tabular-nums flex-shrink-0
-          ${isPositive ? "text-emerald-600" : "text-[#4a4a5a]"}`}
+        className={`font-sans text-sm font-semibold tabular-nums flex-shrink-0
+          ${isPositive ? "text-emerald-600" : "text-warmGray"}`}
       >
         {isPositive ? "+" : ""}
         {formatDollars(tx.amountCents)}
@@ -136,13 +136,13 @@ function WalletPage() {
       )}
 
       {/* Header */}
-      <div className="bg-white border-b border-[#e8e4df] px-4 pt-12 pb-2">
-        <h1 className="text-2xl font-bold text-[#1a1a2e] tracking-tight">My Wallet</h1>
+      <div className="bg-ivory/95 backdrop-blur border-b border-[rgba(184,134,11,0.12)] px-4 pt-12 pb-2">
+        <h1 className="font-serif text-2xl font-semibold text-charcoal tracking-tight">My Wallet</h1>
       </div>
 
       <div className="max-w-lg mx-auto px-4 pt-2">
         {/* Balance card */}
-        <div className="bg-white rounded-xl shadow-card border border-[#e8e4df] mt-4 px-6">
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-[0_2px_16px_rgba(139,109,71,0.06)] border border-[rgba(184,134,11,0.08)] mt-4 px-6">
           <BalanceDisplay
             balanceCents={balanceCents}
             country={storedUser?.country}
@@ -154,8 +154,8 @@ function WalletPage() {
             <DepositButton onSuccess={handleDepositSuccess} />
             <button
               onClick={() => setShowWithdrawal((v) => !v)}
-              className="flex-1 rounded-xl border border-[#e8e4df] px-5 py-3
-                         text-[#1a1a2e] font-medium text-sm hover:bg-cream-100
+              className="flex-1 rounded-xl border border-[rgba(184,134,11,0.20)] px-5 py-3
+                         text-charcoal font-sans font-medium text-sm hover:bg-[#EDE8E0]/40
                          active:scale-95 transition-all"
             >
               Withdraw
@@ -165,8 +165,8 @@ function WalletPage() {
 
         {/* Withdrawal form */}
         {showWithdrawal && (
-          <div className="bg-white rounded-xl shadow-card border border-[#e8e4df] mt-4 p-5">
-            <h2 className="text-base font-bold text-[#1a1a2e] mb-4">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-[0_2px_16px_rgba(139,109,71,0.06)] border border-[rgba(184,134,11,0.08)] mt-4 p-6">
+            <h2 className="font-serif text-base font-semibold text-charcoal mb-4">
               Request Withdrawal
             </h2>
             <WithdrawalForm
@@ -178,8 +178,8 @@ function WalletPage() {
         )}
 
         {/* Transaction history */}
-        <div className="bg-white rounded-xl shadow-card border border-[#e8e4df] mt-4 p-5">
-          <h2 className="text-base font-bold text-[#1a1a2e] mb-3">
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-[0_2px_16px_rgba(139,109,71,0.06)] border border-[rgba(184,134,11,0.08)] mt-4 p-6">
+          <h2 className="font-serif text-base font-semibold text-charcoal mb-3">
             Transaction History
           </h2>
 
