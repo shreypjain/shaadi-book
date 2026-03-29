@@ -553,11 +553,11 @@ test.describe("Authenticated Routes (injected JWT)", () => {
     // Should stay on /bets (not redirect to /login)
     await expect(page).not.toHaveURL(/\/login/, { timeout: 5000 });
     // Page should load without crashing.
-    // Use 'load' (resources fetched) rather than 'networkidle' (all XHR quiet)
-    // to avoid flakiness caused by long-polling or background requests.
+    // Wait for a visible element instead of networkidle to avoid flakiness
+    // caused by long-polling or background requests.
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
-    await page.waitForLoadState("load");
+    await expect(page.locator("h1, main").first()).toBeVisible({ timeout: 10_000 });
     expect(errors).toHaveLength(0);
   });
 

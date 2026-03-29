@@ -33,8 +33,8 @@ const DB_URL =
 // Input validation — applied before any value reaches a SQL statement
 // ---------------------------------------------------------------------------
 
-/** E.164 phone: + followed by 1–15 digits */
-const PHONE_RE = /^\+\d{1,15}$/;
+/** E.164 phone: + followed by one or more digits */
+const PHONE_RE = /^\+\d+$/;
 
 /** Standard UUID v4 format */
 const UUID_RE =
