@@ -10,10 +10,11 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 
 const NAV_LINKS = [
-  { href: "/admin",             label: "Dashboard" },
-  { href: "/admin/markets",     label: "Markets" },
-  { href: "/admin/withdrawals", label: "Withdrawals" },
-  { href: "/admin/users",       label: "Users" },
+  { href: "/admin",               label: "Dashboard" },
+  { href: "/admin/markets",       label: "Markets" },
+  { href: "/admin/suggestions",   label: "Suggestions" },
+  { href: "/admin/withdrawals",   label: "Withdrawals" },
+  { href: "/admin/users",         label: "Users" },
 ];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {

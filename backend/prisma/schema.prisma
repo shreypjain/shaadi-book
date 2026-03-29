@@ -61,6 +61,12 @@ enum WithdrawalStatus {
   COMPLETED
 }
 
+enum SuggestionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -82,6 +88,7 @@ model User {
   adminAuditLogs      AdminAuditLog[]     @relation("AdminAuditAdmin")
   withdrawalRequests  WithdrawalRequest[] @relation("WithdrawalUser")
   withdrawalApprovals WithdrawalRequest[] @relation("WithdrawalAdmin")
+  marketSuggestions   MarketSuggestion[]  @relation("SuggestionUser")
 
   @@map("users")
 }
@@ -242,4 +249,26 @@ model WithdrawalRequest {
   admin User? @relation("WithdrawalAdmin", fields: [adminId], references: [id])
 
   @@map("withdrawal_requests")
+}
+
+/// A guest-submitted suggestion for a new prediction market question.
+model MarketSuggestion {
+  id           String           @id @default(uuid())
+  userId       String           @map("user_id")
+  /// The proposed market question text.
+  questionText String           @map("question_text")
+  /// JSON array of outcome strings (e.g. ["Yes", "No"]).
+  outcomes     Json
+  /// Optional context or explanation for the suggestion.
+  description  String?
+  status       SuggestionStatus @default(PENDING)
+  /// Admin notes when approving or rejecting.
+  adminNotes   String?          @map("admin_notes")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation("SuggestionUser", fields: [userId], references: [id])
+
+  @@map("market_suggestions")
 }

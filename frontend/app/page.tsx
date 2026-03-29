@@ -11,8 +11,10 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { MarketCard } from "@/components/MarketCard";
+import { SuggestMarketModal } from "@/components/SuggestMarketModal";
 import { api } from "@/lib/api";
 import { ensureConnected, subscribeToFeed, getSocket } from "@/lib/socket";
+import { getStoredUser } from "@/lib/auth";
 import type { WsPriceUpdatePayload, WsMarketEventPayload } from "@/lib/api-types";
 import { EVENT_TAGS, FAMILY_SIDES, type EventTag, type FamilySide } from "@/lib/api-types";
 
@@ -27,6 +29,8 @@ export default function MarketFeedPage() {
   const [markets, setMarkets] = useState<any[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [showSuggestModal, setShowSuggestModal] = useState(false);
+  const isLoggedIn = typeof window !== "undefined" ? !!getStoredUser() : false;
 
   // Active filter state
   const [filterMode, setFilterMode] = useState<FilterMode>("event");
@@ -174,6 +178,11 @@ export default function MarketFeedPage() {
   // -------------------------------------------------------------------------
 
   return (
+    <>
+    <SuggestMarketModal
+      isOpen={showSuggestModal}
+      onClose={() => setShowSuggestModal(false)}
+    />
     <div
       className="min-h-screen"
       onTouchStart={handleTouchStart}
@@ -201,6 +210,18 @@ export default function MarketFeedPage() {
             <h1 className="text-xl font-bold text-[#1a1a2e] tracking-tight">Shaadi Book</h1>
             <p className="text-xs text-[#8a8a9a]">Parsh &amp; Spoorthi &bull; Udaipur</p>
           </div>
+          <div className="flex items-center gap-2">
+            {isLoggedIn && (
+              <button
+                onClick={() => setShowSuggestModal(true)}
+                className="flex items-center gap-1.5 rounded-lg border border-[#c8a45c] bg-[#faf7f0] px-3 py-1.5 text-xs font-semibold text-[#8a6d30] hover:bg-[#f5f0e0] transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Suggest
+              </button>
+            )}
           <button
             onClick={() => void refetch()}
             className="p-2 rounded-lg hover:bg-[#e8e4df]/60 transition-colors"
@@ -222,6 +243,7 @@ export default function MarketFeedPage() {
               />
             </svg>
           </button>
+          </div>
         </div>
 
         {/* Filter tabs */}
@@ -389,5 +411,6 @@ export default function MarketFeedPage() {
         )}
       </main>
     </div>
+    </>
   );
 }
