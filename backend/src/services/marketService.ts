@@ -23,7 +23,6 @@ import { allPrices, adaptiveB } from "./lmsr.js";
 
 const GENESIS_HASH = "0".repeat(64);
 const B_FLOOR_DEFAULT = 20;
-const CHARITY_RATE = 0.2; // 20% of gross payout
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -282,14 +281,10 @@ export async function openMarket(
  *   1. Set status = RESOLVED, winningOutcomeId, resolvedAt.
  *   2. Mark winning outcome isWinner = true.
  *   3. For each position on the winning outcome:
- *        gross  = shares × $1.00
- *        charity = gross × 20%
- *        net    = gross × 80%
+ *        payout = shares × $1.00  (full $1.00 per share — charity fee collected at withdrawal)
  *        INSERT PAYOUT (credit user, debit house_amm)
- *        INSERT CHARITY_FEE (credit charity_pool, debit house_amm)
- *   4. Reconciliation check: net + charity = gross per winner.
- *   5. Append hash chain.
- *   6. Log to AdminAuditLog.
+ *   4. Append hash chain.
+ *   5. Log to AdminAuditLog.
  */
 export async function resolveMarket(
   adminId: string,
@@ -344,73 +339,35 @@ export async function resolveMarket(
       // 4. Seed hash chain
       let prevHash = await getLatestTxHash(tx);
 
-      // 5. Payout loop
+      // 5. Payout loop — full gross payout ($1.00/share); charity fee collected at withdrawal
       let totalGross = 0;
-      let totalNet = 0;
-      let totalCharity = 0;
 
       for (const position of winningPositions) {
         const shares = Number(position.shares);
         // Round to 6 dp to match DB precision
         const gross = parseFloat(shares.toFixed(6));
-        const charity = parseFloat((gross * CHARITY_RATE).toFixed(6));
-        const net = parseFloat((gross - charity).toFixed(6));
 
         totalGross = parseFloat((totalGross + gross).toFixed(6));
-        totalNet = parseFloat((totalNet + net).toFixed(6));
-        totalCharity = parseFloat((totalCharity + charity).toFixed(6));
 
-        // PAYOUT transaction
+        // PAYOUT transaction — full $1.00 per share, no charity deduction
         const payoutAt = new Date();
-        const payoutHash = computeTxHash(prevHash, "PAYOUT", net, position.userId, payoutAt);
+        const payoutHash = computeTxHash(prevHash, "PAYOUT", gross, position.userId, payoutAt);
         await tx.transaction.create({
           data: {
             userId: position.userId,
             debitAccount: "house_amm",
             creditAccount: `user:${position.userId}`,
             type: "PAYOUT",
-            amount: net,
+            amount: gross,
             prevHash,
             txHash: payoutHash,
             createdAt: payoutAt,
           },
         });
         prevHash = payoutHash;
-
-        // CHARITY_FEE transaction
-        const charityAt = new Date();
-        const charityHash = computeTxHash(
-          prevHash,
-          "CHARITY_FEE",
-          charity,
-          position.userId,
-          charityAt
-        );
-        await tx.transaction.create({
-          data: {
-            userId: position.userId,
-            debitAccount: "house_amm",
-            creditAccount: "charity_pool",
-            type: "CHARITY_FEE",
-            amount: charity,
-            prevHash,
-            txHash: charityHash,
-            createdAt: charityAt,
-          },
-        });
-        prevHash = charityHash;
       }
 
-      // 6. Reconciliation invariant — operation-scoped
-      const diff = Math.abs(totalNet + totalCharity - totalGross);
-      if (diff > 0.001) {
-        throw new Error(
-          `Reconciliation invariant violated in resolveMarket: ` +
-            `net(${totalNet}) + charity(${totalCharity}) = ${totalNet + totalCharity} ≠ gross(${totalGross})`
-        );
-      }
-
-      // 7. Audit log
+      // 6. Audit log
       await tx.adminAuditLog.create({
         data: {
           adminId,
@@ -419,8 +376,6 @@ export async function resolveMarket(
           metadata: {
             winningOutcomeId,
             totalGrossPayout: totalGross,
-            totalNetPayout: totalNet,
-            totalCharityFee: totalCharity,
             payoutsCount: winningPositions.length,
           },
           ipAddress: opts?.ipAddress ?? "0.0.0.0",

@@ -29,17 +29,10 @@ import { computeHash } from "./hashChain.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Coerce any Postgres/Prisma numeric return to a plain JS number. */
-export function toNumber(val: unknown): number {
-  if (val === null || val === undefined) return 0;
-  if (typeof val === "number") return val;
-  if (typeof val === "bigint") return Number(val);
-  if (typeof val === "string") return parseFloat(val) || 0;
-  if (typeof val === "object" && "toNumber" in val) {
-    return (val as { toNumber(): number }).toNumber();
-  }
-  return parseFloat(String(val)) || 0;
-}
+// Import the shared coerce helper (also re-exported so existing tests that
+// import toNumber directly from purchaseEngine continue to work).
+import { toNumber as _toNumber } from "../utils/coerce.js";
+export const toNumber = _toNumber;
 
 // ---------------------------------------------------------------------------
 // Public types

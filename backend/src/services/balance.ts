@@ -9,6 +9,7 @@
  */
 
 import { prisma } from "../db.js";
+import { toNumber } from "../utils/coerce.js";
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -24,19 +25,6 @@ type QueryClient = {
     ...values: unknown[]
   ): Promise<T>;
 };
-
-/** Coerce any Prisma/postgres numeric return value to a JS number. */
-function toNumber(val: unknown): number {
-  if (val === null || val === undefined) return 0;
-  if (typeof val === "number") return val;
-  if (typeof val === "bigint") return Number(val);
-  if (typeof val === "string") return parseFloat(val) || 0;
-  // Decimal objects from decimal.js / @prisma/client
-  if (typeof val === "object" && "toNumber" in val) {
-    return (val as { toNumber(): number }).toNumber();
-  }
-  return parseFloat(String(val)) || 0;
-}
 
 // ---------------------------------------------------------------------------
 // Public API

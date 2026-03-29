@@ -15,22 +15,7 @@
 import { Decimal } from "decimal.js";
 import { prisma } from "../db.js";
 import { computeHash } from "./hashChain.js";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Coerce any Postgres/Prisma numeric return to a plain JS number. */
-function toNumber(val: unknown): number {
-  if (val === null || val === undefined) return 0;
-  if (typeof val === "number") return val;
-  if (typeof val === "bigint") return Number(val);
-  if (typeof val === "string") return parseFloat(val) || 0;
-  if (typeof val === "object" && "toNumber" in val) {
-    return (val as { toNumber(): number }).toNumber();
-  }
-  return parseFloat(String(val)) || 0;
-}
+import { toNumber } from "../utils/coerce.js";
 
 /**
  * Conservation invariant (PRD §7.4) — same formula as purchaseEngine.
@@ -198,11 +183,17 @@ export async function requestWithdrawal(
  *
  * Atomically:
  *  1. Validates request is PENDING
- *  2. Re-checks user balance inside the transaction
- *  3. INSERTs a WITHDRAWAL transaction (debits user balance)
- *  4. Updates withdrawal request status to APPROVED
- *  5. Creates admin audit log entry
- *  6. Runs reconciliation invariant check
+ *  2. Computes outstanding charity obligation for the user
+ *  3. Re-checks user balance inside the transaction (must cover withdrawal + charity)
+ *  4. If charity is owed: INSERTs a CHARITY_FEE transaction (debit user → charity_pool)
+ *  5. INSERTs a WITHDRAWAL transaction (debits user balance)
+ *  6. Threads hash chain through CHARITY_FEE → WITHDRAWAL
+ *  7. Updates withdrawal request status to APPROVED
+ *  8. Creates admin audit log entry
+ *  9. Runs reconciliation invariant check
+ *
+ * Charity model: 20% of lifetime profit withheld at withdrawal, not at market
+ * resolution.  Lifetime profit = balance + pastWithdrawals + pastCharityPaid − deposits.
  *
  * @param adminId   - UUID of the approving admin
  * @param requestId - UUID of the WithdrawalRequest row
@@ -244,49 +235,116 @@ export async function approveWithdrawal(
       const userAccount = `user:${userId}`;
 
       // ----------------------------------------------------------------------
-      // 2. Definitive balance check inside transaction
+      // 2. Compute outstanding charity obligation (charity at withdrawal model)
       // ----------------------------------------------------------------------
-      const balanceResult = (await tx.$queryRaw`
+      const charityRows = (await tx.$queryRaw`
         SELECT
           COALESCE(
             SUM(CASE WHEN credit_account = ${userAccount} THEN amount ELSE 0 END)
             - SUM(CASE WHEN debit_account  = ${userAccount} THEN amount ELSE 0 END),
             0
-          ) AS balance
+          ) AS balance,
+          COALESCE(
+            SUM(CASE WHEN type = 'WITHDRAWAL' AND debit_account = ${userAccount} THEN amount ELSE 0 END),
+            0
+          ) AS past_withdrawals,
+          COALESCE(
+            SUM(CASE WHEN type = 'CHARITY_FEE' AND debit_account = ${userAccount} THEN amount ELSE 0 END),
+            0
+          ) AS past_charity_paid,
+          COALESCE(
+            SUM(CASE WHEN type = 'DEPOSIT' AND credit_account = ${userAccount} THEN amount ELSE 0 END),
+            0
+          ) AS total_deposits
         FROM transactions
-      `) as Array<{ balance: unknown }>;
+      `) as Array<{
+        balance: unknown;
+        past_withdrawals: unknown;
+        past_charity_paid: unknown;
+        total_deposits: unknown;
+      }>;
 
-      const balanceDollars = toNumber(balanceResult[0]?.balance ?? 0);
+      const charityRow = charityRows[0];
+      const balanceDollars = toNumber(charityRow?.balance ?? 0);
+      const pastWithdrawalsDollars = toNumber(charityRow?.past_withdrawals ?? 0);
+      const pastCharityPaidDollars = toNumber(charityRow?.past_charity_paid ?? 0);
+      const totalDepositsDollars = toNumber(charityRow?.total_deposits ?? 0);
 
-      if (balanceDollars < amountDollars) {
+      const profitDollars =
+        balanceDollars +
+        pastWithdrawalsDollars +
+        pastCharityPaidDollars -
+        totalDepositsDollars;
+
+      const charityOwedDollars = Math.max(0, profitDollars * 0.2);
+      const charityRemainingDollars = Math.max(
+        0,
+        charityOwedDollars - pastCharityPaidDollars
+      );
+
+      // ----------------------------------------------------------------------
+      // 3. Definitive balance check: must cover withdrawal + charity remaining
+      // ----------------------------------------------------------------------
+      const totalRequired = amountDollars + charityRemainingDollars;
+
+      if (balanceDollars < totalRequired) {
         throw new WithdrawalError(
           "INSUFFICIENT_BALANCE",
-          `Insufficient balance at approval: have $${balanceDollars.toFixed(2)}, need $${amountDollars.toFixed(2)}`
+          `Insufficient balance at approval: have $${balanceDollars.toFixed(2)}, need $${totalRequired.toFixed(2)} (withdrawal $${amountDollars.toFixed(2)} + charity $${charityRemainingDollars.toFixed(2)})`
         );
       }
 
       // ----------------------------------------------------------------------
-      // 3. Hash chain: get prevHash, compute txHash
+      // 4. Seed hash chain from most recent transaction
       // ----------------------------------------------------------------------
       const lastTx = (await tx.transaction.findFirst({
         orderBy: { createdAt: "desc" },
         select: { txHash: true },
       })) as { txHash: string } | null;
 
-      const prevHash = lastTx?.txHash ?? "0".repeat(64);
-      const now = new Date();
-      const txHash = computeHash(
+      let prevHash = lastTx?.txHash ?? "0".repeat(64);
+      let charityTxId: string | null = null;
+
+      // ----------------------------------------------------------------------
+      // 5. INSERT CHARITY_FEE if charity is owed (debit user → charity_pool)
+      // ----------------------------------------------------------------------
+      if (charityRemainingDollars > 0) {
+        const charityAt = new Date();
+        const charityHash = computeHash(
+          prevHash,
+          "CHARITY_FEE",
+          charityRemainingDollars.toFixed(6),
+          userId,
+          charityAt.toISOString()
+        );
+        const charityTxRecord = (await tx.transaction.create({
+          data: {
+            userId,
+            debitAccount: userAccount,
+            creditAccount: "charity_pool",
+            type: "CHARITY_FEE",
+            amount: new Decimal(charityRemainingDollars),
+            prevHash,
+            txHash: charityHash,
+            createdAt: charityAt,
+          },
+        })) as { id: string };
+        charityTxId = charityTxRecord.id;
+        prevHash = charityHash;
+      }
+
+      // ----------------------------------------------------------------------
+      // 6. INSERT WITHDRAWAL transaction (debits user balance)
+      //    Double-entry: debit user account, credit withdrawal_paid
+      // ----------------------------------------------------------------------
+      const withdrawalAt = new Date();
+      const withdrawalHash = computeHash(
         prevHash,
         "WITHDRAWAL",
         amountDollars.toFixed(6),
         userId,
-        now.toISOString()
+        withdrawalAt.toISOString()
       );
-
-      // ----------------------------------------------------------------------
-      // 4. INSERT WITHDRAWAL transaction (debits user balance)
-      //    Double-entry: debit user account, credit withdrawal_paid
-      // ----------------------------------------------------------------------
       const txRecord = (await tx.transaction.create({
         data: {
           userId,
@@ -295,13 +353,13 @@ export async function approveWithdrawal(
           type: "WITHDRAWAL",
           amount: new Decimal(amountDollars),
           prevHash,
-          txHash,
-          createdAt: now,
+          txHash: withdrawalHash,
+          createdAt: withdrawalAt,
         },
       })) as { id: string };
 
       // ----------------------------------------------------------------------
-      // 5. Update withdrawal request to APPROVED
+      // 7. Update withdrawal request to APPROVED
       // ----------------------------------------------------------------------
       await tx.withdrawalRequest.update({
         where: { id: requestId },
@@ -309,7 +367,7 @@ export async function approveWithdrawal(
       });
 
       // ----------------------------------------------------------------------
-      // 6. Admin audit log
+      // 8. Admin audit log
       // ----------------------------------------------------------------------
       await tx.adminAuditLog.create({
         data: {
@@ -319,6 +377,8 @@ export async function approveWithdrawal(
           metadata: {
             userId,
             amountDollars,
+            charityWithheldDollars: charityRemainingDollars,
+            charityTransactionId: charityTxId,
             transactionId: txRecord.id,
           },
           ipAddress,
@@ -326,7 +386,7 @@ export async function approveWithdrawal(
       });
 
       // ----------------------------------------------------------------------
-      // 7. Reconciliation invariant check — ROLLBACK on failure
+      // 9. Reconciliation invariant check — ROLLBACK on failure
       // ----------------------------------------------------------------------
       await runReconciliation(tx);
 
