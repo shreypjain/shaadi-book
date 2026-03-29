@@ -51,7 +51,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#1e3a5f",
+  themeColor: "#FAF7F2",
 };
 
 export default function RootLayout({
@@ -61,7 +61,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-cream-100 text-[#1a1a2e] font-sans font-light">
+      <body className="min-h-screen bg-ivory text-charcoal font-sans">
         <Providers>
           {/* Auth-aware user menu — hidden on /login */}
           <UserMenu />
