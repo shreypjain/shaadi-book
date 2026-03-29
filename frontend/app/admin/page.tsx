@@ -98,7 +98,7 @@ export default function AdminDashboardPage() {
         <DashboardStat
           label="Net Charity"
           value={data ? formatUSD(data.netCharityAmount) : "—"}
-          subtext={data ? `gross ${formatUSD(data.grossCharityPool)} − fees ${formatUSD(data.stripeFees)}` : "20% of resolved payouts"}
+          subtext={data ? `gross ${formatUSD(data.grossCharityPool)} − fees ${formatUSD(data.stripeFees)}` : "collected via app"}
           accent="text-emerald-600"
         />
         <DashboardStat

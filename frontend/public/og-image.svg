@@ -24,6 +24,6 @@
   <text x="750" y="455" font-family="system-ui, sans-serif" font-size="16" font-weight="600" fill="#1e3a5f">Yes 62¢</text>
   <text x="750" y="478" font-family="system-ui, sans-serif" font-size="16" font-weight="400" fill="#8a8a9a">No 38¢</text>
 
-  <!-- Charity badge -->
-  <text x="600" y="550" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18" fill="#059669">20% of winnings go to charity</text>
+  <!-- Tagline -->
+  <text x="600" y="550" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18" fill="#059669">Real stakes, real fun, for Parsh &amp; Spoorthi</text>
 </svg>

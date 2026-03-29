@@ -19,7 +19,6 @@ import Stripe from "stripe";
 import { router, protectedProcedure } from "../trpc.js";
 import { prisma } from "../db.js";
 import { getUserBalance } from "../services/balance.js";
-import { toNumber } from "../utils/coerce.js";
 
 // ---------------------------------------------------------------------------
 // Stripe client (lazy — fails gracefully if key not configured)
@@ -195,97 +194,6 @@ export const walletRouter = router({
         createdAt: request.createdAt.toISOString(),
       };
     }),
-
-  /**
-   * wallet.charityInfo
-   *
-   * Computes the user's lifetime profit and outstanding charity obligation.
-   *
-   * Charity model: 20% of lifetime profit is owed to charity and withheld at
-   * withdrawal time (NOT at market resolution).  Users see a real-time
-   * breakdown so they know how much is freely withdrawable.
-   *
-   * Formula:
-   *   profitDollars = balance + pastWithdrawals + pastCharityPaid − totalDeposits
-   *   charityOwed   = max(0, profit × 0.20)
-   *   charityRemaining = max(0, charityOwed − charityPaid)
-   *   netWithdrawable  = max(0, balance − charityRemaining)
-   */
-  charityInfo: protectedProcedure.query(async ({ ctx }) => {
-    const userAccount = `user:${ctx.userId}`;
-
-    const rows = await prisma.$queryRaw<
-      Array<{
-        balance: unknown;
-        past_withdrawals: unknown;
-        past_charity_paid: unknown;
-        total_deposits: unknown;
-      }>
-    >`
-      SELECT
-        COALESCE(
-          SUM(CASE WHEN credit_account = ${userAccount} THEN amount ELSE 0 END)
-          - SUM(CASE WHEN debit_account  = ${userAccount} THEN amount ELSE 0 END),
-          0
-        ) AS balance,
-        COALESCE(
-          SUM(CASE WHEN type = 'WITHDRAWAL' AND debit_account = ${userAccount} THEN amount ELSE 0 END),
-          0
-        ) AS past_withdrawals,
-        COALESCE(
-          SUM(CASE WHEN type = 'CHARITY_FEE' AND debit_account = ${userAccount} THEN amount ELSE 0 END),
-          0
-        ) AS past_charity_paid,
-        COALESCE(
-          SUM(CASE WHEN type = 'DEPOSIT' AND credit_account = ${userAccount} THEN amount ELSE 0 END),
-          0
-        ) AS total_deposits
-      FROM transactions
-    `;
-
-    const row = rows[0];
-    if (!row) {
-      return {
-        profitCents: 0,
-        charityOwedCents: 0,
-        charityPaidCents: 0,
-        charityRemainingCents: 0,
-        netWithdrawableCents: 0,
-      };
-    }
-
-    const balanceDollars = toNumber(row.balance);
-    const pastWithdrawalsDollars = toNumber(row.past_withdrawals);
-    const pastCharityPaidDollars = toNumber(row.past_charity_paid);
-    const totalDepositsDollars = toNumber(row.total_deposits);
-
-    // Lifetime profit = how much the user gained from the system beyond their deposits.
-    // Equivalent to: totalPayouts - totalPurchases
-    const profitDollars =
-      balanceDollars +
-      pastWithdrawalsDollars +
-      pastCharityPaidDollars -
-      totalDepositsDollars;
-
-    const charityOwedDollars = Math.max(0, profitDollars * 0.2);
-    const charityPaidDollars = pastCharityPaidDollars;
-    const charityRemainingDollars = Math.max(
-      0,
-      charityOwedDollars - charityPaidDollars
-    );
-    const netWithdrawableDollars = Math.max(
-      0,
-      balanceDollars - charityRemainingDollars
-    );
-
-    return {
-      profitCents: Math.round(profitDollars * 100),
-      charityOwedCents: Math.round(charityOwedDollars * 100),
-      charityPaidCents: Math.round(charityPaidDollars * 100),
-      charityRemainingCents: Math.round(charityRemainingDollars * 100),
-      netWithdrawableCents: Math.round(netWithdrawableDollars * 100),
-    };
-  }),
 
   /**
    * wallet.withdrawals
