@@ -31,7 +31,16 @@ import {
 vi.mock("../../db.js", () => ({
   prisma: {
     $transaction: vi.fn(),
+    priceSnapshot: {
+      createMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
   },
+}));
+
+// Stub the priceSnapshot service so the fire-and-forget call in
+// purchaseEngine doesn't log warnings in tests.
+vi.mock("../priceSnapshot.js", () => ({
+  recordPurchaseSnapshots: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { prisma } from "../../db.js";
