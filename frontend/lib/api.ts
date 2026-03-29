@@ -200,6 +200,15 @@ export const api = {
     buy: (input: { marketId: string; outcomeId: string; dollarAmountCents: number }): Promise<any> =>
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       (_client as any).market.buy.mutate(input) as Promise<any>,
+
+    priceHistory: (input: {
+      marketId: string;
+      hours?: number;
+    }): Promise<Record<string, Array<{ priceCents: number; time: string }>>> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).market.priceHistory.query(input) as Promise<
+        Record<string, Array<{ priceCents: number; time: string }>>
+      >,
   },
 
   bets: {

@@ -24,6 +24,7 @@ import {
   price,
 } from "./lmsr.js";
 import { computeHash } from "./hashChain.js";
+import { recordPurchaseSnapshots } from "./priceSnapshot.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -225,7 +226,7 @@ export async function buyShares(
   // 2. Atomic transaction — Serializable isolation to prevent write-skew
   // -------------------------------------------------------------------------
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (prisma.$transaction as any)(
+  const result: PurchaseResult = await (prisma.$transaction as any)(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async (tx: any): Promise<PurchaseResult> => {
       // -----------------------------------------------------------------------
@@ -493,4 +494,16 @@ export async function buyShares(
       timeout: 10_000, // 10 s — plenty for the purchase path
     }
   );
+
+  // -------------------------------------------------------------------------
+  // Fire-and-forget: record price snapshots for the chart (outside the
+  // serializable transaction to keep it lean).
+  // -------------------------------------------------------------------------
+  recordPurchaseSnapshots(marketId, result.outcomeIds, result.allNewPrices).catch(
+    (err: unknown) => {
+      console.warn("[purchaseEngine] Failed to record price snapshots:", err);
+    }
+  );
+
+  return result;
 }

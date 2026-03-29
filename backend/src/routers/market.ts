@@ -228,6 +228,39 @@ export const marketRouter = router({
     }),
 
   /**
+   * market.priceHistory — public
+   *
+   * Returns price snapshots grouped by outcomeId for the requested time window.
+   * hours: 1 | 2 | 4 (up to 24 allowed by the schema validation).
+   */
+  priceHistory: publicProcedure
+    .input(
+      z.object({
+        marketId: z.string().uuid(),
+        hours: z.number().int().min(1).max(24).default(4),
+      })
+    )
+    .query(async ({ input }) => {
+      const since = new Date(Date.now() - input.hours * 60 * 60 * 1000);
+      const snapshots = await prisma.priceSnapshot.findMany({
+        where: { marketId: input.marketId, createdAt: { gte: since } },
+        orderBy: { createdAt: "asc" },
+        select: { outcomeId: true, priceCents: true, createdAt: true },
+      });
+
+      // Group by outcomeId
+      const grouped: Record<string, Array<{ priceCents: number; time: string }>> = {};
+      for (const s of snapshots) {
+        if (!grouped[s.outcomeId]) grouped[s.outcomeId] = [];
+        grouped[s.outcomeId]!.push({
+          priceCents: s.priceCents,
+          time: s.createdAt.toISOString(),
+        });
+      }
+      return grouped;
+    }),
+
+  /**
    * market.create — admin only
    */
   create: adminProcedure

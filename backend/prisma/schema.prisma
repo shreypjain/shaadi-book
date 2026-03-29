@@ -114,11 +114,12 @@ model Market {
   customTags       String[]     @default([]) @map("custom_tags")
 
   // Relations
-  createdBy      User       @relation("MarketCreatedBy", fields: [createdById], references: [id])
+  createdBy      User            @relation("MarketCreatedBy", fields: [createdById], references: [id])
   outcomes       Outcome[]
   positions      Position[]
   purchases      Purchase[]
-  winningOutcome Outcome?   @relation("MarketWinner", fields: [winningOutcomeId], references: [id])
+  winningOutcome Outcome?        @relation("MarketWinner", fields: [winningOutcomeId], references: [id])
+  priceSnapshots PriceSnapshot[]
 
   @@map("markets")
 }
@@ -135,10 +136,11 @@ model Outcome {
   isWinner   Boolean? @map("is_winner")
 
   // Relations
-  market     Market     @relation(fields: [marketId], references: [id])
-  positions  Position[]
-  purchases  Purchase[]
-  marketWins Market[]   @relation("MarketWinner")
+  market         Market          @relation(fields: [marketId], references: [id])
+  positions      Position[]
+  purchases      Purchase[]
+  marketWins     Market[]        @relation("MarketWinner")
+  priceSnapshots PriceSnapshot[]
 
   @@map("outcomes")
 }
@@ -230,6 +232,24 @@ model AdminAuditLog {
   admin User @relation("AdminAuditAdmin", fields: [adminId], references: [id])
 
   @@map("admin_audit_logs")
+}
+
+/// Periodic price snapshot for chart history. Stored per-outcome per-market.
+/// Snapshots are written after every purchase and by a 60-second background job.
+/// Rows older than 48 h are garbage-collected by the cleanup job.
+model PriceSnapshot {
+  id         String   @id @default(uuid())
+  marketId   String   @map("market_id")
+  outcomeId  String   @map("outcome_id")
+  priceCents Int      @map("price_cents")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  market  Market  @relation(fields: [marketId], references: [id])
+  outcome Outcome @relation(fields: [outcomeId], references: [id])
+
+  @@index([marketId, createdAt])
+  @@index([outcomeId, createdAt])
+  @@map("price_snapshots")
 }
 
 /// A guest's request to withdraw their balance via Venmo or Zelle.
