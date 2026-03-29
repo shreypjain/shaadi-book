@@ -20,10 +20,10 @@ export default function RulesPage() {
           {/* Gold accent underline */}
           <div className="mt-2.5 h-px w-14 mx-auto bg-[#c8a45c]" />
           <p className="mt-3 text-sm text-[#4a4a5a] font-medium">
-            A crash course in wedding prediction markets
+            A quick rundown in wedding prediction markets
           </p>
           <p className="mt-1.5 text-xs text-[#8a8a9a]">
-            No finance degree required. Vibes &amp; probability only.
+            A background in degeneracy required 
           </p>
         </div>
 
@@ -35,16 +35,16 @@ export default function RulesPage() {
         >
           <ul className="flex flex-col gap-3 mt-1">
             <RuleItem
-              text="Bet on real outcomes from the wedding — Will the baraat be late? How many outfit changes? Who cries first?"
+              text="Bet on real outcomes from the wedding — Will the baraat be late? How many outfit changes? Who (if anyone) cries first?"
             />
             <RuleItem
               text={
                 <>
-                  Each outcome has a price between{" "}
+                  Each "outcome" has a price between{" "}
                   <Highlight>1¢ and 99¢</Highlight>. That price{" "}
                   <em>is</em> the crowd&apos;s implied probability.
-                  If &quot;Yes&quot; is at 75¢, the room thinks
-                  it&apos;s a 75% chance.
+                  If &quot;Yes&quot; is at 75¢, our market thinks
+                  it has a 75% chance of being true.
                 </>
               }
             />
@@ -53,7 +53,7 @@ export default function RulesPage() {
                 <>
                   If your outcome wins, you{" "}
                   <Highlight>split the total pool</Highlight> with other
-                  winners. The fewer people on your side, the bigger your
+                  winners. The less volume being bet on your side, the bigger your
                   share. Payouts are capped at{" "}
                   <Highlight>$1.00 per share</Highlight>.
                 </>
@@ -62,8 +62,8 @@ export default function RulesPage() {
             <RuleItem
               text={
                 <>
-                  <Highlight>$200 max bet per market.</Highlight> No
-                  selling — diamond hands only. You hold till
+                  <Highlight>$200 max bet per market (to protect from shovers).</Highlight> No
+                  selling (similar in principle to no divorce). You're locked in until
                   resolution.
                 </>
               }
@@ -115,7 +115,7 @@ export default function RulesPage() {
                 <span className="font-mono font-semibold">b</span> is the
                 liquidity parameter. You pay the{" "}
                 <span className="font-semibold text-[#1a1a2e]">
-                  change in cost
+                  change in cost to acquire a stake in that outcome
                 </span>{" "}
                 — C(q_after) − C(q_before) — not a fixed price per share.
               </p>
@@ -153,7 +153,9 @@ export default function RulesPage() {
                 Yes → price jumps to <Highlight>88¢</Highlight>. Guest B
                 bets $10 on No → settles back to{" "}
                 <Highlight>78¢</Highlight>. Every buy moves the market
-                in real time.
+                in real time. These values could be correct, but we have
+                interrnal values pre-tuned for the `b` parameter to price
+                things as dramatically as we'd like.
               </p>
             </div>
 
@@ -226,7 +228,7 @@ export default function RulesPage() {
             </div>
 
             <p className="text-xs text-[#8a8a9a]">
-              tl;dr — be early, be right, print money.
+              tl;dr — be early and be right (in this case) to win big.
             </p>
 
             {/* Strategy note */}
@@ -263,7 +265,7 @@ export default function RulesPage() {
                       min(total pool / winning shares, $1.00)
                     </Highlight>
                     . If the pool is thin, you might get less than $1.00.
-                    If few people picked your side, you can make bank.
+                    If few people picked your side, we'll have to start calculating MOIC.
                     Losing shares pay $0.00.
                   </>
                 }
@@ -333,10 +335,10 @@ export default function RulesPage() {
               text="Markets are resolved by admin decree. No appeals, no arbitration, no crying (unless you bet on it)."
             />
             <RuleItem
-              text="Have fun. Don't bet your rent money. This is a wedding, not a hedge fund."
+              text="Have fun. Feel free to game the system to win back your Air India flight ticket. This is a wedding, not a hedge fund."
             />
             <RuleItem
-              text="This is for charity and entertainment. Winning feels great. Losing still helped a good cause."
+              text="This is for charity and entertainment. Winning feels like a music video. Losing still helped a good cause."
             />
           </ul>
         </SectionCard>
@@ -345,7 +347,7 @@ export default function RulesPage() {
         <div className="px-2 pb-2">
           <p className="text-[10px] text-[#8a8a9a] text-center leading-relaxed">
             This is a private entertainment experience for the wedding of
-            Parsh &amp; Spoorthi. All proceeds benefit charity. Play
+            Parsh &amp; Spoorthi. Partial proceeds benefit charity (we're slightly selfish). Play
             responsibly.
           </p>
         </div>
