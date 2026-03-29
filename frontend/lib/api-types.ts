@@ -21,6 +21,12 @@ export interface OutcomeWithPrice {
   price: number;
   /** Price in cents (0–100). */
   priceCents: number;
+  /**
+   * Estimated parimutuel payout per share if this outcome wins.
+   * = totalPool / sharesSold. 0 if no shares sold yet.
+   * This is an ESTIMATE — grows as more bets come in.
+   */
+  estimatedPayoutPerShare: number;
 }
 
 export interface MarketWithPrices {
@@ -36,7 +42,13 @@ export interface MarketWithPrices {
   winningOutcomeId: string | null;
   outcomes: OutcomeWithPrice[];
   currentB: number;
+  /** Total dollar volume traded in this market (= parimutuel pool size). */
   totalVolume: number;
+  /**
+   * Parimutuel pool size in dollars — explicit alias for totalVolume.
+   * At resolution, 100% of this amount is distributed to winning shareholders.
+   */
+  totalPool: number;
   /** Wedding event tag (e.g. 'Sangeet', 'Haldi', 'Reception'). */
   eventTag: string | null;
   /** Family side ('Spoorthi', 'Parsh', 'Both'). */
