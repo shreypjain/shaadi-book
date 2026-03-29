@@ -21,6 +21,7 @@ import webhookRouter from "./routes/webhooks.js";
 import smsRouter from "./routes/sms.js";
 import { startIntegrityMonitor } from "./services/hashChainVerifier.js";
 import { startPeriodicNotifications } from "./services/smsNotifier.js";
+import { startPriceSnapshotJob } from "./services/priceSnapshot.js";
 
 // ---------------------------------------------------------------------------
 // App
@@ -129,6 +130,9 @@ createWebSocketServer(httpServer)
 
     // Start ledger hash-chain integrity monitor (checks every 60 s).
     startIntegrityMonitor(60_000);
+
+    // Start periodic price snapshots for chart history (every 60 s).
+    startPriceSnapshotJob(60_000);
 
     // Start periodic SMS market updates (every 5 hours).
     // Controlled by ENABLE_SMS_NOTIFICATIONS env var — off by default in dev/test.
