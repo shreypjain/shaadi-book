@@ -77,10 +77,6 @@ export interface LeaderboardEntry {
   realizedPnlCents: number;
 }
 
-export interface CharityTotal {
-  totalCents: number;
-}
-
 // ---------------------------------------------------------------------------
 // tRPC proxy client (any-typed — we wrap in typed functions below)
 // ---------------------------------------------------------------------------
@@ -194,10 +190,6 @@ export const api = {
     list: (): Promise<LeaderboardEntry[]> =>
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       (_client as any).leaderboard.list.query() as Promise<LeaderboardEntry[]>,
-
-    charityTotal: (): Promise<CharityTotal> =>
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-      (_client as any).leaderboard.charityTotal.query() as Promise<CharityTotal>,
   },
 };
 
