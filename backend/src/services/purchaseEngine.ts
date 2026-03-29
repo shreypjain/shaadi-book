@@ -321,7 +321,7 @@ export async function buyShares(
       }
 
       // -----------------------------------------------------------------------
-      // 6. Check $200 per-user per-market cap (PRD §9, rule 2)
+      // 6. Check $200 per-user per-market cap
       // -----------------------------------------------------------------------
       const spendResult = (await tx.$queryRaw`
         SELECT COALESCE(SUM(cost), 0) AS total_spend

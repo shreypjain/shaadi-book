@@ -472,9 +472,12 @@ export async function resolveMarket(
           },
         });
       } else {
-        // ---- Normal path: proportional parimutuel distribution ----
-        // payoutPerShare = totalPool / totalWinningShares (full Decimal precision)
-        const payoutPerShare = poolDollars.dividedBy(totalWinningShares);
+        // ---- Normal path: capped parimutuel distribution ----
+        // payoutPerShare = min($1.00, totalPool / totalWinningShares)
+        // If pool covers $1/share: winners get $1, house keeps surplus.
+        // If pool is thin: winners split the pool, house breaks even.
+        const rawPayoutPerShare = poolDollars.dividedBy(totalWinningShares);
+        const payoutPerShare = Decimal.min(rawPayoutPerShare, new Decimal(1));
 
         let totalGrossPayout = new Decimal(0);
 
