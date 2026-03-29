@@ -157,22 +157,6 @@ export default function MarketFeedPage() {
     setActiveEventTag(null);
   }
 
-  const EVENT_COLORS: Record<EventTag, { bg: string; text: string }> = {
-    Sangeet: { bg: "bg-[#f0ecf5]", text: "text-[#7a5a8a]" },
-    Haldi: { bg: "bg-[#f5f0d9]", text: "text-[#7a6830]" },
-    Baraat: { bg: "bg-[#f5e8e8]", text: "text-[#8a4a4a]" },
-    "Wedding Ceremony": { bg: "bg-[#f5ebee]", text: "text-[#7a4a60]" },
-    Reception: { bg: "bg-[#e8edf3]", text: "text-[#3a5a78]" },
-    "After Party": { bg: "bg-[#e8f0e8]", text: "text-[#3a6848]" },
-    General: { bg: "bg-[#f5efd9]", text: "text-[#6a6a7a]" },
-  };
-
-  const FAMILY_COLORS: Record<FamilySide, { bg: string; text: string }> = {
-    Spoorthi: { bg: "bg-[#f5e8e8]", text: "text-[#8a4a5a]" },
-    Parsh: { bg: "bg-[#e8edf3]", text: "text-[#3a5a78]" },
-    Both: { bg: "bg-[#f5efd9]", text: "text-[#7a6830]" },
-  };
-
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
@@ -196,7 +180,7 @@ export default function MarketFeedPage() {
           style={{ height: pullY }}
         >
           <div
-            className={`w-5 h-5 border-2 border-brand-200 border-t-brand-600 rounded-full ${
+            className={`w-5 h-5 border-2 border-gold-300 border-t-gold rounded-full ${
               pullY > 40 ? "animate-spin" : ""
             }`}
           />
@@ -204,17 +188,21 @@ export default function MarketFeedPage() {
       )}
 
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-cream-100/95 backdrop-blur border-b border-[#e8e4df] px-4 py-3">
+      <header className="sticky top-0 z-10 bg-ivory/95 backdrop-blur border-b border-[rgba(184,134,11,0.12)] px-4 py-3">
         <div className="max-w-lg mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-[#1a1a2e] tracking-tight">Shaadi Book</h1>
-            <p className="text-xs text-[#8a8a9a]">Parsh &amp; Spoorthi &bull; Udaipur</p>
+            <h1 className="font-serif text-xl font-semibold text-charcoal tracking-[0.05em] uppercase">
+              Shaadi Book
+            </h1>
+            <p className="font-sans text-xs italic text-warmGray font-light">
+              Parsh &amp; Spoorthi &bull; Udaipur
+            </p>
           </div>
           <div className="flex items-center gap-2">
             {isLoggedIn && (
               <button
                 onClick={() => setShowSuggestModal(true)}
-                className="flex items-center gap-1.5 rounded-lg border border-[#c8a45c] bg-[#faf7f0] px-3 py-1.5 text-xs font-semibold text-[#8a6d30] hover:bg-[#f5f0e0] transition-colors"
+                className="flex items-center gap-1.5 rounded-lg border border-gold/40 bg-gold-pale px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold-light hover:border-gold transition-colors"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -224,11 +212,11 @@ export default function MarketFeedPage() {
             )}
           <button
             onClick={() => void refetch()}
-            className="p-2 rounded-lg hover:bg-[#e8e4df]/60 transition-colors"
+            className="p-2 rounded-lg hover:bg-gold-light/60 transition-colors"
             aria-label="Refresh markets"
           >
             <svg
-              className={`w-4 h-4 text-[#4a4a5a] ${
+              className={`w-4 h-4 text-warmGray ${
                 isRefreshing ? "animate-spin" : ""
               }`}
               fill="none"
@@ -249,13 +237,13 @@ export default function MarketFeedPage() {
         {/* Filter tabs */}
         <div className="max-w-lg mx-auto mt-3 space-y-2">
           {/* Mode selector */}
-          <div className="flex gap-4 border-b border-[#e8e4df]">
+          <div className="flex gap-4 border-b border-[rgba(184,134,11,0.12)]">
             <button
               onClick={() => { setFilterMode("event"); setActiveFamilySide(null); }}
               className={`text-sm pb-2 transition-colors ${
                 filterMode === "event"
-                  ? "text-[#1a1a2e] font-semibold border-b-2 border-[#c8a45c]"
-                  : "text-[#8a8a9a] font-medium hover:text-[#4a4a5a]"
+                  ? "text-charcoal font-semibold border-b-2 border-gold"
+                  : "text-warmGray font-medium hover:text-charcoal"
               }`}
             >
               By Event
@@ -264,8 +252,8 @@ export default function MarketFeedPage() {
               onClick={() => { setFilterMode("family"); setActiveEventTag(null); }}
               className={`text-sm pb-2 transition-colors ${
                 filterMode === "family"
-                  ? "text-[#1a1a2e] font-semibold border-b-2 border-[#c8a45c]"
-                  : "text-[#8a8a9a] font-medium hover:text-[#4a4a5a]"
+                  ? "text-charcoal font-semibold border-b-2 border-gold"
+                  : "text-warmGray font-medium hover:text-charcoal"
               }`}
             >
               By Family
@@ -273,7 +261,7 @@ export default function MarketFeedPage() {
             {(activeEventTag || activeFamilySide) && (
               <button
                 onClick={() => { setActiveEventTag(null); setActiveFamilySide(null); }}
-                className="text-xs text-[#8a8a9a] hover:text-[#4a4a5a] underline ml-auto pb-2"
+                className="text-xs text-warmGray hover:text-charcoal underline ml-auto pb-2"
               >
                 Clear filter
               </button>
@@ -284,16 +272,15 @@ export default function MarketFeedPage() {
           {filterMode === "event" && (
             <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
               {EVENT_TAGS.map((tag) => {
-                const colors = EVENT_COLORS[tag];
                 const isActive = activeEventTag === tag;
                 return (
                   <button
                     key={tag}
                     onClick={() => selectEventTag(tag)}
-                    className={`shrink-0 rounded-md px-3 py-1 text-xs font-medium border transition-colors ${
+                    className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
                       isActive
-                        ? "border-[#c8a45c] bg-[#faf7f0] text-[#8a6d30]"
-                        : `border-[#e8e4df] ${colors.bg} ${colors.text} hover:border-[#d0c8ba]`
+                        ? "border-gold bg-gold text-white shadow-sm"
+                        : "border-charcoal/20 bg-transparent text-charcoal hover:border-gold/50 hover:text-gold"
                     }`}
                   >
                     {tag}
@@ -307,7 +294,6 @@ export default function MarketFeedPage() {
           {filterMode === "family" && (
             <div className="flex gap-2 flex-wrap">
               {FAMILY_SIDES.map((side) => {
-                const colors = FAMILY_COLORS[side];
                 const isActive = activeFamilySide === side;
                 const label =
                   side === "Spoorthi"
@@ -319,10 +305,10 @@ export default function MarketFeedPage() {
                   <button
                     key={side}
                     onClick={() => selectFamilySide(side)}
-                    className={`rounded-md px-3 py-1 text-xs font-medium border transition-colors ${
+                    className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
                       isActive
-                        ? "border-[#c8a45c] bg-[#faf7f0] text-[#8a6d30]"
-                        : `border-[#e8e4df] ${colors.bg} ${colors.text} hover:border-[#d0c8ba]`
+                        ? "border-gold bg-gold text-white shadow-sm"
+                        : "border-charcoal/20 bg-transparent text-charcoal hover:border-gold/50 hover:text-gold"
                     }`}
                   >
                     {label}
@@ -339,10 +325,10 @@ export default function MarketFeedPage() {
         {isLoading && (
           <div className="flex flex-col gap-3">
             {[1, 2, 3].map((n) => (
-              <div key={n} className="rounded-xl border border-[#e8e4df] bg-white p-5 animate-pulse">
-                <div className="h-4 bg-[#e8e4df] rounded w-3/4 mb-3" />
-                <div className="h-2 bg-[#f0ece7] rounded w-full mb-2" />
-                <div className="h-2 bg-[#f0ece7] rounded w-5/6" />
+              <div key={n} className="rounded-xl border border-[rgba(184,134,11,0.12)] bg-ivory-card p-5 animate-pulse">
+                <div className="h-4 bg-gold-light rounded w-3/4 mb-3" />
+                <div className="h-2 bg-gold-light/60 rounded w-full mb-2" />
+                <div className="h-2 bg-gold-light/60 rounded w-5/6" />
               </div>
             ))}
           </div>
@@ -366,19 +352,19 @@ export default function MarketFeedPage() {
         {/* Empty state */}
         {!isLoading && !error && sortedMarkets.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
-            <div className="w-16 h-16 rounded-full bg-brand-50 flex items-center justify-center">
-              <svg className="w-8 h-8 text-brand-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-16 h-16 rounded-full bg-gold-pale flex items-center justify-center">
+              <svg className="w-8 h-8 text-gold/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                   d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
               </svg>
             </div>
             <div className="text-center">
-              <p className="font-semibold text-[#1a1a2e]">
+              <p className="font-semibold text-charcoal">
                 {activeEventTag || activeFamilySide
                   ? "No markets match this filter"
                   : "No markets yet"}
               </p>
-              <p className="text-sm text-[#8a8a9a] mt-1">
+              <p className="text-sm text-warmGray mt-1">
                 {activeEventTag || activeFamilySide
                   ? "Try a different event or clear the filter."
                   : "Check back when the celebration starts!"}
@@ -392,9 +378,10 @@ export default function MarketFeedPage() {
           <div className="flex flex-col gap-3 animate-fade-in">
             {/* Section label for active markets */}
             {sortedMarkets.some((m) => m.status === "ACTIVE") && (
-              <div className="flex items-center gap-2 px-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                <span className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider">
+              <div className="flex items-center gap-2 px-1 pt-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-burgundy/80" />
+                <span className="font-serif text-xs font-medium text-gold/80 tracking-[0.12em]"
+                  style={{ fontVariant: "small-caps" }}>
                   Live Markets
                 </span>
               </div>

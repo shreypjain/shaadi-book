@@ -9,50 +9,61 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"Lido Condensed"', "Arial", "sans-serif"],
+        sans: ['"Inter"', "system-ui", "sans-serif"],
+        serif: ['"Cormorant Garamond"', "Georgia", "serif"],
       },
       colors: {
-        // Primary — Deep royal blue (Lake Pichola at dusk)
-        brand: {
-          50: "#eef4f9",
-          100: "#d4e3f0",
-          200: "#a8c5dc",
-          300: "#6b9cc4",
-          400: "#3b6fa3",
-          500: "#254f7a",
-          600: "#1e3a5f",
-          700: "#152f52",
-          800: "#0f2540",
-          900: "#0a1829",
+        // Luxury Udaipur palette
+        ivory: {
+          DEFAULT: "#FAF7F2",
+          card: "#FFFEFB",
         },
-        // Gold — Rajasthani palace gilding
         gold: {
-          50: "#fbf8f1",
-          100: "#f5efd9",
-          200: "#ead9b0",
-          300: "#dfc391",
-          400: "#d4b576",
-          500: "#c8a45c",
-          600: "#b08940",
-          700: "#8a6d30",
-          800: "#6d5726",
-          900: "#4d3e1b",
+          DEFAULT: "#B8860B",
+          50: "#fdf9ee",
+          100: "#faf3d6",
+          200: "#f5e7ad",
+          300: "#EDE8E0",
+          400: "#d4a017",
+          500: "#B8860B",
+          600: "#9a7009",
+          700: "#7a5907",
+          800: "#5c4205",
+          900: "#3d2c03",
+          light: "#EDE8E0",
+          pale: "#FAF7F0",
         },
-        // Warm whites — marble/sandstone warmth
+        burgundy: "#722F37",
+        charcoal: "#2C2C2C",
+        warmGray: "#6B6156",
+        // Warm whites — sandstone warmth
         cream: {
           50: "#fffbf7",
-          100: "#faf8f5",
+          100: "#FAF7F2",
           200: "#f5f0e8",
           300: "#ede5d6",
         },
-        // Legacy wedding aliases — now map to royal blue & gold
+        // Legacy brand — remapped to warm gold tones for compatibility
+        brand: {
+          50: "#fdf9ee",
+          100: "#EDE8E0",
+          200: "#ddd4c8",
+          300: "#c9b89a",
+          400: "#B8860B",
+          500: "#B8860B",
+          600: "#B8860B",
+          700: "#8a6408",
+          800: "#6d5006",
+          900: "#4d3804",
+        },
+        // Wedding aliases — updated to palace palette
         wedding: {
-          gold: "#c8a45c",
-          "gold-light": "#dfc391",
-          "gold-pale": "#f5efd9",
-          rose: "#1e3a5f",
-          "rose-pale": "#eef4f9",
-          marigold: "#c8a45c",
+          gold: "#B8860B",
+          "gold-light": "#EDE8E0",
+          "gold-pale": "#FAF7F0",
+          rose: "#722F37",
+          "rose-pale": "#fdf5f6",
+          marigold: "#B8860B",
         },
       },
       keyframes: {
@@ -81,8 +92,9 @@ const config: Config = {
         "success-pop": "success-pop 0.4s ease-out",
       },
       boxShadow: {
-        card: "0 1px 3px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.04)",
-        "card-hover": "0 4px 16px rgba(0,0,0,0.09), 0 1px 4px rgba(0,0,0,0.05)",
+        card: "0 1px 3px rgba(139, 109, 71, 0.06), 0 4px 12px rgba(139, 109, 71, 0.05)",
+        "card-hover":
+          "0 4px 20px rgba(139, 109, 71, 0.12), 0 1px 4px rgba(139, 109, 71, 0.06)",
       },
     },
   },
