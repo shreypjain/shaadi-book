@@ -40,7 +40,7 @@ interface BuyFormProps {
 type FormStep = "select" | "amount" | "confirm" | "success";
 type DepositStep = "idle" | "payment" | "success";
 
-const PRESET_AMOUNTS = [5, 10, 25, 50] as const;
+const PRESET_AMOUNTS = [10, 25, 50, 100, 200] as const;
 
 // Hex values aligned to OUTCOME_COLORS bar variants for inline border styling
 const OUTCOME_BAR_HEX = ["#3b6fa3", "#fbbf24", "#2dd4bf", "#34d399", "#a78bfa"];
