@@ -298,8 +298,12 @@ export interface ReconciliationResult {
  * Stripe fees come out of the charity pool (not from user balances or house pool):
  *   net_charity = charityPool − stripeFees
  *
- * Parimutuel note:
- *   After market resolution, house_pool ≈ 0 (all pool distributed to winners).
+ * Parimutuel + charity fee note (PRD §7.5):
+ *   CHARITY_FEE transactions debit house_amm and credit charity_pool:
+ *     + charityPool increases by fee
+ *     - housePool   decreases by fee
+ *   Net effect on the invariant: 0  ⟹  invariant still holds with charity fees.
+ *   After market resolution, house_pool ≈ 0 (all pool distributed to winners / charity).
  *   A tiny positive remainder is normal (rounding truncation dust from payout calc).
  *   house_pool >= 0 is always satisfied.
  *
