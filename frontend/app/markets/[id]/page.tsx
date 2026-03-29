@@ -290,6 +290,9 @@ export default function MarketDetailPage() {
           <div className="flex items-center gap-4 text-xs text-[#8a8a9a]">
             {openedAt && <span>Opened {timeSince(openedAt)}</span>}
             <span>{formatVolume(market.totalVolume)} volume</span>
+            <span className="font-semibold text-[#1e3a5f]">
+              Pool: ${(market.totalPool ?? market.totalVolume).toFixed(2)}
+            </span>
             <span>{market.outcomes.length} outcomes</span>
           </div>
         </div>
@@ -343,6 +346,7 @@ export default function MarketDetailPage() {
               marketId={market.id}
               outcomes={market.outcomes}
               currentB={market.currentB}
+              totalPool={market.totalPool ?? market.totalVolume ?? 0}
               remainingCapCents={5000}
               onSuccess={handleBuySuccess}
             />
@@ -350,23 +354,46 @@ export default function MarketDetailPage() {
         )}
 
         {/* Resolved banner */}
-        {isResolved && winningOutcomeId && (
-          <div className="rounded-xl bg-[#f5efd9] border border-[#c8a45c]/30 px-5 py-4">
-            <div className="flex items-center gap-2 mb-1.5">
-              <svg className="w-4 h-4 text-[#c8a45c]" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              <h2 className="text-sm font-bold text-[#8a6d30]">Market Resolved</h2>
+        {isResolved && winningOutcomeId && (() => {
+          const winningOutcome = market.outcomes.find((o) => o.id === winningOutcomeId);
+          const totalPool = market.totalPool ?? market.totalVolume ?? 0;
+          const totalWinningShares = winningOutcome?.sharesSold ?? 0;
+          const payoutPerShare =
+            totalWinningShares > 0 ? totalPool / totalWinningShares : 0;
+          return (
+            <div className="rounded-xl bg-[#f5efd9] border border-[#c8a45c]/30 px-5 py-4">
+              <div className="flex items-center gap-2 mb-1.5">
+                <svg className="w-4 h-4 text-[#c8a45c]" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <h2 className="text-sm font-bold text-[#8a6d30]">Market Resolved</h2>
+              </div>
+              <p className="text-sm text-[#8a6d30]">
+                Winner:{" "}
+                <span className="font-bold">
+                  {winningOutcome?.label ?? "Unknown"}
+                </span>
+                .
+              </p>
+              {totalWinningShares > 0 ? (
+                <p className="text-sm text-[#8a6d30] mt-1">
+                  Pool of{" "}
+                  <span className="font-bold">${totalPool.toFixed(2)}</span>{" "}
+                  split among{" "}
+                  <span className="font-bold">{totalWinningShares.toFixed(2)} winning shares</span>{" "}
+                  (
+                  <span className="font-bold">${payoutPerShare.toFixed(4)}/share</span>
+                  ).
+                </p>
+              ) : (
+                <p className="text-sm text-[#8a6d30] mt-1">
+                  No bets on the winning outcome —{" "}
+                  <span className="font-bold">all bets refunded</span>.
+                </p>
+              )}
             </div>
-            <p className="text-sm text-[#8a6d30]">
-              Winner:{" "}
-              <span className="font-bold">
-                {market.outcomes.find((o) => o.id === winningOutcomeId)?.label ?? "Unknown"}
-              </span>
-              . Winning shares pay <span className="font-bold">$0.80</span> each (20% charity fee deducted).
-            </p>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Recent activity feed */}
         {activityFeed.length > 0 && (

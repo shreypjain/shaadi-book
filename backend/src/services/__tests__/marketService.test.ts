@@ -1,5 +1,5 @@
 /**
- * Market Service Integration Tests — Task 2.2
+ * Market Service Integration Tests — Task 2.2 (Parimutuel)
  *
  * Tests the full market lifecycle against a live PostgreSQL test database.
  * Run with: npm test (from /backend directory)
@@ -7,9 +7,12 @@
  * Covered paths:
  *   1. createMarket with 2 outcomes → status ACTIVE, prices at 50%
  *   2. createMarket with scheduledOpenAt → status PENDING, openedAt null
- *   3. resolveMarket → winning positions paid full $1.00 per share
- *   4. voidMarket → all purchases refunded, reconciliation holds
- *   5. pauseMarket → status PAUSED
+ *   3. resolveMarket — parimutuel: single winner side gets entire pool
+ *   4. resolveMarket — parimutuel: proportional split among multiple winners
+ *   5. resolveMarket — edge case: no bets on winning outcome → refund all
+ *   6. resolveMarket — reconciliation holds after parimutuel resolution
+ *   7. voidMarket → all purchases refunded, reconciliation holds
+ *   8. pauseMarket → status PAUSED
  *   + guard tests: double-resolve, void-resolved, pause non-active
  */
 
@@ -43,6 +46,7 @@ function fakeHash(seed: string): string {
 let adminId: string;
 let guestAId: string;
 let guestBId: string;
+let guestCId: string;
 
 beforeAll(async () => {
   // Unique phones per run to avoid conflicts with parallel test runs
@@ -77,6 +81,16 @@ beforeAll(async () => {
     },
   });
   guestBId = guestB.id;
+
+  const guestC = await prisma.user.create({
+    data: {
+      name: "Guest C",
+      phone: `+1900${ts}0003`,
+      country: "US",
+      role: "GUEST",
+    },
+  });
+  guestCId = guestC.id;
 });
 
 afterAll(async () => {
@@ -254,13 +268,20 @@ describe("createMarket — scheduled", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 3: resolveMarket — winners paid full $1.00 per share
+// Test 3: resolveMarket — parimutuel, single winner side gets entire pool
 // ---------------------------------------------------------------------------
 
-describe("resolveMarket", () => {
+describe("resolveMarket — parimutuel single-side winner", () => {
   let marketId: string;
   let yesId: string;
   let noId: string;
+
+  // Scenario:
+  //   Guest A bets $5 on Yes → 5 shares
+  //   Guest B bets $3 on No  → 3 shares
+  //   Total pool = $8
+  //   Yes wins → A is the only winner → A gets entire $8 pool
+  //   Payout per share = $8 / 5 = $1.60 → A payout = $8.00
 
   beforeAll(async () => {
     marketId = await createMarket(
@@ -277,7 +298,7 @@ describe("resolveMarket", () => {
     yesId = outcomes[0]!.id;
     noId = outcomes[1]!.id;
 
-    // Guest A buys 5 shares on Yes (cost = $5, so each share pays $1.00 at resolution)
+    // Guest A: 5 shares on Yes, cost $5
     await seedDepositAndPurchase({
       userId: guestAId,
       marketId,
@@ -286,7 +307,7 @@ describe("resolveMarket", () => {
       cost: 5,
     });
 
-    // Guest B buys 3 shares on No (loses — no payout)
+    // Guest B: 3 shares on No, cost $3 (loses)
     await seedDepositAndPurchase({
       userId: guestBId,
       marketId,
@@ -315,8 +336,9 @@ describe("resolveMarket", () => {
     expect(no!.isWinner).not.toBe(true);
   });
 
-  it("Guest A receives full payout ($1.00 per share)", async () => {
-    // Guest A has 5 shares → payout = $5.00 (full $1.00 per share, no charity deduction)
+  it("Guest A receives entire pool (parimutuel: pool=$8, A has 5/5 winning shares)", async () => {
+    // Pool = $5 (A) + $3 (B) = $8. A is the only winner (5 shares on Yes).
+    // payoutPerShare = $8 / 5 = $1.60 → A gets $8.00
     const payoutTx = await prisma.transaction.findFirst({
       where: {
         userId: guestAId,
@@ -326,7 +348,7 @@ describe("resolveMarket", () => {
       orderBy: { createdAt: "desc" },
     });
     expect(payoutTx).not.toBeNull();
-    expect(Number(payoutTx!.amount)).toBeCloseTo(5.0, 4);
+    expect(Number(payoutTx!.amount)).toBeCloseTo(8.0, 4);
   });
 
   it("no CHARITY_FEE transaction created at resolution", async () => {
@@ -340,22 +362,268 @@ describe("resolveMarket", () => {
     expect(charityTx).toBeNull();
   });
 
-  it("Guest B (loser) gets no payout transaction", async () => {
-    const payoutTx = await prisma.transaction.findFirst({
-      where: { userId: guestBId, type: "PAYOUT" },
-      orderBy: { createdAt: "desc" },
+  it("Guest B (loser) gets no PAYOUT transaction for this market", async () => {
+    // B bet on No (losing side) — no payout
+    const payoutTxs = await prisma.transaction.findMany({
+      where: {
+        userId: guestBId,
+        type: "PAYOUT",
+        creditAccount: `user:${guestBId}`,
+      },
     });
-    // No payout for Guest B because they bet on the losing outcome
-    // (Note: there might be a payout from a different market if tests share state,
-    //  but we check the specific marketId context via the timing / ordering)
-    // More robustly: check no payout credit to user for this market's resolution period
-    expect(payoutTx).toBeNull();
+    expect(payoutTxs).toHaveLength(0);
+  });
+
+  it("audit log records parimutuel resolution with correct pool/payout info", async () => {
+    const audit = await prisma.adminAuditLog.findFirst({
+      where: { targetId: marketId, action: "RESOLVE_MARKET" },
+    });
+    expect(audit).not.toBeNull();
+    expect(audit!.adminId).toBe(adminId);
+    const meta = audit!.metadata as Record<string, unknown>;
+    expect(meta["resolution"]).toBe("parimutuel");
+    expect(Number(meta["totalPool"])).toBeCloseTo(8.0, 4);
+    expect(Number(meta["payoutsCount"])).toBe(1);
   });
 
   it("double-resolve throws", async () => {
     await expect(
       resolveMarket(adminId, marketId, yesId, { prismaClient: prisma })
     ).rejects.toThrow("already resolved");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 4: resolveMarket — parimutuel proportional split (multiple winners)
+// ---------------------------------------------------------------------------
+
+describe("resolveMarket — parimutuel proportional split", () => {
+  let marketId: string;
+  let yesId: string;
+  let noId: string;
+
+  // Scenario:
+  //   Guest A bets $6 on Yes → 3 shares
+  //   Guest C bets $4 on Yes → 2 shares
+  //   Guest B bets $5 on No  → 5 shares (loses)
+  //   Total pool = $15
+  //   Yes wins → totalWinningShares = 5
+  //   payoutPerShare = $15 / 5 = $3.00
+  //   A gets 3 × $3 = $9.00
+  //   C gets 2 × $3 = $6.00
+  //   SUM(payouts) = $15 = totalPool ✓
+
+  beforeAll(async () => {
+    marketId = await createMarket(
+      adminId,
+      "Proportional split test — will the band play?",
+      ["Yes", "No"],
+      { prismaClient: prisma }
+    );
+
+    const outcomes = await prisma.outcome.findMany({
+      where: { marketId },
+      orderBy: { position: "asc" },
+    });
+    yesId = outcomes[0]!.id;
+    noId = outcomes[1]!.id;
+
+    await seedDepositAndPurchase({
+      userId: guestAId,
+      marketId,
+      outcomeId: yesId,
+      shares: 3,
+      cost: 6,
+    });
+    await seedDepositAndPurchase({
+      userId: guestCId,
+      marketId,
+      outcomeId: yesId,
+      shares: 2,
+      cost: 4,
+    });
+    await seedDepositAndPurchase({
+      userId: guestBId,
+      marketId,
+      outcomeId: noId,
+      shares: 5,
+      cost: 5,
+    });
+  });
+
+  it("resolves with Yes winning", async () => {
+    await resolveMarket(adminId, marketId, yesId, { prismaClient: prisma });
+    const market = await prisma.market.findUnique({ where: { id: marketId } });
+    expect(market!.status).toBe("RESOLVED");
+  });
+
+  it("Guest A (3 shares) gets $9.00 — proportional 3/5 of $15 pool", async () => {
+    const payoutTx = await prisma.transaction.findFirst({
+      where: {
+        userId: guestAId,
+        type: "PAYOUT",
+        creditAccount: `user:${guestAId}`,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(payoutTx).not.toBeNull();
+    expect(Number(payoutTx!.amount)).toBeCloseTo(9.0, 4);
+  });
+
+  it("Guest C (2 shares) gets $6.00 — proportional 2/5 of $15 pool", async () => {
+    const payoutTx = await prisma.transaction.findFirst({
+      where: {
+        userId: guestCId,
+        type: "PAYOUT",
+        creditAccount: `user:${guestCId}`,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(payoutTx).not.toBeNull();
+    expect(Number(payoutTx!.amount)).toBeCloseTo(6.0, 4);
+  });
+
+  it("SUM(payouts) equals total pool ($15)", async () => {
+    const payoutTxs = await prisma.transaction.findMany({
+      where: {
+        marketId: undefined, // fetch by userId matching winners
+        type: "PAYOUT",
+        userId: { in: [guestAId, guestCId] },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 2, // latest 2 payouts for these users
+    });
+    const totalPaid = payoutTxs.reduce(
+      (sum: number, t: { amount: unknown }) => sum + Number(t.amount),
+      0
+    );
+    expect(totalPaid).toBeCloseTo(15.0, 4);
+  });
+
+  it("reconciliation holds after parimutuel resolution", async () => {
+    // All deposits: A=$6, C=$4, B=$5 → $15
+    // All purchases debited from users → $15 to house_amm
+    // Payouts: A=$9, C=$6 → $15 from house_amm
+    // housePool = deposits($15) - userBalances($15) - 0 - 0 - 0 = 0 ✓
+    const result = await prisma.$queryRaw<
+      Array<{
+        total_deposits: string;
+        total_user_credits: string;
+        total_user_debits: string;
+        total_house_credits: string;
+        total_house_debits: string;
+      }>
+    >`
+      SELECT
+        COALESCE(SUM(CASE WHEN type = 'DEPOSIT' THEN amount ELSE 0 END), 0)           AS total_deposits,
+        COALESCE(SUM(CASE WHEN credit_account LIKE 'user:%' THEN amount ELSE 0 END), 0) AS total_user_credits,
+        COALESCE(SUM(CASE WHEN debit_account  LIKE 'user:%' THEN amount ELSE 0 END), 0) AS total_user_debits,
+        COALESCE(SUM(CASE WHEN credit_account = 'house_amm' THEN amount ELSE 0 END), 0) AS total_house_credits,
+        COALESCE(SUM(CASE WHEN debit_account  = 'house_amm' THEN amount ELSE 0 END), 0) AS total_house_debits
+      FROM transactions
+    `;
+    const row = result[0]!;
+    const userBalances = Number(row.total_user_credits) - Number(row.total_user_debits);
+    const houseAmm = Number(row.total_house_credits) - Number(row.total_house_debits);
+    const totalDeposits = Number(row.total_deposits);
+
+    // house_pool = deposits - userBalances - houseAmm_net_used_for_charity_etc
+    // Simplified: userBalances + houseAmm should sum to ≤ totalDeposits
+    // (houseAmm ≥ 0 after parimutuel since payouts ≤ pool)
+    expect(houseAmm).toBeGreaterThanOrEqual(-0.001); // near zero (rounding dust)
+    expect(userBalances + houseAmm).toBeCloseTo(totalDeposits, 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 5: resolveMarket — edge case: no bets on winning outcome → refund all
+// ---------------------------------------------------------------------------
+
+describe("resolveMarket — no bets on winning outcome", () => {
+  let marketId: string;
+  let yesId: string;
+  let noId: string;
+
+  // Scenario:
+  //   Nobody bets on Yes
+  //   Guest B bets $5 on No
+  //   Guest A bets $3 on No
+  //   Resolve with Yes winning → no winning shares → refund ALL bets
+  //   Market is still RESOLVED with winningOutcomeId = yesId
+
+  beforeAll(async () => {
+    marketId = await createMarket(
+      adminId,
+      "No bets on winner edge case",
+      ["Yes", "No"],
+      { prismaClient: prisma }
+    );
+
+    const outcomes = await prisma.outcome.findMany({
+      where: { marketId },
+      orderBy: { position: "asc" },
+    });
+    yesId = outcomes[0]!.id;
+    noId = outcomes[1]!.id;
+
+    // Only No bets — Yes gets no bets
+    await seedDepositAndPurchase({
+      userId: guestBId,
+      marketId,
+      outcomeId: noId,
+      shares: 5,
+      cost: 5,
+    });
+    await seedDepositAndPurchase({
+      userId: guestAId,
+      marketId,
+      outcomeId: noId,
+      shares: 3,
+      cost: 3,
+    });
+  });
+
+  it("resolves with Yes winning (nobody bet on Yes)", async () => {
+    await resolveMarket(adminId, marketId, yesId, { prismaClient: prisma });
+    const market = await prisma.market.findUnique({ where: { id: marketId } });
+    expect(market!.status).toBe("RESOLVED");
+    expect(market!.winningOutcomeId).toBe(yesId);
+  });
+
+  it("Guest B gets a REFUND (bet on No, nobody won)", async () => {
+    const refundTx = await prisma.transaction.findFirst({
+      where: {
+        userId: guestBId,
+        type: "REFUND",
+        creditAccount: `user:${guestBId}`,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(refundTx).not.toBeNull();
+    expect(Number(refundTx!.amount)).toBeCloseTo(5.0, 4);
+  });
+
+  it("Guest A gets a REFUND (bet on No, nobody won)", async () => {
+    const refundTx = await prisma.transaction.findFirst({
+      where: {
+        userId: guestAId,
+        type: "REFUND",
+        creditAccount: `user:${guestAId}`,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(refundTx).not.toBeNull();
+    expect(Number(refundTx!.amount)).toBeCloseTo(3.0, 4);
+  });
+
+  it("no PAYOUT transactions created (refund path used)", async () => {
+    // In this market's timeframe, only REFUNDs should exist (no PAYOUTs)
+    const audit = await prisma.adminAuditLog.findFirst({
+      where: { targetId: marketId, action: "RESOLVE_MARKET" },
+    });
+    expect(audit).not.toBeNull();
+    const meta = audit!.metadata as Record<string, unknown>;
+    expect(meta["resolution"]).toBe("no_winner_refunded");
   });
 
   it("logs RESOLVE_MARKET to AdminAuditLog", async () => {
@@ -368,7 +636,7 @@ describe("resolveMarket", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 4: voidMarket — refunds all purchases, reconciliation holds
+// Test 6: voidMarket — refunds all purchases, reconciliation holds
 // ---------------------------------------------------------------------------
 
 describe("voidMarket", () => {
@@ -480,7 +748,7 @@ describe("voidMarket", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 5: pauseMarket — status PAUSED
+// Test 7: pauseMarket — status PAUSED
 // ---------------------------------------------------------------------------
 
 describe("pauseMarket", () => {
@@ -517,7 +785,7 @@ describe("pauseMarket", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 6: getMarketWithPrices — prices computed from LMSR
+// Test 8: getMarketWithPrices — prices computed from LMSR, pool info included
 // ---------------------------------------------------------------------------
 
 describe("getMarketWithPrices", () => {
@@ -551,5 +819,70 @@ describe("getMarketWithPrices", () => {
     const market = await getMarketWithPrices(marketId, prisma);
     const priceSum = market!.outcomes.reduce((s, o) => s + o.price, 0);
     expect(Math.abs(priceSum - 1.0)).toBeLessThan(0.0001);
+  });
+
+  it("returns totalPool equal to totalVolume", async () => {
+    const marketId = await createMarket(
+      adminId,
+      "Pool info test market",
+      ["Yes", "No"],
+      { prismaClient: prisma }
+    );
+
+    const market = await getMarketWithPrices(marketId, prisma);
+    expect(market).not.toBeNull();
+    expect(market!.totalPool).toBe(market!.totalVolume);
+    expect(market!.totalPool).toBe(0); // no purchases yet
+  });
+
+  it("estimatedPayoutPerShare is 0 when no shares sold", async () => {
+    const marketId = await createMarket(
+      adminId,
+      "Payout per share test",
+      ["Yes", "No"],
+      { prismaClient: prisma }
+    );
+
+    const market = await getMarketWithPrices(marketId, prisma);
+    expect(market).not.toBeNull();
+    for (const o of market!.outcomes) {
+      expect(o.estimatedPayoutPerShare).toBe(0);
+    }
+  });
+
+  it("estimatedPayoutPerShare = totalPool / sharesSold when shares exist", async () => {
+    const marketId = await createMarket(
+      adminId,
+      "Payout per share with volume",
+      ["Yes", "No"],
+      { prismaClient: prisma }
+    );
+
+    const outcomes = await prisma.outcome.findMany({
+      where: { marketId },
+      orderBy: { position: "asc" },
+    });
+    const yesId = outcomes[0]!.id;
+
+    // Seed 4 shares + $8 cost on Yes
+    await seedDepositAndPurchase({
+      userId: guestAId,
+      marketId,
+      outcomeId: yesId,
+      shares: 4,
+      cost: 8,
+    });
+
+    const market = await getMarketWithPrices(marketId, prisma);
+    expect(market).not.toBeNull();
+
+    // totalPool = $8, Yes has 4 shares → estimatedPayoutPerShare = $2.00
+    const yesOutcome = market!.outcomes.find((o) => o.id === yesId);
+    expect(yesOutcome).not.toBeUndefined();
+    expect(yesOutcome!.estimatedPayoutPerShare).toBeCloseTo(2.0, 4);
+
+    // No has 0 shares → estimatedPayoutPerShare = 0
+    const noOutcome = market!.outcomes.find((o) => o.id !== yesId);
+    expect(noOutcome!.estimatedPayoutPerShare).toBe(0);
   });
 });

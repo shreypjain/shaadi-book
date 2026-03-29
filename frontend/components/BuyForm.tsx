@@ -20,6 +20,8 @@ interface BuyFormProps {
   marketId: string;
   outcomes: OutcomeWithPrice[];
   currentB: number;
+  /** Current total parimutuel pool in dollars (= sum of all purchase costs). */
+  totalPool: number;
   remainingCapCents: number;
   onSuccess?: (result: { outcomeLabel: string; shares: number; costCents: number }) => void;
 }
@@ -32,6 +34,7 @@ export function BuyForm({
   marketId,
   outcomes,
   currentB,
+  totalPool,
   remainingCapCents,
   onSuccess,
 }: BuyFormProps) {
@@ -214,7 +217,7 @@ export function BuyForm({
         </div>
 
         {/* Preview */}
-        {preview && !amountError && (
+        {preview && !amountError && selectedOutcome && (
           <div className="rounded-xl bg-brand-50 border border-brand-100 p-3 mb-4 animate-fade-in space-y-2">
             <p className="text-sm text-[#4a4a5a] leading-relaxed">
               You&apos;ll get{" "}
@@ -237,15 +240,35 @@ export function BuyForm({
                 </span>
               </span>
             </p>
-            <p className="text-xs bg-[#f5efd9] text-[#8a6d30] rounded-lg px-2.5 py-1.5">
-              If{" "}
-              <span className="font-semibold">{selectedOutcome?.label}</span>{" "}
-              wins, you&apos;d get{" "}
-              <span className="font-bold">{formatDollars(preview.shares)}</span>
-              {" · "}Profit:{" "}
-              <span className="font-bold">
-                {formatDollars(preview.shares - dollarAmount)}
-              </span>
+            {(() => {
+              // Parimutuel estimated payout:
+              // After this bet, pool = totalPool + dollarAmount
+              // After this bet, winning shares on this outcome = sharesSold + preview.shares
+              // User's share of pool = preview.shares / (sharesSold + preview.shares)
+              const newPool = totalPool + dollarAmount;
+              const newSharesOnOutcome = selectedOutcome.sharesSold + preview.shares;
+              const estimatedPayout =
+                newSharesOnOutcome > 0
+                  ? (preview.shares / newSharesOnOutcome) * newPool
+                  : 0;
+              const estimatedProfit = estimatedPayout - dollarAmount;
+              return (
+                <p className="text-xs bg-[#f5efd9] text-[#8a6d30] rounded-lg px-2.5 py-1.5">
+                  If{" "}
+                  <span className="font-semibold">{selectedOutcome.label}</span>{" "}
+                  wins, est. payout:{" "}
+                  <span className="font-bold">{formatDollars(estimatedPayout)}</span>
+                  {" · "}Profit:{" "}
+                  <span className="font-bold">
+                    {formatDollars(estimatedProfit)}
+                  </span>
+                  {" · "}
+                  <span className="opacity-70">pool: {formatDollars(newPool)}</span>
+                </p>
+              );
+            })()}
+            <p className="text-[10px] text-[#8a8a9a] leading-tight">
+              Payout depends on final pool size — estimate grows as more bets come in.
             </p>
           </div>
         )}
