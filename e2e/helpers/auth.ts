@@ -14,7 +14,7 @@
  *   - Set localStorage.token + localStorage.user on the page before navigation
  */
 
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import crypto from "crypto";
 import type { Page, APIRequestContext } from "@playwright/test";
 
@@ -29,15 +29,53 @@ const DB_URL =
   process.env.DATABASE_URL ??
   "postgres://shreyjain@localhost:5432/shaadi_book";
 
-const JWT_SECRET = process.env.JWT_SECRET ?? "";
+// ---------------------------------------------------------------------------
+// Input validation — applied before any value reaches a SQL statement
+// ---------------------------------------------------------------------------
+
+/** E.164 phone: + followed by 1–15 digits */
+const PHONE_RE = /^\+\d{1,15}$/;
+
+/** Standard UUID v4 format */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function assertPhone(phone: string): void {
+  if (!PHONE_RE.test(phone)) {
+    throw new Error(
+      `Invalid phone number — must be E.164 (e.g. +15551234567), got: ${JSON.stringify(phone)}`
+    );
+  }
+}
+
+function assertUuid(id: string): void {
+  if (!UUID_RE.test(id)) {
+    throw new Error(`Invalid UUID: ${JSON.stringify(id)}`);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // JWT helpers
 // ---------------------------------------------------------------------------
 
 /**
+ * Return JWT_SECRET from the environment, throwing a clear error if absent.
+ * Fails fast so tests don't silently sign tokens with an empty secret.
+ */
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error(
+      "JWT_SECRET env var must be set for E2E tests. " +
+        "Ensure it matches the backend's JWT_SECRET."
+    );
+  }
+  return secret;
+}
+
+/**
  * Sign a JWT payload using the same secret as the backend.
- * Uses jsonwebtoken (available as a transitive dep in the monorepo).
+ * Uses jsonwebtoken (declared as an explicit devDependency in the root package.json).
  */
 export function signJwt(
   payload: { userId: string; role: string; phone: string },
@@ -45,7 +83,7 @@ export function signJwt(
 ): string {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const jwt = require("jsonwebtoken") as typeof import("jsonwebtoken");
-  return jwt.sign(payload, JWT_SECRET, { expiresIn });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn });
 }
 
 // ---------------------------------------------------------------------------
@@ -54,12 +92,26 @@ export function signJwt(
 
 /**
  * Run a psql one-liner against the local dev DB.
+ *
+ * Uses execFileSync (NOT execSync) so arguments are never passed through a
+ * shell — this eliminates the shell-injection vector entirely.
+ *
+ * Pass user-supplied strings via `vars` and reference them as :'varname'
+ * in the SQL.  psql's variable quoting wraps the value in single quotes and
+ * escapes embedded single quotes, providing SQL-injection protection for any
+ * string parameter.
+ *
  * Returns trimmed stdout (useful for SELECT results).
  */
-export function psql(sql: string): string {
-  return execSync(`psql -t -A "${DB_URL}" -c "${sql.replace(/"/g, '\\"')}"`, {
-    encoding: "utf-8",
-  }).trim();
+export function psql(sql: string, vars?: Record<string, string>): string {
+  const args: string[] = ["-t", "-A", DB_URL, "-c", sql];
+  if (vars) {
+    for (const [k, v] of Object.entries(vars)) {
+      // Each -v arg is a separate element — no shell quoting needed.
+      args.push("-v", `${k}=${v}`);
+    }
+  }
+  return execFileSync("psql", args, { encoding: "utf-8" }).trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -88,10 +140,18 @@ export function createTestUser(opts: {
 }): TestUser {
   const { userId, name, phone, country = "US", role = "GUEST" } = opts;
 
+  // Validate user-supplied inputs before they reach any SQL statement.
+  assertUuid(userId);
+  assertPhone(phone);
+
+  // country and role are TypeScript-narrowed to safe enum literals — no
+  // validation needed, but they are interpolated directly (not via -v) since
+  // they cannot contain injection characters.
   psql(
     `INSERT INTO users (id, name, phone, country, role, created_at) ` +
-      `VALUES ('${userId}', '${name.replace(/'/g, "''")}', '${phone}', '${country}', '${role}', NOW()) ` +
-      `ON CONFLICT (phone) DO NOTHING`
+      `VALUES (:'uid', :'name', :'phone', '${country}', '${role}', NOW()) ` +
+      `ON CONFLICT (phone) DO NOTHING`,
+    { uid: userId, name, phone }
   );
 
   const jwtRole = role === "ADMIN" ? "admin" : "guest";
@@ -105,8 +165,10 @@ export function createTestUser(opts: {
  * Returns empty string if not found.
  */
 export function getUserIdByPhone(phone: string): string {
+  assertPhone(phone);
   return psql(
-    `SELECT COALESCE((SELECT id FROM users WHERE phone = '${phone}' LIMIT 1), '')`
+    `SELECT COALESCE((SELECT id FROM users WHERE phone = :'phone' LIMIT 1), '')`,
+    { phone }
   );
 }
 
@@ -119,8 +181,17 @@ export function getUserIdByPhone(phone: string): string {
  * Uses a fresh hash chain starting from the last known hash.
  *
  * This mirrors the approach used in sequential-sim.spec.ts.
+ *
+ * ⚠️  NOT CONCURRENCY-SAFE: The hash-chain tail is read and the new row is
+ * written in two separate psql calls with no advisory lock or transaction.
+ * Running this concurrently from multiple processes (e.g. parallel Playwright
+ * workers) can produce colliding prev_hash values and violate the chain
+ * integrity constraint.  Use only inside single-threaded setup hooks
+ * (test.beforeAll / test.beforeEach with fullyParallel: false for the suite).
  */
 export function creditUser(userId: string, amountCents: number, tag: string): void {
+  assertUuid(userId);
+
   const amountDollars = (amountCents / 100).toFixed(6);
 
   // Get tail of hash chain
@@ -134,19 +205,24 @@ export function creditUser(userId: string, amountCents: number, tag: string): vo
     .update(`${prevHash}|DEPOSIT|${amountDollars}|${userId}|${now}`)
     .digest("hex");
 
+  // userId is validated above and passed via -v / :'uid' for SQL-injection
+  // safety.  The remaining values are computed internally (hex hashes,
+  // fixed-precision decimal, ISO timestamp) and are safe to interpolate.
   psql(
     `INSERT INTO transactions (id, user_id, debit_account, credit_account, type, amount, prev_hash, tx_hash, stripe_session_id, created_at) ` +
       `VALUES (` +
       `gen_random_uuid(), ` +
-      `'${userId}', ` +
+      `:'uid', ` +
       `'stripe', ` +
-      `'user:${userId}', ` +
+      `'user:' || :'uid', ` +
       `'DEPOSIT', ` +
       `${amountDollars}, ` +
       `'${prevHash}', ` +
       `'${txHash}', ` +
       `'e2e_${tag}', ` +
-      `'${now}')`
+      `'${now}'` +
+      `)`,
+    { uid: userId }
   );
 }
 

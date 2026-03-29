@@ -89,8 +89,12 @@ test.describe.serial("Full Payment Flow", () => {
       role: "GUEST",
     });
 
-    // 2. Mint an admin token (look up the real admin user, or create one)
-    let adminId = getUserIdByPhone("+17327998071");
+    // 2. Mint an admin token.
+    //    If E2E_ADMIN_PHONE is set in the environment, look up that real admin
+    //    user.  Otherwise fall back to creating a temporary E2E-only admin so
+    //    no personal phone numbers are hardcoded in source control.
+    const e2eAdminPhone = process.env.E2E_ADMIN_PHONE ?? "";
+    let adminId = e2eAdminPhone ? getUserIdByPhone(e2eAdminPhone) : "";
     if (!adminId) {
       // Fallback: create a temporary admin user for this test run
       const admin = createTestUser({
@@ -102,7 +106,7 @@ test.describe.serial("Full Payment Flow", () => {
       adminId = admin.userId;
       adminToken = admin.token;
     } else {
-      adminToken = signJwt({ userId: adminId, role: "admin", phone: "+17327998071" });
+      adminToken = signJwt({ userId: adminId, role: "admin", phone: e2eAdminPhone });
     }
   });
 
@@ -201,7 +205,12 @@ test.describe.serial("Full Payment Flow", () => {
     const continueBtn = page.locator("button", { hasText: /Continue with/ });
     await expect(continueBtn).toBeEnabled();
 
-    // Track whether the mocked API was called
+    // Track whether the mocked API was called.
+    // Set up the waitForRequest promise BEFORE clicking so we don't race.
+    const createDepositPromise = page.waitForRequest(
+      (req) => req.url().includes("payment.createDeposit"),
+      { timeout: 5_000 }
+    );
     let createDepositCalled = false;
     page.on("request", (req) => {
       if (req.url().includes("payment.createDeposit")) {
@@ -211,8 +220,8 @@ test.describe.serial("Full Payment Flow", () => {
 
     await continueBtn.click();
 
-    // Wait for the mock to be called and UI to advance to the payment step
-    await page.waitForTimeout(1500);
+    // Wait for the intercepted request to fire instead of a fixed timeout.
+    await createDepositPromise;
     expect(createDepositCalled).toBe(true);
 
     // The payment step should appear (shows "Payment" heading)
@@ -425,9 +434,6 @@ test.describe.serial("Full Payment Flow", () => {
     await injectAuthState(page, testUser);
     await page.goto("/bets");
 
-    // Wait for the bets page to load
-    await page.waitForLoadState("networkidle");
-
     // The market question should appear in the positions list
     const marketText = page.locator("text=Will the E2E payment test pass");
     await expect(marketText).toBeVisible({ timeout: 10_000 });
@@ -546,10 +552,12 @@ test.describe("Authenticated Routes (injected JWT)", () => {
     await page.goto("/bets");
     // Should stay on /bets (not redirect to /login)
     await expect(page).not.toHaveURL(/\/login/, { timeout: 5000 });
-    // Page should load without crashing
+    // Page should load without crashing.
+    // Use 'load' (resources fetched) rather than 'networkidle' (all XHR quiet)
+    // to avoid flakiness caused by long-polling or background requests.
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("load");
     expect(errors).toHaveLength(0);
   });
 
