@@ -343,7 +343,7 @@ export default function MarketDetailPage() {
               marketId={market.id}
               outcomes={market.outcomes}
               currentB={market.currentB}
-              remainingCapCents={5000}
+              remainingCapCents={20000}
               onSuccess={handleBuySuccess}
             />
           </div>

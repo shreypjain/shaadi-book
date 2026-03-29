@@ -211,12 +211,12 @@ describe("computeSharesForDollarAmount — convergence", () => {
     });
   }
 
-  it("$50 max bet on binary market always solvable", () => {
-    const delta = computeSharesForDollarAmount([0, 0], 20, 0, 50);
+  it("$200 max bet on binary market always solvable", () => {
+    const delta = computeSharesForDollarAmount([0, 0], 20, 0, 200);
     expect(delta).toBeGreaterThan(0);
     const qNew = [delta, 0];
     const costDiff = costFunction(qNew, 20) - costFunction([0, 0], 20);
-    expect(Math.abs(costDiff - 50)).toBeLessThan(COST_TOL);
+    expect(Math.abs(costDiff - 200)).toBeLessThan(COST_TOL);
   });
 
   it("result is rounded to 4 decimal places", () => {
@@ -521,7 +521,7 @@ describe("property test — 100 random (q, b) pairs", () => {
       const n = 2 + Math.floor(rand() * 3);
       const q = Array.from({ length: n }, () => rand() * 100);
       const idx = Math.floor(rand() * n);
-      const dollars = 0.5 + rand() * 49.5; // $0.50 – $50
+      const dollars = 0.5 + rand() * 199.5; // $0.50 – $200
 
       try {
         const delta = computeSharesForDollarAmount(q, b, idx, dollars);
