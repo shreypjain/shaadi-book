@@ -20,7 +20,7 @@ Live prediction market web app for Parsh & Spoorthi's wedding in Udaipur. Guests
 - Double-entry bookkeeping: every transaction has debit_account and credit_account.
 - Reconciliation invariant: SUM(user balances) + SUM(charity fees) + SUM(withdrawals paid) = SUM(deposits received) — checked on every balance-modifying transaction.
 - Adaptive b formula: b(t,V) = max(b_floor, 20 + (0.6 * 0.25 * sqrt(dt_ms)) + (0.4 * 0.5 * V))
-- $50 max bet per user per market.
+- $200 max bet per user per market.
 - No selling — buy and hold until resolution.
 
 ## Conventions

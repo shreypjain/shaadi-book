@@ -7,7 +7,7 @@
  *  2. Admin role check     — non-admin users cannot call admin-only procedures
  *  3. RLS verification     — UPDATE / DELETE on transactions / purchases blocked
  *  4. Webhook signature    — invalid Stripe signature → 400, valid → 200
- *  5. $50 cap              — purchase over per-user per-market cap rejected
+ *  5. $200 cap             — purchase over per-user per-market cap rejected
  *  6. Withdrawal ceiling   — withdrawal over user balance rejected
  *
  * Test strategy:
@@ -471,10 +471,10 @@ describe("Security 4 — Stripe webhook signature", () => {
 });
 
 // ============================================================================
-// 5. $50 CAP ENFORCEMENT
+// 5. $200 CAP ENFORCEMENT
 // ============================================================================
 
-describe("Security 5 — $50 per-user per-market cap", () => {
+describe("Security 5 — $200 per-user per-market cap", () => {
   const USER_ID = "sec-cap-user-0000-0000-0000-000000000001";
   const MARKET_ID = "sec-cap-mkt-00000-0000-0000-000000000001";
   const OUTCOME_ID = "sec-cap-out-00000-0000-0000-000000000001";
@@ -505,7 +505,7 @@ describe("Security 5 — $50 per-user per-market cap", () => {
     });
     tx.$queryRaw
       .mockResolvedValueOnce(mockOutcomes)
-      .mockResolvedValueOnce([{ balance: 100 }])
+      .mockResolvedValueOnce([{ balance: 300 }]) // $300 — enough for any $200 purchase
       .mockResolvedValueOnce([{ total_spend: existingSpendDollars }]);
   }
 
@@ -528,50 +528,50 @@ describe("Security 5 — $50 per-user per-market cap", () => {
     vi.clearAllMocks();
   });
 
-  it("buying $1 extra when already at $50 cap → CAP_EXCEEDED", async () => {
+  it("buying $1 extra when already at $200 cap → CAP_EXCEEDED", async () => {
     const tx = makeTx();
     mockTransaction.mockImplementation(
       async (fn: (tx: unknown) => Promise<unknown>) => fn(tx)
     );
-    wireCapTx(tx, 50);
+    wireCapTx(tx, 200);
 
     await expect(
       buyShares(USER_ID, MARKET_ID, OUTCOME_ID, 100)
     ).rejects.toMatchObject({ code: "CAP_EXCEEDED" });
   });
 
-  it("buying $30 when $25 already spent (total $55) → CAP_EXCEEDED", async () => {
+  it("buying $60 when $150 already spent (total $210) → CAP_EXCEEDED", async () => {
     const tx = makeTx();
     mockTransaction.mockImplementation(
       async (fn: (tx: unknown) => Promise<unknown>) => fn(tx)
     );
-    wireCapTx(tx, 25);
+    wireCapTx(tx, 150);
 
     await expect(
-      buyShares(USER_ID, MARKET_ID, OUTCOME_ID, 3000)
+      buyShares(USER_ID, MARKET_ID, OUTCOME_ID, 6000)
     ).rejects.toMatchObject({ code: "CAP_EXCEEDED" });
   });
 
-  it("buying $25 when $25 already spent (exactly $50) → success", async () => {
+  it("buying $50 when $150 already spent (exactly $200) → success", async () => {
     const tx = makeTx();
     mockTransaction.mockImplementation(
       async (fn: (tx: unknown) => Promise<unknown>) => fn(tx)
     );
-    wireHappyCapTx(tx, 25);
+    wireHappyCapTx(tx, 150);
 
-    const result = await buyShares(USER_ID, MARKET_ID, OUTCOME_ID, 2500);
-    expect(result.costCents).toBe(2500);
+    const result = await buyShares(USER_ID, MARKET_ID, OUTCOME_ID, 5000);
+    expect(result.costCents).toBe(5000);
   });
 
-  it("first purchase of $50 (no prior spend) → success", async () => {
+  it("first purchase of $200 (no prior spend) → success", async () => {
     const tx = makeTx();
     mockTransaction.mockImplementation(
       async (fn: (tx: unknown) => Promise<unknown>) => fn(tx)
     );
     wireHappyCapTx(tx, 0);
 
-    const result = await buyShares(USER_ID, MARKET_ID, OUTCOME_ID, 5000);
-    expect(result.costCents).toBe(5000);
+    const result = await buyShares(USER_ID, MARKET_ID, OUTCOME_ID, 20000);
+    expect(result.costCents).toBe(20000);
   });
 
   it("zero-cent purchase → INVALID_AMOUNT (pre-validated before any DB call)", async () => {

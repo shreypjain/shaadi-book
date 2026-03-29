@@ -79,7 +79,7 @@ export async function getUserBalance(
 /**
  * Sum of all costs a user has spent on a specific market.
  *
- * Used to enforce the $50-per-user-per-market cap (PRD §9, rule 2).
+ * Used to enforce the $200-per-user-per-market cap (PRD §9, rule 2).
  *
  * @param userId   - UUID of the user
  * @param marketId - UUID of the market

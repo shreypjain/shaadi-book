@@ -57,7 +57,7 @@ const buyInput = z.object({
     .number()
     .int()
     .positive()
-    .max(5000, "Maximum purchase is $50 (5000 cents) per transaction"),
+    .max(20000, "Maximum purchase is $200 (20000 cents) per transaction"),
 });
 
 const MarketStatusSchema = z.enum([
