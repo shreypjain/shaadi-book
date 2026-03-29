@@ -59,16 +59,11 @@ export interface MarketWithPrices {
   winningOutcomeId: string | null;
   outcomes: OutcomeWithPrice[];
   currentB: number;
-  /** Total dollar volume traded in this market (= sum of all purchase costs). */
+  /** Total dollar volume traded in this market (= parimutuel pool). */
   totalVolume: number;
   /**
-   * Parimutuel pool size in dollars.  Always equal to totalVolume.
-   *
-   * Both fields are kept intentionally:
-   *   - `totalVolume` is the canonical accounting measure (sum of purchases).
-   *   - `totalPool`   is the domain-facing alias used in parimutuel UI logic
-   *     (e.g. estimatedPayoutPerShare = totalPool / sharesSold).
-   * Keeping separate names prevents confusion when reading payout calculations.
+   * Parimutuel pool size in dollars.
+   * Equal to totalVolume — explicit alias for clarity in parimutuel context.
    */
   totalPool: number;
   /** Wedding event tag (e.g. 'Sangeet', 'Haldi', 'Reception'). */
@@ -319,36 +314,29 @@ export async function openMarket(
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve a market using CAPPED PARIMUTUEL distribution with 20% charity fee on winnings:
+ * Resolve a market using CAPPED PARIMUTUEL distribution (zero house loss):
  *   1. Set status = RESOLVED, winningOutcomeId, resolvedAt.
  *   2. Mark winning outcome isWinner = true.
  *   3. Compute totalPool = SUM(purchase.cost) for this market.
  *   4a. If no one bet on the winning outcome: REFUND all purchases
  *       (debit house_amm, credit each user their purchase cost; type=REFUND).
- *   4b. Otherwise: distribute using capped parimutuel with charity fee —
+ *   4b. Otherwise: distribute using capped parimutuel —
  *         payoutPerShare = min($1.00, totalPool / totalWinningShares)
  *         Pool > winning_shares  → $1.00/share (house keeps surplus; profits from losers)
  *         Pool < winning_shares  → pool/shares (house breaks even; thin-market protection)
- *         For each winning position:
- *           grossPayout = shares × payoutPerShare (truncated to 6 dp)
- *           profit      = max(0, grossPayout − position.totalCost)
- *           charityFee  = floor(profit × 0.20, 6 dp)   ← 20% charity fee (PRD §7.5)
- *           netPayout   = grossPayout − charityFee
- *           INSERT PAYOUT     (debit house_amm, credit user;         type=PAYOUT)
- *           INSERT CHARITY_FEE(debit house_amm, credit charity_pool; type=CHARITY_FEE) if charityFee > 0
+ *         For each position: payout = shares × payoutPerShare (truncated to 6 dp)
+ *         INSERT PAYOUT (debit house_amm, credit user; type=PAYOUT)
  *   5. Maintain SHA-256 hash chain on every transaction.
- *   6. Log to AdminAuditLog with resolution tag, houseSurplus, and totalCharityFees.
+ *   6. Log to AdminAuditLog with resolution tag and houseSurplus.
  *
  * Accounting invariant (always holds):
- *   net_payout + charity_fee = gross_payout  ⟹  SUM(net_payouts + charityFees) = SUM(gross_payouts) ≤ totalPool
- *   ⟹  housePool ≥ 0  (reconciliation passes)
- *   CHARITY_FEE debits house_amm / credits charity_pool → reconciliation lhs unchanged:
- *     lhs = userBalances + houseAmm + charityPool + withdrawals = deposits  ✓
+ *   SUM(payouts) ≤ totalPool  ⟹  housePool ≥ 0  (reconciliation passes)
+ *   With full-dollar payout: houseSurplus = pool − payouts > 0 (house profits)
+ *   With thin pool:          houseSurplus ≈ 0 (only rounding dust)
  *
  * References:
  *   PRD §6.4 — resolution flow pseudocode
  *   PRD §7.4 — immutable ledger guarantees
- *   PRD §7.5 — 20% charity fee on winnings
  */
 export async function resolveMarket(
   adminId: string,
@@ -487,51 +475,29 @@ export async function resolveMarket(
           },
         });
       } else {
-        // ---- Normal path: capped parimutuel distribution with 20% charity fee ----
+        // ---- Normal path: capped parimutuel distribution ----
         // payoutPerShare = min($1.00, totalPool / totalWinningShares)
         // Pool > winning_shares  → winners get $1/share, house keeps surplus
         // Pool < winning_shares  → winners split pool proportionally, house breaks even
-        //
-        // Charity fee (PRD §7.5):
-        //   profit     = max(0, grossPayout − position.totalCost)
-        //   charityFee = floor(profit × 0.20, 6 dp)
-        //   netPayout  = grossPayout − charityFee
-        //   net_payout + charity_fee = gross_payout  ⟹  total house_amm debit unchanged
         const rawPayoutPerShare = poolDollars.dividedBy(totalWinningShares);
         const payoutPerShare = Decimal.min(rawPayoutPerShare, new Decimal("1.000000"));
 
-        // totalGrossPayout = SUM(grossPayout per position) = SUM(netPayout + charityFee)
-        // Used for the houseSurplus invariant: SUM(grossPayouts) ≤ totalPool
         let totalGrossPayout = new Decimal(0);
-        let totalCharityFees = new Decimal(0);
 
         for (const position of winningPositions) {
           const shares = new Decimal(position.shares.toString());
-          const totalCost = new Decimal(position.totalCost.toString());
-
-          // Gross payout: truncate to 6 dp so SUM(grossPayouts) ≤ totalPool
-          const grossPayout = shares
+          // Truncate to 6 dp (floor) so SUM(payouts) ≤ totalPool
+          const payout = shares
             .times(payoutPerShare)
             .toDecimalPlaces(6, Decimal.ROUND_DOWN);
 
-          // 20% charity fee on profit above cost basis (PRD §7.5)
-          const profit = Decimal.max(new Decimal(0), grossPayout.minus(totalCost));
-          const charityFee = profit
-            .times(new Decimal("0.2"))
-            .toDecimalPlaces(6, Decimal.ROUND_DOWN);
+          totalGrossPayout = totalGrossPayout.plus(payout);
 
-          // Net payout credited to the user
-          const netPayout = grossPayout.minus(charityFee);
-
-          totalGrossPayout = totalGrossPayout.plus(grossPayout);
-          totalCharityFees = totalCharityFees.plus(charityFee);
-
-          // INSERT PAYOUT — net amount to user
           const payoutAt = new Date();
           const payoutHash = computeTxHash(
             prevHash,
             "PAYOUT",
-            netPayout.toNumber(),
+            payout.toNumber(),
             position.userId,
             payoutAt
           );
@@ -541,41 +507,16 @@ export async function resolveMarket(
               debitAccount: "house_amm",
               creditAccount: `user:${position.userId}`,
               type: "PAYOUT",
-              amount: netPayout.toNumber(),
+              amount: payout.toNumber(),
               prevHash,
               txHash: payoutHash,
               createdAt: payoutAt,
             },
           });
           prevHash = payoutHash;
-
-          // INSERT CHARITY_FEE — only when there is a profit (charityFee > 0)
-          if (charityFee.greaterThan(0)) {
-            const charityAt = new Date();
-            const charityHash = computeTxHash(
-              prevHash,
-              "CHARITY_FEE",
-              charityFee.toNumber(),
-              position.userId,
-              charityAt
-            );
-            await tx.transaction.create({
-              data: {
-                userId: position.userId,
-                debitAccount: "house_amm",
-                creditAccount: "charity_pool",
-                type: "CHARITY_FEE",
-                amount: charityFee.toNumber(),
-                prevHash,
-                txHash: charityHash,
-                createdAt: charityAt,
-              },
-            });
-            prevHash = charityHash;
-          }
         }
 
-        // Sanity check: SUM(grossPayouts) = SUM(netPayouts + charityFees) must not exceed pool
+        // Sanity check: SUM(payouts) must not exceed pool (rounding guard)
         if (totalGrossPayout.greaterThan(poolDollars.plus(new Decimal("0.000001")))) {
           throw new Error(
             `Capped parimutuel invariant violated: ` +
@@ -597,7 +538,6 @@ export async function resolveMarket(
               resolution: isFullDollarPayout ? "capped_parimutuel_full" : "capped_parimutuel_thin",
               totalPool: poolDollars.toFixed(6),
               totalGrossPayout: totalGrossPayout.toFixed(6),
-              totalCharityFees: totalCharityFees.toFixed(6),
               payoutPerShare: payoutPerShare.toFixed(6),
               houseSurplus: houseSurplus.toFixed(6),
               payoutsCount: winningPositions.length,
