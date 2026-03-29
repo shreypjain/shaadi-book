@@ -148,17 +148,20 @@ export function PositionCard({ position }: PositionCardProps) {
           </div>
         </div>
 
-        {/* Potential payout for active/pending */}
+        {/* Parimutuel estimated payout for active/pending */}
         {(position.marketStatus === "active" || position.marketStatus === "pending") && (
           <div className="mt-3 pt-3 border-t border-[#f0ece7]">
             <p className="text-xs bg-[#f5efd9] text-[#8a6d30] rounded-lg px-2.5 py-1.5">
-              Payout if wins:{" "}
+              Est. payout if wins:{" "}
               <span className="font-bold">
                 {formatDollars(position.potentialPayoutCents)}
               </span>
-              {" · "}Profit:{" "}
+              {" · "}Est. profit:{" "}
               <span className="font-bold">
                 {formatDollars(position.potentialPayoutCents - position.totalCostCents)}
+              </span>
+              <span className="block text-[#a08050] mt-0.5 opacity-75">
+                Pool-based estimate — grows as more bets come in
               </span>
             </p>
           </div>

@@ -4,29 +4,26 @@
  * Append-only transaction ledger with SHA-256 hash chain.
  *
  * Accounting convention (double-entry, from house perspective):
- *   DEPOSIT:     debit=stripe,           credit=user:{id}        → user balance +
- *   PURCHASE:    debit=user:{id},        credit=house_amm        → user balance -
- *   PAYOUT:      debit=house_amm,        credit=user:{id}        → user balance +
- *   CHARITY_FEE: debit=house_amm,        credit=charity_pool     → charity pool +
- *   WITHDRAWAL:  debit=user:{id},        credit=withdrawal:{ref} → user balance -
- *   REFUND:      debit=house_amm,        credit=user:{id}        → user balance +
- *   STRIPE_FEE:  debit=charity_pool,     credit=stripe_processor → stripe fees tracked
+ *   DEPOSIT:    debit=stripe,    credit=user:{id}       → user balance +
+ *   PURCHASE:   debit=user:{id}, credit=house_amm       → user balance -
+ *   PAYOUT:     debit=house_amm, credit=user:{id}       → user balance +
+ *   REFUND:     debit=house_amm, credit=user:{id}       → user balance +
+ *   WITHDRAWAL: debit=user:{id}, credit=withdrawal:{ref}→ user balance -
+ *
+ * Note: charity fees are collected externally (10% of winnings, via Venmo
+ * after the wedding). They are NOT tracked as ledger transactions.
  *
  * User balance = SUM(amount WHERE creditAccount='user:{id}')
  *              - SUM(amount WHERE debitAccount='user:{id}')
  *
- * Charity pool (gross) = SUM(CHARITY_FEE.amount)
- * Stripe fees          = SUM(STRIPE_FEE.amount)
- * Net charity donation = gross_charity - stripe_fees
- *
  * Reconciliation invariant:
- *   SUM(user balances) + SUM(charity_fees) + SUM(stripe_fees) + SUM(withdrawals) + house_pool
- *     = SUM(deposits)
- *   where house_pool >= 0 (ensures solvency).
+ *   SUM(user balances) + SUM(withdrawals paid) = SUM(deposits received)
+ *   (housePool = deposits − userBalances − withdrawals ≥ 0 ensures solvency;
+ *    housePool > 0 during open markets because purchases sit in house_amm
+ *    until resolution.)
  *
  * References:
  *   PRD §7.4 — Immutable Ledger Guarantees
- *   PRD §7.5 — Charity Fee (20% of winnings)
  */
 
 import { createHash } from "crypto";
@@ -168,60 +165,6 @@ export async function getUserBalance(
 }
 
 /**
- * Sum of all charity fees collected across all market resolutions.
- */
-export async function getCharityPoolTotal(
-  tx?: Prisma.TransactionClient
-): Promise<Decimal> {
-  const client = tx ?? prisma;
-
-  const result = await client.$queryRaw<[{ total: string | null }]>`
-    SELECT COALESCE(SUM(amount), 0) AS total
-    FROM transactions
-    WHERE type = 'CHARITY_FEE'
-  `;
-
-  return new Decimal(result[0]?.total ?? "0");
-}
-
-/**
- * Sum of all Stripe processing fees recorded as STRIPE_FEE transactions.
- *
- * These fees are absorbed by the charity pool rather than charged to guests
- * or the house. net_charity = getCharityPoolTotal() - getStripeFees().
- */
-export async function getStripeFees(
-  tx?: Prisma.TransactionClient
-): Promise<Decimal> {
-  const client = tx ?? prisma;
-
-  const result = await client.$queryRaw<[{ total: string | null }]>`
-    SELECT COALESCE(SUM(amount), 0) AS total
-    FROM transactions
-    WHERE type = 'STRIPE_FEE'
-  `;
-
-  return new Decimal(result[0]?.total ?? "0");
-}
-
-/**
- * Net charity amount available for donation:
- *   net_charity = gross_charity_fees - stripe_processing_fees
- *
- * The 20% charity fee pool covers Stripe's cut so guests see clean round
- * numbers and the house does not absorb the processing cost.
- */
-export async function getNetCharityAmount(
-  tx?: Prisma.TransactionClient
-): Promise<Decimal> {
-  const [gross, fees] = await Promise.all([
-    getCharityPoolTotal(tx),
-    getStripeFees(tx),
-  ]);
-  return gross.minus(fees);
-}
-
-/**
  * Sum of all confirmed deposits (Stripe-verified payments).
  */
 export async function getTotalDeposits(
@@ -266,17 +209,12 @@ export interface ReconciliationResult {
   isBalanced: boolean;
   totalDeposits: Decimal;
   totalUserBalances: Decimal;
-  /** Gross charity pool = SUM(CHARITY_FEE transactions). */
-  charityPool: Decimal;
-  /** Total Stripe processing fees = SUM(STRIPE_FEE transactions). */
-  stripeFees: Decimal;
-  /** Net charity available for donation = charityPool − stripeFees. */
-  netCharityAmount: Decimal;
   withdrawalsPaid: Decimal;
   /**
-   * Residual house pool = deposits − userBalances − charity − stripeFees − withdrawals.
-   * Represents LMSR profit from losing bets minus Stripe processing costs.
-   * Negative value = insolvency (system owes more than it received).
+   * Residual house pool = deposits − userBalances − withdrawals.
+   * Positive during open markets (purchase costs sit in house_amm until resolution).
+   * Approaches 0 after all markets resolve (all funds paid back to winners).
+   * Negative = insolvency (system owes more than it received).
    */
   housePool: Decimal;
   checkedAt: Date;
@@ -285,12 +223,14 @@ export interface ReconciliationResult {
 /**
  * Verify the reconciliation invariant:
  *
- *   SUM(user_balances) + SUM(charity_fees) + SUM(stripe_fees) + SUM(withdrawals) + house_pool
- *     = SUM(deposits)
- *   where house_pool >= 0
+ *   SUM(user balances) + SUM(withdrawals paid) = SUM(deposits received)
+ *   ⟺  housePool = deposits − userBalances − withdrawals ≥ 0
  *
- * Stripe fees come out of the charity pool (not from user balances or house pool):
- *   net_charity = charityPool − stripeFees
+ * housePool > 0 while markets are open (purchase costs held in house_amm).
+ * housePool ≈ 0 after all markets resolve (parimutuel — all pool paid to winners).
+ *
+ * Note: charity fees are collected externally (10% via Venmo post-wedding) and
+ * are NOT tracked as ledger transactions.
  *
  * Runs inside a READ-COMMITTED snapshot to get a consistent view.
  * Returns a structured result; does NOT throw on imbalance — callers
@@ -314,10 +254,8 @@ export async function runReconciliation(
     FROM transactions
   `;
 
-  const [deposits, charity, stripeFees, withdrawals] = await Promise.all([
+  const [deposits, withdrawals] = await Promise.all([
     getTotalDeposits(client),
-    getCharityPoolTotal(client),
-    getStripeFees(client),
     getTotalWithdrawals(client),
   ]);
 
@@ -325,22 +263,15 @@ export async function runReconciliation(
     userBalResult[0]?.total_user_balances ?? "0"
   );
 
-  const netCharityAmount = charity.minus(stripeFees);
-
-  // house_pool = deposits - userBalances - charity - stripeFees - withdrawals
+  // housePool = deposits - userBalances - withdrawals
   const housePool = deposits
     .minus(totalUserBalances)
-    .minus(charity)
-    .minus(stripeFees)
     .minus(withdrawals);
 
   return {
     isBalanced: housePool.greaterThanOrEqualTo(0),
     totalDeposits: deposits,
     totalUserBalances,
-    charityPool: charity,
-    stripeFees,
-    netCharityAmount,
     withdrawalsPaid: withdrawals,
     housePool,
     checkedAt: new Date(),

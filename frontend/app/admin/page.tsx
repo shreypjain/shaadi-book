@@ -3,7 +3,7 @@
 /**
  * Admin Dashboard — Task 4.3
  *
- * Shows aggregate stats and per-market house exposure.
+ * Shows aggregate stats and per-market parimutuel pool sizes.
  * Quick links to Market Manager, Withdrawal Queue, User Manager.
  */
 
@@ -17,19 +17,17 @@ interface DashboardData {
   totalUsers: number;
   activeMarketCount: number;
   totalVolume: string;
-  totalHouseExposure: string;
-  charityPool: string;
-  grossCharityPool: string;
-  stripeFees: string;
-  netCharityAmount: string;
+  /** Parimutuel pool across all active markets. House exposure = $0 (zero house risk). */
+  totalPoolSize: string;
   housePool: string;
   totalUserBalances: string;
   isReconciled: boolean;
-  marketExposures: Array<{
+  marketPools: Array<{
     marketId: string;
     question: string;
     volume: string;
-    worstCaseLoss: string;
+    /** Parimutuel pool = volume. 100% goes to winners at resolution. */
+    poolSize: string;
     b: string;
   }>;
 }
@@ -50,7 +48,7 @@ export default function AdminDashboardPage() {
     setError(null);
     try {
       const result = await trpc.admin.dashboard.query();
-      setData(result);
+      setData(result as DashboardData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard");
     } finally {
@@ -96,25 +94,19 @@ export default function AdminDashboardPage() {
           accent="text-gray-900"
         />
         <DashboardStat
-          label="Net Charity"
-          value={data ? formatUSD(data.netCharityAmount) : "—"}
-          subtext={data ? `gross ${formatUSD(data.grossCharityPool)} − fees ${formatUSD(data.stripeFees)}` : "20% of resolved payouts"}
+          label="Active Pool"
+          value={data ? formatUSD(data.totalPoolSize) : "—"}
+          subtext="parimutuel — house exposure $0"
           accent="text-emerald-600"
-        />
-        <DashboardStat
-          label="House Exposure"
-          value={data ? formatUSD(data.totalHouseExposure) : "—"}
-          subtext="aggregate worst-case loss"
-          accent="text-amber-600"
         />
       </div>
 
-      {/* Per-market exposure table */}
+      {/* Per-market pool table */}
       <section>
         <h2 className="text-sm font-semibold text-gray-700 mb-3">
-          Active Market Exposure
+          Active Market Pools
         </h2>
-        {!data || data.marketExposures.length === 0 ? (
+        {!data || data.marketPools.length === 0 ? (
           <p className="text-sm text-gray-400">No active markets.</p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
@@ -131,12 +123,12 @@ export default function AdminDashboardPage() {
                     Volume
                   </th>
                   <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">
-                    Max Loss
+                    Pool Size
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {data.marketExposures.map((m) => (
+                {data.marketPools.map((m) => (
                   <tr
                     key={m.marketId}
                     className="border-b border-gray-100 last:border-0 hover:bg-gray-50"
@@ -150,8 +142,8 @@ export default function AdminDashboardPage() {
                     <td className="px-4 py-2 text-right text-gray-600">
                       {formatUSD(m.volume)}
                     </td>
-                    <td className="px-4 py-2 text-right font-semibold text-amber-700 tabular-nums">
-                      {formatUSD(m.worstCaseLoss)}
+                    <td className="px-4 py-2 text-right font-semibold text-emerald-700 tabular-nums">
+                      {formatUSD(m.poolSize)}
                     </td>
                   </tr>
                 ))}

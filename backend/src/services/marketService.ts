@@ -9,10 +9,11 @@
  *   PRD §3.3 — market creation
  *   PRD §3.4 — market resolution
  *   PRD §6.4 — resolution flow pseudocode
- *   PRD §9   — void refund, no charity fee on void
+ *   PRD §9   — void refund
  */
 
 import crypto from "crypto";
+import { Decimal } from "decimal.js";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "../db.js";
 import { allPrices, adaptiveB } from "./lmsr.js";
@@ -38,6 +39,12 @@ export interface OutcomeWithPrice {
   price: number;
   /** Price in cents (0–100). */
   priceCents: number;
+  /**
+   * Estimated parimutuel payout per share if this outcome wins.
+   * = totalPool / sharesSold. 0 if no shares sold yet.
+   * This is an ESTIMATE — the pool grows as more bets come in.
+   */
+  estimatedPayoutPerShare: number;
 }
 
 export interface MarketWithPrices {
@@ -52,8 +59,18 @@ export interface MarketWithPrices {
   winningOutcomeId: string | null;
   outcomes: OutcomeWithPrice[];
   currentB: number;
-  /** Total dollar volume traded in this market. */
+  /** Total dollar volume traded in this market (= sum of all purchase costs). */
   totalVolume: number;
+  /**
+   * Parimutuel pool size in dollars.  Always equal to totalVolume.
+   *
+   * Both fields are kept intentionally:
+   *   - `totalVolume` is the canonical accounting measure (sum of purchases).
+   *   - `totalPool`   is the domain alias used in parimutuel UI logic
+   *     (e.g. estimatedPayoutPerShare = totalPool / sharesSold).
+   * Keeping separate names prevents confusion when reading payout calculations.
+   */
+  totalPool: number;
   /** Wedding event tag (e.g. 'Sangeet', 'Haldi', 'Reception'). */
   eventTag: string | null;
   /** Family side ('Spoorthi', 'Parsh', 'Both'). */
@@ -165,17 +182,24 @@ function buildMarketWithPrices(market: RawMarket): MarketWithPrices {
     createdAt: market.createdAt,
     resolvedAt: market.resolvedAt,
     winningOutcomeId: market.winningOutcomeId,
-    outcomes: market.outcomes.map((o: RawOutcome, i: number) => ({
-      id: o.id,
-      label: o.label,
-      position: o.position,
-      sharesSold: toNum(o.sharesSold),
-      isWinner: o.isWinner,
-      price: prices[i] ?? 0,
-      priceCents: Math.round((prices[i] ?? 0) * 100),
-    })),
+    outcomes: market.outcomes.map((o: RawOutcome, i: number) => {
+      const sharesSold = toNum(o.sharesSold);
+      return {
+        id: o.id,
+        label: o.label,
+        position: o.position,
+        sharesSold,
+        isWinner: o.isWinner,
+        price: prices[i] ?? 0,
+        priceCents: Math.round((prices[i] ?? 0) * 100),
+        // Capped parimutuel: payout/share = min($1.00, totalPool / sharesSold)
+        // $1.00 cap means house never loses; thin pools pay proportionally less.
+        estimatedPayoutPerShare: sharesSold > 0 ? Math.min(1.0, totalVolume / sharesSold) : 0,
+      };
+    }),
     currentB: b,
     totalVolume,
+    totalPool: totalVolume,
     eventTag: market.eventTag ?? null,
     familySide: market.familySide ?? null,
     customTags: market.customTags ?? [],
@@ -291,18 +315,33 @@ export async function openMarket(
 }
 
 // ---------------------------------------------------------------------------
-// 3. resolveMarket — PRD §6.4
+// 3. resolveMarket — Parimutuel resolution (zero house exposure)
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve a market in a single Serializable transaction:
+ * Resolve a market using CAPPED PARIMUTUEL distribution (zero house loss):
  *   1. Set status = RESOLVED, winningOutcomeId, resolvedAt.
  *   2. Mark winning outcome isWinner = true.
- *   3. For each position on the winning outcome:
- *        payout = shares × $1.00  (full $1.00 per share, no charity fee at resolution)
- *        INSERT PAYOUT (credit user, debit house_amm)
- *   4. Append hash chain.
- *   5. Log to AdminAuditLog.
+ *   3. Compute totalPool = SUM(purchase.cost) for this market.
+ *   4a. If no one bet on the winning outcome: REFUND all purchases
+ *       (debit house_amm, credit each user their purchase cost; type=REFUND).
+ *   4b. Otherwise: distribute using capped parimutuel —
+ *         payoutPerShare = min($1.00, totalPool / totalWinningShares)
+ *         Pool > winning_shares  → $1.00/share (house keeps surplus; profits from losers)
+ *         Pool < winning_shares  → pool/shares (house breaks even; thin-market protection)
+ *         For each position: payout = shares × payoutPerShare (truncated to 6 dp)
+ *         INSERT PAYOUT (debit house_amm, credit user; type=PAYOUT)
+ *   5. Maintain SHA-256 hash chain on every transaction.
+ *   6. Log to AdminAuditLog with resolution tag and houseSurplus.
+ *
+ * Accounting invariant (always holds):
+ *   SUM(payouts) ≤ totalPool  ⟹  housePool ≥ 0  (reconciliation passes)
+ *   With full-dollar payout: houseSurplus = pool − payouts > 0 (house profits)
+ *   With thin pool:          houseSurplus ≈ 0 (only rounding dust)
+ *
+ * References:
+ *   PRD §6.4 — resolution flow pseudocode
+ *   PRD §7.4 — immutable ledger guarantees
  */
 export async function resolveMarket(
   adminId: string,
@@ -314,7 +353,9 @@ export async function resolveMarket(
 
   await db.$transaction(
     async (tx: Prisma.TransactionClient) => {
+      // -----------------------------------------------------------------------
       // Guards
+      // -----------------------------------------------------------------------
       const market = await tx.market.findUnique({
         where: { id: marketId },
         include: { outcomes: true },
@@ -332,7 +373,9 @@ export async function resolveMarket(
         );
       }
 
-      // 1. Update market
+      // -----------------------------------------------------------------------
+      // 1. Update market status
+      // -----------------------------------------------------------------------
       await tx.market.update({
         where: { id: marketId },
         data: {
@@ -342,63 +385,172 @@ export async function resolveMarket(
         },
       });
 
+      // -----------------------------------------------------------------------
       // 2. Mark winning outcome
+      // -----------------------------------------------------------------------
       await tx.outcome.update({
         where: { id: winningOutcomeId },
         data: { isWinner: true },
       });
 
-      // 3. Fetch winning positions
+      // -----------------------------------------------------------------------
+      // 3. Calculate total pool = SUM(purchase.cost) for this market
+      // -----------------------------------------------------------------------
+      const totalPoolAgg = await tx.purchase.aggregate({
+        where: { marketId },
+        _sum: { cost: true },
+      });
+      const poolDollars = new Decimal(totalPoolAgg._sum.cost?.toString() ?? "0");
+
+      // -----------------------------------------------------------------------
+      // 4. Fetch winning positions (ordered for deterministic hash chain)
+      // -----------------------------------------------------------------------
       const winningPositions = await tx.position.findMany({
         where: { marketId, outcomeId: winningOutcomeId },
         orderBy: { createdAt: "asc" },
       });
 
-      // 4. Seed hash chain
-      let prevHash = await getLatestTxHash(tx);
-
-      // 5. Payout loop
-      let totalGross = 0;
-
-      for (const position of winningPositions) {
-        const shares = Number(position.shares);
-        // Round to 6 dp to match DB precision
-        const gross = parseFloat(shares.toFixed(6));
-
-        totalGross = parseFloat((totalGross + gross).toFixed(6));
-
-        // PAYOUT transaction — full $1.00 per share, no charity deduction at resolution
-        const payoutAt = new Date();
-        const payoutHash = computeTxHash(prevHash, "PAYOUT", gross, position.userId, payoutAt);
-        await tx.transaction.create({
-          data: {
-            userId: position.userId,
-            debitAccount: "house_amm",
-            creditAccount: `user:${position.userId}`,
-            type: "PAYOUT",
-            amount: gross,
-            prevHash,
-            txHash: payoutHash,
-            createdAt: payoutAt,
-          },
-        });
-        prevHash = payoutHash;
+      // -----------------------------------------------------------------------
+      // 5. Compute total winning shares
+      // -----------------------------------------------------------------------
+      let totalWinningShares = new Decimal(0);
+      for (const p of winningPositions) {
+        totalWinningShares = totalWinningShares.plus(new Decimal(p.shares.toString()));
       }
 
-      // 6. Audit log
-      await tx.adminAuditLog.create({
-        data: {
-          adminId,
-          action: "RESOLVE_MARKET",
-          targetId: marketId,
-          metadata: {
-            winningOutcomeId,
-            totalGrossPayout: totalGross,
-            payoutsCount: winningPositions.length,
+      // -----------------------------------------------------------------------
+      // 6. Seed hash chain
+      // -----------------------------------------------------------------------
+      let prevHash = await getLatestTxHash(tx);
+
+      // -----------------------------------------------------------------------
+      // 7. Distribute pool
+      // -----------------------------------------------------------------------
+      if (totalWinningShares.isZero()) {
+        // ---- Edge case: nobody bet on the winning outcome → refund everyone ----
+        // Fetch all purchases for this market ordered oldest-first
+        const allPurchases = await tx.purchase.findMany({
+          where: { marketId },
+          orderBy: { createdAt: "asc" },
+        });
+
+        let totalRefunded = new Decimal(0);
+
+        for (const purchase of allPurchases) {
+          const refundAmount = new Decimal(purchase.cost.toString());
+          totalRefunded = totalRefunded.plus(refundAmount);
+
+          const refundAt = new Date();
+          const refundHash = computeTxHash(
+            prevHash,
+            "REFUND",
+            refundAmount.toNumber(),
+            purchase.userId,
+            refundAt
+          );
+          await tx.transaction.create({
+            data: {
+              userId: purchase.userId,
+              debitAccount: "house_amm",
+              creditAccount: `user:${purchase.userId}`,
+              type: "REFUND",
+              amount: refundAmount.toNumber(),
+              prevHash,
+              txHash: refundHash,
+              createdAt: refundAt,
+            },
+          });
+          prevHash = refundHash;
+        }
+
+        // Audit log — no-winner refund path
+        await tx.adminAuditLog.create({
+          data: {
+            adminId,
+            action: "RESOLVE_MARKET",
+            targetId: marketId,
+            metadata: {
+              winningOutcomeId,
+              resolution: "no_winner_refunded",
+              totalPool: poolDollars.toFixed(6),
+              totalRefunded: totalRefunded.toFixed(6),
+              refundsCount: allPurchases.length,
+            },
+            ipAddress: opts?.ipAddress ?? "0.0.0.0",
           },
-          ipAddress: opts?.ipAddress ?? "0.0.0.0",
-        },
-      });
+        });
+      } else {
+        // ---- Normal path: capped parimutuel distribution ----
+        // payoutPerShare = min($1.00, totalPool / totalWinningShares)
+        // Pool > winning_shares  → winners get $1/share, house keeps surplus
+        // Pool < winning_shares  → winners split pool proportionally, house breaks even
+        const rawPayoutPerShare = poolDollars.dividedBy(totalWinningShares);
+        const payoutPerShare = Decimal.min(rawPayoutPerShare, new Decimal("1.000000"));
+
+        let totalGrossPayout = new Decimal(0);
+
+        for (const position of winningPositions) {
+          const shares = new Decimal(position.shares.toString());
+          // Truncate to 6 dp (floor) so SUM(payouts) ≤ totalPool
+          const payout = shares
+            .times(payoutPerShare)
+            .toDecimalPlaces(6, Decimal.ROUND_DOWN);
+
+          totalGrossPayout = totalGrossPayout.plus(payout);
+
+          const payoutAt = new Date();
+          const payoutHash = computeTxHash(
+            prevHash,
+            "PAYOUT",
+            payout.toNumber(),
+            position.userId,
+            payoutAt
+          );
+          await tx.transaction.create({
+            data: {
+              userId: position.userId,
+              debitAccount: "house_amm",
+              creditAccount: `user:${position.userId}`,
+              type: "PAYOUT",
+              amount: payout.toNumber(),
+              prevHash,
+              txHash: payoutHash,
+              createdAt: payoutAt,
+            },
+          });
+          prevHash = payoutHash;
+        }
+
+        // Sanity check: SUM(payouts) must not exceed pool (rounding guard)
+        if (totalGrossPayout.greaterThan(poolDollars.plus(new Decimal("0.000001")))) {
+          throw new Error(
+            `Capped parimutuel invariant violated: ` +
+              `payouts(${totalGrossPayout.toFixed(6)}) > pool(${poolDollars.toFixed(6)})`
+          );
+        }
+
+        const houseSurplus = poolDollars.minus(totalGrossPayout);
+        const isFullDollarPayout = rawPayoutPerShare.greaterThanOrEqualTo(new Decimal("1"));
+
+        // Audit log — capped parimutuel path
+        await tx.adminAuditLog.create({
+          data: {
+            adminId,
+            action: "RESOLVE_MARKET",
+            targetId: marketId,
+            metadata: {
+              winningOutcomeId,
+              resolution: isFullDollarPayout ? "capped_parimutuel_full" : "capped_parimutuel_thin",
+              totalPool: poolDollars.toFixed(6),
+              totalGrossPayout: totalGrossPayout.toFixed(6),
+              payoutPerShare: payoutPerShare.toFixed(6),
+              houseSurplus: houseSurplus.toFixed(6),
+              payoutsCount: winningPositions.length,
+            },
+            ipAddress: opts?.ipAddress ?? "0.0.0.0",
+          },
+        });
+      }
     },
     { isolationLevel: "Serializable" }
   );
@@ -454,7 +606,6 @@ export async function pauseMarket(
 /**
  * Void a market — refund all purchases, reset outcomes, log audit.
  *
- * No charity fee on voided markets (PRD §9 rule 8).
  * Runs in a Serializable transaction.
  */
 export async function voidMarket(
