@@ -1,6 +1,10 @@
 /**
- * ProbabilityBar.tsx — Colored outcome probability bar.
+ * ProbabilityBar.tsx — Monochromatic gold outcome probability bar.
  * Width = price% of container. Used on market cards and detail pages.
+ *
+ * Redesigned: single gold gradient bar on warm-gray track (#EDE8E0).
+ * The barColor/textColor/trackColor props are accepted for API compatibility
+ * but the visual always uses the palace gold palette.
  */
 
 import { cn } from "@/lib/utils";
@@ -10,12 +14,12 @@ interface ProbabilityBarProps {
   label: string;
   /** Price in cents (0–100) */
   priceCents: number;
-  /** Tailwind bg class for the filled bar, e.g. "bg-rose-400" */
-  barColor: string;
-  /** Tailwind text class for label, e.g. "text-rose-700" */
-  textColor: string;
-  /** Tailwind bg class for track, e.g. "bg-rose-50" */
-  trackColor: string;
+  /** Legacy prop — kept for API compat, ignored visually */
+  barColor?: string;
+  /** Legacy prop — kept for API compat, ignored visually */
+  textColor?: string;
+  /** Legacy prop — kept for API compat, ignored visually */
+  trackColor?: string;
   isWinner?: boolean;
   size?: "sm" | "md";
   className?: string;
@@ -24,9 +28,6 @@ interface ProbabilityBarProps {
 export function ProbabilityBar({
   label,
   priceCents,
-  barColor,
-  textColor,
-  trackColor,
   isWinner = false,
   size = "md",
   className = "",
@@ -38,24 +39,27 @@ export function ProbabilityBar({
   return (
     <div className={cn("flex flex-col gap-1", className)}>
       <div className="flex items-center justify-between">
-        <span className={cn(textSize, "font-medium text-gray-700 flex items-center gap-1")}>
+        <span className={cn(textSize, "font-medium text-[#2C2C2C] flex items-center gap-1")}>
           {isWinner && (
-            <span className="text-amber-500 text-xs">✓</span>
+            <span className="text-[#B8860B] text-xs">✓</span>
           )}
           {label}
         </span>
-        <span className={cn(textSize, "font-bold tabular-nums", textColor)}>
+        <span className={cn(textSize, "font-semibold tabular-nums text-[#B8860B]")}>
           {Math.round(priceCents)}¢
         </span>
       </div>
-      <div className={cn("w-full rounded-full overflow-hidden", barHeight, trackColor)}>
+      {/* Track: warm gray #EDE8E0 */}
+      <div className={cn("w-full rounded-full overflow-hidden bg-[#EDE8E0]", barHeight)}>
         <div
           className={cn(
             "h-full rounded-full transition-all duration-500 ease-out",
-            barColor,
-            isWinner && "ring-1 ring-amber-400"
+            isWinner ? "ring-1 ring-[#B8860B]/40" : ""
           )}
-          style={{ width: `${clampedPct}%` }}
+          style={{
+            width: `${clampedPct}%`,
+            background: "linear-gradient(90deg, #B8860B 0%, #d4a017 100%)",
+          }}
           role="progressbar"
           aria-valuenow={priceCents}
           aria-valuemin={0}

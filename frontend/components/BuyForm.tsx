@@ -6,12 +6,15 @@
  *   2. Enter dollar amount (1–200, capped by remaining capacity)
  *   3. Preview shows shares + avg price + slippage
  *   4. Confirm button → loading → success animation
+ *
+ * Redesigned: palace gold palette — outlined charcoal outcome cards,
+ * gold price labels, gold confirm button, ivory preview card.
  */
 
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { cn, formatDollars, formatShares, outcomeColor } from "@/lib/utils";
+import { cn, formatDollars, formatShares } from "@/lib/utils";
 import { computePreview } from "@/lib/lmsr";
 import { api } from "@/lib/api";
 import type { OutcomeWithPrice } from "@/lib/api-types";
@@ -27,9 +30,6 @@ interface BuyFormProps {
 type FormStep = "select" | "amount" | "confirm" | "success";
 
 const PRESET_AMOUNTS = [5, 10, 25, 50] as const;
-
-// Hex values aligned to OUTCOME_COLORS bar variants for inline border styling
-const OUTCOME_BAR_HEX = ["#3b6fa3", "#fbbf24", "#2dd4bf", "#34d399", "#a78bfa"];
 
 export function BuyForm({
   marketId,
@@ -105,13 +105,12 @@ export function BuyForm({
   if (step === "select") {
     return (
       <div className="animate-slide-up">
-        <p className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider mb-3">
+        <p className="font-serif text-xs font-medium text-[#6B6156] uppercase tracking-[0.1em] mb-3"
+          style={{ fontVariant: "small-caps" }}>
           Pick your outcome
         </p>
         <div className="flex flex-col gap-2">
-          {outcomes.map((outcome, i) => {
-            const colors = outcomeColor(i);
-            const barHex = OUTCOME_BAR_HEX[i % OUTCOME_BAR_HEX.length]!;
+          {outcomes.map((outcome) => {
             return (
               <button
                 key={outcome.id}
@@ -121,15 +120,14 @@ export function BuyForm({
                 }}
                 className={cn(
                   "flex items-center justify-between w-full rounded-xl px-4 py-3",
-                  "border border-[#e8e4df] bg-white text-left transition-all duration-150",
-                  "hover:shadow-card-hover active:scale-[0.98]"
+                  "border border-[rgba(44,44,44,0.15)] bg-white text-left transition-all duration-150",
+                  "hover:border-[#B8860B]/40 hover:shadow-card active:scale-[0.98]"
                 )}
-                style={{ borderLeft: `4px solid ${barHex}` }}
               >
-                <span className={cn("font-semibold text-sm", colors.text)}>
+                <span className="font-medium text-sm text-charcoal">
                   {outcome.label}
                 </span>
-                <span className={cn("text-base font-bold tabular-nums", colors.text)}>
+                <span className="text-base font-semibold tabular-nums text-[#B8860B]">
                   {Math.round(outcome.priceCents)}¢
                 </span>
               </button>
@@ -145,43 +143,38 @@ export function BuyForm({
   // -------------------------------------------------------------------------
 
   if (step === "amount") {
-    const colors = selectedIndex >= 0 ? outcomeColor(selectedIndex) : outcomeColor(0);
-    const barHex = OUTCOME_BAR_HEX[selectedIndex >= 0 ? selectedIndex % OUTCOME_BAR_HEX.length : 0]!;
-
     return (
       <div className="flex flex-col gap-4 animate-slide-up">
 
         {/* 1. Outcome header card */}
-        <div
-          className="rounded-xl border border-[#e8e4df] bg-white px-4 py-3 flex items-center gap-3"
-          style={{ borderLeft: `4px solid ${barHex}` }}
-        >
+        <div className="rounded-xl border border-[rgba(184,134,11,0.25)] bg-white px-4 py-3 flex items-center gap-3">
           <button
             onClick={() => setStep("select")}
-            className="p-1 rounded-lg hover:bg-[#e8e4df]/60 transition-colors flex-shrink-0"
+            className="p-1 rounded-lg hover:bg-gold-light/60 transition-colors flex-shrink-0"
             aria-label="Back"
           >
-            <svg className="w-4 h-4 text-[#4a4a5a]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-warmGray" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <span className={cn("font-bold text-base flex-1 leading-tight", colors.text)}>
+          <span className="font-semibold text-base flex-1 leading-tight text-charcoal">
             {selectedOutcome?.label}
           </span>
-          <span className={cn("text-lg font-bold tabular-nums flex-shrink-0", colors.text)}>
+          <span className="text-lg font-semibold tabular-nums flex-shrink-0 text-[#B8860B]">
             {selectedOutcome ? Math.round(selectedOutcome.priceCents) : 0}¢
           </span>
         </div>
 
         {/* 2. Amount section */}
-        <div className="rounded-xl border border-[#e8e4df] bg-[#faf8f5] px-4 py-4 space-y-3">
-          <p className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider">
-            Bet Amount <span className="normal-case font-normal">(max {formatDollars(maxDollars)})</span>
+        <div className="rounded-xl border border-[rgba(184,134,11,0.12)] bg-[#FAF7F2] px-4 py-4 space-y-3">
+          <p className="font-serif text-xs font-medium text-warmGray tracking-[0.1em]"
+            style={{ fontVariant: "small-caps" }}>
+            Bet Amount <span className="font-sans normal-case font-normal">(max {formatDollars(maxDollars)})</span>
           </p>
 
           {/* Dollar input */}
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a8a9a] font-semibold text-lg">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-warmGray font-semibold text-lg">
               $
             </span>
             <input
@@ -196,7 +189,7 @@ export function BuyForm({
                 "focus:outline-none focus:ring-0",
                 amountError
                   ? "border-[#dc2626] text-[#dc2626]"
-                  : "border-[#e8e4df] focus:border-[#1e3a5f] text-[#1a1a2e]"
+                  : "border-[rgba(184,134,11,0.20)] focus:border-[#B8860B] text-charcoal"
               )}
               inputMode="decimal"
             />
@@ -214,8 +207,8 @@ export function BuyForm({
                 className={cn(
                   "flex-1 py-2 rounded-full text-sm font-semibold transition-all duration-150",
                   dollarAmountStr === String(amt)
-                    ? "bg-[#1e3a5f] text-white shadow-sm"
-                    : "bg-white border border-[#e8e4df] text-[#4a4a5a] hover:border-[#1e3a5f] hover:text-[#1e3a5f]"
+                    ? "bg-[#B8860B] text-white shadow-sm"
+                    : "bg-white border border-charcoal/20 text-charcoal hover:border-[#B8860B]/50 hover:text-[#B8860B]"
                 )}
               >
                 ${amt}
@@ -227,20 +220,20 @@ export function BuyForm({
         {/* 3. Preview card */}
         {preview && !amountError && (
           <div
-            className="rounded-xl border border-[#e8e4df] bg-[#faf7f0] px-4 py-4 space-y-3 animate-fade-in"
-            style={{ borderLeft: '3px solid #c8a45c' }}
+            className="rounded-xl border border-[rgba(184,134,11,0.20)] bg-[#FAF7F0] px-4 py-4 space-y-3 animate-fade-in"
+            style={{ borderLeft: '3px solid #B8860B' }}
           >
             {/* Top row: shares + avg price */}
             <div className="flex items-baseline justify-between">
               <div className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-bold text-[#1a1a2e]">
+                <span className="text-2xl font-bold text-charcoal">
                   {formatShares(preview.shares)}
                 </span>
-                <span className="text-sm font-medium text-[#4a4a5a]">shares</span>
+                <span className="text-sm font-medium text-warmGray">shares</span>
               </div>
               <div className="text-right">
-                <span className="text-xs text-[#8a8a9a]">avg price </span>
-                <span className="text-base font-bold text-[#1a1a2e]">
+                <span className="text-xs text-warmGray">avg price </span>
+                <span className="text-base font-bold text-charcoal">
                   {formatDollars(preview.avgPrice)}
                 </span>
               </div>
@@ -249,7 +242,7 @@ export function BuyForm({
             {/* Middle: price movement */}
             <div className="flex items-center gap-2 text-sm">
               <svg
-                className="w-3.5 h-3.5 text-[#c8a45c] flex-shrink-0"
+                className="w-3.5 h-3.5 text-[#B8860B] flex-shrink-0"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -257,28 +250,28 @@ export function BuyForm({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
                   d="M13 7l5 5m0 0l-5 5m5-5H6" />
               </svg>
-              <span className="text-[#4a4a5a] tabular-nums">
+              <span className="text-warmGray tabular-nums">
                 {Math.round(preview.priceBefore * 100)}¢
               </span>
-              <span className="text-[#8a8a9a]">→</span>
-              <span className="text-[#1a1a2e] font-semibold tabular-nums">
+              <span className="text-warmGray/60">→</span>
+              <span className="text-charcoal font-semibold tabular-nums">
                 {Math.round(preview.priceAfter * 100)}¢
               </span>
-              <span className="text-xs text-[#8a8a9a] ml-auto">price impact</span>
+              <span className="text-xs text-warmGray ml-auto">price impact</span>
             </div>
 
             {/* Bottom: gold payout banner */}
-            <div className="rounded-lg bg-[#f5efd9] px-3 py-2.5 flex items-center justify-between">
-              <span className="text-sm text-[#8a6d30]">
+            <div className="rounded-lg bg-gold-pale px-3 py-2.5 flex items-center justify-between">
+              <span className="text-sm text-warmGray">
                 If{" "}
-                <span className="font-semibold">{selectedOutcome?.label}</span>{" "}
+                <span className="font-semibold text-charcoal">{selectedOutcome?.label}</span>{" "}
                 wins
               </span>
               <div className="text-right">
-                <span className="text-sm font-bold text-[#8a6d30]">
+                <span className="text-sm font-bold text-[#B8860B]">
                   +{formatDollars(preview.shares - dollarAmount)}
                 </span>
-                <span className="text-xs text-[#b08940] ml-1">profit</span>
+                <span className="text-xs text-warmGray ml-1">profit</span>
               </div>
             </div>
           </div>
@@ -299,10 +292,10 @@ export function BuyForm({
             "w-full py-4 rounded-xl font-semibold text-sm transition-all duration-200",
             "active:scale-[0.98]",
             amountError || dollarAmount <= 0
-              ? "bg-[#f0ece7] text-[#8a8a9a] cursor-not-allowed"
+              ? "bg-[#EDE8E0] text-warmGray cursor-not-allowed"
               : [
-                  "bg-[#1e3a5f] text-white",
-                  "hover:bg-[#152f52] hover:-translate-y-0.5",
+                  "bg-[#B8860B] text-white",
+                  "hover:bg-[#9a7009] hover:-translate-y-0.5",
                   "shadow-sm hover:shadow-card",
                 ]
           )}
@@ -320,8 +313,8 @@ export function BuyForm({
   if (step === "confirm") {
     return (
       <div className="flex flex-col items-center justify-center py-8 gap-3 animate-fade-in">
-        <div className="w-10 h-10 border-2 border-brand-200 border-t-brand-600 rounded-full animate-spin" />
-        <p className="text-sm text-[#8a8a9a] font-medium">Placing your bet…</p>
+        <div className="w-10 h-10 border-2 border-gold-light border-t-gold rounded-full animate-spin" />
+        <p className="text-sm text-warmGray font-medium">Placing your bet…</p>
       </div>
     );
   }
@@ -331,23 +324,22 @@ export function BuyForm({
   // -------------------------------------------------------------------------
 
   if (step === "success" && preview && selectedOutcome) {
-    const colors = selectedIndex >= 0 ? outcomeColor(selectedIndex) : outcomeColor(0);
     return (
       <div className="flex flex-col items-center py-6 gap-4 animate-success-pop">
-        {/* Checkmark */}
-        <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center">
-          <svg className="w-7 h-7 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* Checkmark — gold circle */}
+        <div className="w-14 h-14 rounded-full bg-gold-pale border border-[rgba(184,134,11,0.25)] flex items-center justify-center">
+          <svg className="w-7 h-7 text-[#B8860B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
           </svg>
         </div>
 
         <div className="text-center">
-          <p className="text-base font-bold text-[#1a1a2e]">Bet placed!</p>
-          <p className="text-sm text-[#4a4a5a] mt-1">
+          <p className="font-serif text-base font-semibold text-charcoal">Bet placed!</p>
+          <p className="text-sm text-warmGray mt-1">
             {formatShares(preview.shares)} shares of{" "}
-            <span className={cn("font-semibold", colors.text)}>{selectedOutcome.label}</span>
+            <span className="font-semibold text-charcoal">{selectedOutcome.label}</span>
           </p>
-          <p className="text-xs text-[#8a8a9a] mt-0.5">
+          <p className="text-xs text-warmGray mt-0.5">
             {formatDollars(dollarAmount)} · avg {formatDollars(preview.avgPrice)}/share
           </p>
         </div>
@@ -358,7 +350,7 @@ export function BuyForm({
             setSelectedOutcomeId(null);
             setDollarAmountStr("10");
           }}
-          className="w-full py-3 rounded-xl font-medium text-sm border border-[#e8e4df] bg-cream-100 text-[#1a1a2e] hover:bg-cream-200 transition-colors"
+          className="w-full py-3 rounded-xl font-medium text-sm border border-[rgba(184,134,11,0.25)] bg-ivory text-charcoal hover:bg-gold-light transition-colors"
         >
           Place another bet
         </button>
