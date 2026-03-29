@@ -302,7 +302,7 @@ describe("buyShares — $200 market cap", () => {
     tx.market.findUnique.mockResolvedValue(mockMarket);
     tx.$queryRaw
       .mockResolvedValueOnce(mockOutcomes)
-      .mockResolvedValueOnce([{ balance: 300 }])
+      .mockResolvedValueOnce([{ balance: 200 }])
       .mockResolvedValueOnce([{ total_spend: 0.01 }]); // $0.01 existing spend
 
     // Try buying $200.00 = $200.01 total → exceeds cap
