@@ -152,6 +152,11 @@ export function PriceChart({ data, outcomes, hours, onHoursChange }: PriceChartP
         return;
       }
 
+      // Compute now/since fresh at call time so the callback never closes over
+      // a stale render-time value (the component may have rendered long ago).
+      const now = Date.now();
+      const since = now - hours * 60 * 60 * 1000;
+
       // Reconstruct hovered timestamp from viewBox X
       const ratio = (svgPt.x - CHART_X0) / (CHART_X1 - CHART_X0);
       const hoverTs = since + ratio * (now - since);
@@ -192,7 +197,7 @@ export function PriceChart({ data, outcomes, hours, onHoursChange }: PriceChartP
 
       setHover({ svgX: svgPt.x, tooltipLeft, time: timeStr, prices });
     },
-    [data, outcomes, since, now]
+    [data, outcomes, hours]
   );
 
   const handleMouseLeave = useCallback(() => setHover(null), []);

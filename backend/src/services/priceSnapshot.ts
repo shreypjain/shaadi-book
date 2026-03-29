@@ -50,7 +50,6 @@ export async function snapshotMarketPrices(marketId: string): Promise<void> {
     where: { id: marketId },
     include: {
       outcomes: { orderBy: { position: "asc" } },
-      purchases: { select: { cost: true } },
     },
   });
 
@@ -61,10 +60,12 @@ export async function snapshotMarketPrices(marketId: string): Promise<void> {
       ? toNumber(market.bFloorOverride)
       : parseFloat(process.env["B_FLOOR_DEFAULT"] ?? "20");
 
-  const totalVolume = (market.purchases as Array<{ cost: unknown }>).reduce(
-    (sum, p) => sum + toNumber(p.cost),
-    0
-  );
+  // Use a SUM aggregate instead of loading all purchase rows into memory
+  const volumeAgg = await prisma.purchase.aggregate({
+    where: { marketId },
+    _sum: { cost: true },
+  });
+  const totalVolume = toNumber(volumeAgg._sum.cost ?? 0);
   const dtMs = market.openedAt ? Date.now() - market.openedAt.getTime() : 0;
   const b = adaptiveB(bFloor, dtMs, totalVolume);
 
