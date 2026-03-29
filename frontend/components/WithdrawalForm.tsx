@@ -31,16 +31,14 @@ export function WithdrawalForm({
   const [success, setSuccess] = useState(false);
   const [charityInfo, setCharityInfo] = useState<CharityInfo | null>(null);
 
-  // Fetch charity info conditionally — endpoint may not exist yet, so we
-  // swallow errors and only show the section if data is available.
+  // Fetch charity info — re-fetch whenever the balance changes so the
+  // breakdown stays in sync after deposits / payouts.
   useEffect(() => {
     api.wallet
       .charityInfo()
       .then(setCharityInfo)
-      .catch(() => {
-        // endpoint not yet deployed — gracefully hide the section
-      });
-  }, []);
+      .catch((e) => console.warn("[WithdrawalForm] charityInfo fetch failed:", e));
+  }, [balanceCents]);
 
   // When charityRemainingCents is known, cap withdrawals at balance minus
   // what is owed to charity.

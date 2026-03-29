@@ -57,7 +57,7 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
       .then(({ publishableKey }) => {
         setStripePromise(loadStripe(publishableKey));
       })
-      .catch(() => {});
+      .catch((e) => console.warn("[DepositButton] getPublishableKey failed:", e));
   }, [open, stripePromise]);
 
   async function handleContinue() {

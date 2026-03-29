@@ -359,16 +359,16 @@ describe("Step 6: Admin resolves market → Yes wins", () => {
     expect(outcome!.isWinner).not.toBe(true);
   });
 
-  it("guest1 receives net payout = gross × 0.80", async () => {
+  it("guest1 receives full gross payout ($1.00 per share, charity deferred to withdrawal)", async () => {
     const gross = guest1SharesBeforeResolution; // shares * $1
-    const expectedNetDollars = gross * 0.8;
-    const expectedNetCents = Math.round(expectedNetDollars * 100);
+    const expectedGrossDollars = gross;
+    const expectedGrossCents = Math.round(expectedGrossDollars * 100);
 
     // Previous balance was $30 (5000 - 2000 cents)
     const finalCents = await getUserBalance(guest1Id);
     const payoutReceived = finalCents - 3000;
 
-    expect(payoutReceived).toBeCloseTo(expectedNetCents, 0);
+    expect(payoutReceived).toBeCloseTo(expectedGrossCents, 0);
     expect(payoutReceived).toBeGreaterThan(0);
   });
 
@@ -386,20 +386,12 @@ describe("Step 6: Admin resolves market → Yes wins", () => {
     expect(totalNet).toBeGreaterThan(0);
   });
 
-  it("CHARITY_FEE transaction exists for 20% of gross", async () => {
+  it("no CHARITY_FEE at resolution — charity is deferred to withdrawal time", async () => {
     const charityTxs = await prisma.transaction.findMany({
       where: { type: "CHARITY_FEE", userId: guest1Id },
     });
-    expect(charityTxs.length).toBeGreaterThan(0);
-
-    const payouts = await prisma.transaction.findMany({
-      where: { type: "PAYOUT", userId: guest1Id },
-    });
-    const totalNet = payouts.reduce((sum, tx) => sum + Number(tx.amount), 0);
-    const totalCharity = charityTxs.reduce((sum, tx) => sum + Number(tx.amount), 0);
-
-    // charity = 20% of gross, net = 80% of gross → charity/net = 0.25
-    expect(totalCharity / totalNet).toBeCloseTo(0.25, 4);
+    // Charity is not collected at resolution; it will be withheld at withdrawal approval.
+    expect(charityTxs.length).toBe(0);
   });
 
   it("admin audit log contains RESOLVE_MARKET entry", async () => {
@@ -422,8 +414,9 @@ describe("Step 7: Reconciliation invariant holds across all operations", () => {
     expect(result.housePool.greaterThanOrEqualTo(0)).toBe(true);
   });
 
-  it("totalDeposits = userBalances + charityPool + housePool (accounting identity)", async () => {
+  it("totalDeposits = userBalances + housePool (accounting identity, no charity pool yet)", async () => {
     const result = await runReconciliation();
+    // charityPool = 0 at this point (charity is collected at withdrawal, not resolution)
     const reconstructed = result.totalUserBalances
       .plus(result.charityPool)
       .plus(result.housePool);
@@ -432,9 +425,10 @@ describe("Step 7: Reconciliation invariant holds across all operations", () => {
     expect(diff.lessThan(0.001)).toBe(true);
   });
 
-  it("charityPool > 0 after resolution (20% fee was collected)", async () => {
+  it("charityPool = 0 after resolution (charity collected at withdrawal, not at resolution)", async () => {
     const result = await runReconciliation();
-    expect(result.charityPool.greaterThan(0)).toBe(true);
+    // No CHARITY_FEE transactions yet — charity is withheld when admin approves withdrawal.
+    expect(result.charityPool.isZero()).toBe(true);
   });
 
   it("total user balances is positive (users still have funds)", async () => {
@@ -480,9 +474,10 @@ describe("Step 8: Hash chain linkage integrity", () => {
   });
 
   it("total transaction count matches expected operations", async () => {
-    // Expected: 2 DEPOSITs + 2 PURCHASEs + 1 PAYOUT + 1 CHARITY_FEE = 6
+    // Expected: 2 DEPOSITs + 2 PURCHASEs + 1 PAYOUT = 5
+    // (No CHARITY_FEE at resolution — charity is withheld at withdrawal approval)
     const count = await prisma.transaction.count();
-    expect(count).toBe(6);
+    expect(count).toBe(5);
   });
 });
 

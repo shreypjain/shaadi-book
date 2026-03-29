@@ -86,6 +86,7 @@ export interface CharityInfo {
   charityOwedCents: number;
   charityPaidCents: number;
   charityRemainingCents: number;
+  netWithdrawableCents: number;
 }
 
 // ---------------------------------------------------------------------------
