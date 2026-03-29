@@ -106,25 +106,16 @@ function makeApproveTx() {
 
 function wireApproveTxHappyPath(
   tx: ReturnType<typeof makeApproveTx>,
-  opts: { balanceDollars?: number; profitDollars?: number } = {}
+  opts: { balanceDollars?: number } = {}
 ) {
-  const { balanceDollars = 100, profitDollars = 0 } = opts;
-  // total_deposits is set so that profit = balanceDollars - totalDeposits (with no withdrawals/charity).
-  // Default profitDollars=0 → no charity owed → only one transaction.create (WITHDRAWAL).
-  const totalDepositsDollars = balanceDollars - profitDollars;
-
+  const { balanceDollars = 100 } = opts;
   // 1. findUnique — request
   tx.withdrawalRequest.findUnique.mockResolvedValue(MOCK_REQUEST_PENDING);
-  // 2. $queryRaw charity-computation query (new: balance + past_withdrawals + past_charity_paid + total_deposits)
-  tx.$queryRaw.mockResolvedValueOnce([{
-    balance: balanceDollars,
-    past_withdrawals: 0,
-    past_charity_paid: 0,
-    total_deposits: totalDepositsDollars,
-  }]);
+  // 2. $queryRaw balance check
+  tx.$queryRaw.mockResolvedValueOnce([{ balance: balanceDollars }]);
   // 3. transaction.findFirst (prevHash)
   tx.transaction.findFirst.mockResolvedValue(null);
-  // 4. transaction.create (CHARITY_FEE if profit > 0, always WITHDRAWAL)
+  // 4. transaction.create
   tx.transaction.create.mockResolvedValue({ id: TX_ID });
   // 5. withdrawalRequest.update → APPROVED
   tx.withdrawalRequest.update.mockResolvedValue({});
@@ -251,9 +242,8 @@ describe("approveWithdrawal — happy path", () => {
     expect(result.transactionId).toBe(TX_ID);
   });
 
-  it("inserts a WITHDRAWAL transaction with correct double-entry accounts (no charity owed)", async () => {
-    // profitDollars=0 → charityRemaining=0 → only WITHDRAWAL (no CHARITY_FEE)
-    wireApproveTxHappyPath(tx, { balanceDollars: 100, profitDollars: 0 });
+  it("inserts a WITHDRAWAL transaction with correct double-entry accounts", async () => {
+    wireApproveTxHappyPath(tx);
     await approveWithdrawal(ADMIN_ID, REQUEST_ID, IP);
 
     expect(tx.transaction.create).toHaveBeenCalledOnce();
@@ -261,27 +251,6 @@ describe("approveWithdrawal — happy path", () => {
     expect(txData?.type).toBe("WITHDRAWAL");
     expect(txData?.debitAccount).toBe(`user:${USER_ID}`);
     expect(txData?.creditAccount).toBe("withdrawal_paid");
-  });
-
-  it("inserts CHARITY_FEE then WITHDRAWAL when user has outstanding charity (20% of profit)", async () => {
-    // profitDollars=50 → charityOwed=10 → charityRemaining=10 (none paid yet)
-    wireApproveTxHappyPath(tx, { balanceDollars: 100, profitDollars: 50 });
-    await approveWithdrawal(ADMIN_ID, REQUEST_ID, IP);
-
-    // Two transactions: CHARITY_FEE (index 0) then WITHDRAWAL (index 1)
-    expect(tx.transaction.create).toHaveBeenCalledTimes(2);
-
-    const charityData = tx.transaction.create.mock.calls[0]?.[0]?.data;
-    expect(charityData?.type).toBe("CHARITY_FEE");
-    expect(charityData?.debitAccount).toBe(`user:${USER_ID}`);
-    expect(charityData?.creditAccount).toBe("charity_pool");
-
-    const withdrawalData = tx.transaction.create.mock.calls[1]?.[0]?.data;
-    expect(withdrawalData?.type).toBe("WITHDRAWAL");
-    expect(withdrawalData?.debitAccount).toBe(`user:${USER_ID}`);
-    expect(withdrawalData?.creditAccount).toBe("withdrawal_paid");
-    // Hash chain: WITHDRAWAL prevHash must equal CHARITY_FEE txHash
-    expect(withdrawalData?.prevHash).not.toBe("0".repeat(64));
   });
 
   it("sets withdrawal request status to APPROVED", async () => {
@@ -307,9 +276,8 @@ describe("approveWithdrawal — happy path", () => {
     expect(auditData?.ipAddress).toBe(IP);
   });
 
-  it("populates prevHash in the WITHDRAWAL transaction (hash chain continuity)", async () => {
-    // No profit → no CHARITY_FEE → WITHDRAWAL is call[0]
-    wireApproveTxHappyPath(tx, { profitDollars: 0 });
+  it("populates prevHash in the transaction (hash chain continuity)", async () => {
+    wireApproveTxHappyPath(tx);
     // Simulate an existing tx in chain
     tx.transaction.findFirst.mockResolvedValue({
       txHash: "a".repeat(64),
@@ -317,7 +285,6 @@ describe("approveWithdrawal — happy path", () => {
 
     await approveWithdrawal(ADMIN_ID, REQUEST_ID, IP);
 
-    // WITHDRAWAL is the only (and first) transaction.create call
     const txData = tx.transaction.create.mock.calls[0]?.[0]?.data;
     expect(txData?.prevHash).toBe("a".repeat(64));
   });
@@ -355,13 +322,7 @@ describe("approveWithdrawal — error paths", () => {
 
   it("throws INSUFFICIENT_BALANCE when user balance is too low at approval time", async () => {
     tx.withdrawalRequest.findUnique.mockResolvedValue(MOCK_REQUEST_PENDING); // $50
-    // $10 balance, no deposits → profit=$10 → charityOwed=$2 → totalRequired=$52 > $10
-    tx.$queryRaw.mockResolvedValueOnce([{
-      balance: 10,
-      past_withdrawals: 0,
-      past_charity_paid: 0,
-      total_deposits: 0,
-    }]);
+    tx.$queryRaw.mockResolvedValueOnce([{ balance: 10 }]); // only $10 available
 
     await expect(
       approveWithdrawal(ADMIN_ID, REQUEST_ID, IP)
@@ -371,13 +332,7 @@ describe("approveWithdrawal — error paths", () => {
 
   it("throws RECONCILIATION_FAILED when invariant is broken", async () => {
     tx.withdrawalRequest.findUnique.mockResolvedValue(MOCK_REQUEST_PENDING);
-    // Charity computation: no profit → no charity owed
-    tx.$queryRaw.mockResolvedValueOnce([{
-      balance: 100,
-      past_withdrawals: 0,
-      past_charity_paid: 0,
-      total_deposits: 100,
-    }]);
+    tx.$queryRaw.mockResolvedValueOnce([{ balance: 100 }]); // balance ok
     tx.transaction.findFirst.mockResolvedValue(null);
     tx.transaction.create.mockResolvedValue({ id: TX_ID });
     tx.withdrawalRequest.update.mockResolvedValue({});

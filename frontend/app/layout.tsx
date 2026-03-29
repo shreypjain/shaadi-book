@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Shaadi Book",
     description:
-      "Live prediction markets for Parsh & Spoorthi's wedding at Leela Palace, Udaipur. Bet on wedding moments. 20% of winnings go to charity.",
+      "Live prediction markets for Parsh & Spoorthi's wedding at Leela Palace, Udaipur. Bet on wedding moments. Real stakes, real fun.",
     url: "https://parshandspoorthi.com",
     siteName: "Shaadi Book",
     images: [

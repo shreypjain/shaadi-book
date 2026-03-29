@@ -4,9 +4,7 @@ import { formatDollars } from "@/lib/api";
 
 interface CharityCounterProps {
   /**
-   * Net charity amount in cents after Stripe processing fees have been
-   * deducted from the gross 20% pool.
-   * net = gross_charity_fees − stripe_processing_fees
+   * Net in-app charity amount in cents (Stripe fees deducted).
    */
   totalCents: number;
   loading?: boolean;
@@ -14,10 +12,8 @@ interface CharityCounterProps {
 
 /**
  * Charity Impact counter displayed at the top of the leaderboard.
- * Shows the net donation amount: 20% of all winnings minus Stripe fees.
- *
- * PRD §10 — "A separate 'Charity Impact' counter shows total fees collected"
- * PRD §7.5 — Charity fee = 20% of gross payout; Stripe fees absorbed from pool
+ * Shows net in-app charity transactions (Stripe fees deducted).
+ * Note: the primary charity contribution is collected externally via Venmo.
  */
 export function CharityCounter({ totalCents, loading = false }: CharityCounterProps) {
   return (
@@ -42,7 +38,7 @@ export function CharityCounter({ totalCents, loading = false }: CharityCounterPr
             </p>
           )}
           <p className="text-xs text-[#8a8a9a] mt-0.5">
-            donated from 20% of profits at cash-out (net of processing fees)
+            collected via the app (charity handled externally via Venmo)
           </p>
         </div>
 
