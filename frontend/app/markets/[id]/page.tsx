@@ -29,6 +29,8 @@ import type {
   WsPurchasePayload,
   WsMarketEventPayload,
   RecentPurchase,
+  MarketDetail,
+  OutcomeWithPrice,
 } from "@/lib/api-types";
 import type { PricePoint } from "@/components/PriceChart";
 
@@ -61,14 +63,14 @@ export default function MarketDetailPage() {
   const [chartHours, setChartHours] = useState<1 | 2 | 4>(4);
   const [chartData, setChartData] = useState<Record<string, PricePoint[]>>({});
 
-  const [market, setMarket] = useState<any>(null);
+  const [market, setMarket] = useState<MarketDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   const refetch = useCallback(async () => {
     if (!marketId) return;
     try {
-      const data = await api.market.getById({ id: marketId });
+      const data = await api.market.getById({ id: marketId }) as MarketDetail;
       setMarket(data);
       setError(null);
     } catch (err) {
@@ -135,7 +137,8 @@ export default function MarketDetailPage() {
           const next = { ...prev };
           payload.prices.forEach(({ outcomeId, priceCents }) => {
             const existing = prev[outcomeId] ?? [];
-            next[outcomeId] = [...existing, { priceCents, time: pointTime }];
+            // Trim to 500 points to prevent unbounded growth
+            next[outcomeId] = [...existing, { priceCents, time: pointTime }].slice(-500);
           });
           return next;
         });
@@ -281,7 +284,7 @@ export default function MarketDetailPage() {
             Current Odds
           </h2>
           <div className="flex flex-col gap-4">
-            {market.outcomes.map((outcome: any, i: number) => {
+            {market.outcomes.map((outcome: OutcomeWithPrice, i: number) => {
               const livePrice = livePrices[outcome.id];
               const displayPriceCents =
                 livePrice !== undefined ? livePrice : outcome.priceCents;
@@ -311,7 +314,7 @@ export default function MarketDetailPage() {
           </h2>
           <PriceChart
             data={chartData}
-            outcomes={market.outcomes.map((o: any) => ({ id: o.id, label: o.label }))}
+            outcomes={market.outcomes.map((o: OutcomeWithPrice) => ({ id: o.id, label: o.label }))}
             hours={chartHours}
             onHoursChange={(h) => setChartHours(h)}
           />
@@ -345,7 +348,7 @@ export default function MarketDetailPage() {
             <p className="text-sm text-[#8a6d30]">
               Winner:{" "}
               <span className="font-bold">
-                {market.outcomes.find((o: any) => o.id === winningOutcomeId)?.label ?? "Unknown"}
+                {market.outcomes.find((o: OutcomeWithPrice) => o.id === winningOutcomeId)?.label ?? "Unknown"}
               </span>
               . Winning shares pay <span className="font-bold">$0.80</span> each (20% charity fee deducted).
             </p>
@@ -361,7 +364,7 @@ export default function MarketDetailPage() {
             <div className="flex flex-col gap-2">
               {activityFeed.map((item) => {
                 const outcomeIdx = market.outcomes.findIndex(
-                  (o: any) => o.label === item.outcomeLabel
+                  (o: OutcomeWithPrice) => o.label === item.outcomeLabel
                 );
                 const colors = outcomeColor(outcomeIdx >= 0 ? outcomeIdx : 0);
                 return (

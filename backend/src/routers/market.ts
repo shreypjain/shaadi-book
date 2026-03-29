@@ -245,6 +245,7 @@ export const marketRouter = router({
       const snapshots = await prisma.priceSnapshot.findMany({
         where: { marketId: input.marketId, createdAt: { gte: since } },
         orderBy: { createdAt: "asc" },
+        take: 500,
         select: { outcomeId: true, priceCents: true, createdAt: true },
       });
 
