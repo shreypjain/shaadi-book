@@ -258,45 +258,123 @@ export async function approveWithdrawal(
 
       const balanceDollars = toNumber(balanceResult[0]?.balance ?? 0);
 
-      if (balanceDollars < amountDollars) {
+      // ----------------------------------------------------------------------
+      // 2b. Charity fee calculation (20% of lifetime profit, deducted at
+      //     cash-out time — PRD §7.5)
+      // ----------------------------------------------------------------------
+      const depositsResult = (await tx.$queryRaw`
+        SELECT COALESCE(SUM(amount), 0) AS total
+        FROM transactions
+        WHERE user_id = ${userId}::uuid AND type = 'DEPOSIT'
+      `) as Array<{ total: unknown }>;
+      const totalDeposits = new Decimal(toNumber(depositsResult[0]?.total ?? 0));
+
+      const charityPaidResult = (await tx.$queryRaw`
+        SELECT COALESCE(SUM(amount), 0) AS total
+        FROM transactions
+        WHERE user_id = ${userId}::uuid AND type = 'CHARITY_FEE'
+      `) as Array<{ total: unknown }>;
+      const pastCharityPaid = new Decimal(toNumber(charityPaidResult[0]?.total ?? 0));
+
+      const pastWithdrawalsResult = (await tx.$queryRaw`
+        SELECT COALESCE(SUM(amount), 0) AS total
+        FROM transactions
+        WHERE user_id = ${userId}::uuid AND type = 'WITHDRAWAL'
+      `) as Array<{ total: unknown }>;
+      const pastWithdrawals = new Decimal(toNumber(pastWithdrawalsResult[0]?.total ?? 0));
+      const balanceDecimal  = new Decimal(balanceDollars);
+      const amountDecimal   = new Decimal(amountDollars);
+
+      // profit = current_balance + past_withdrawals + past_charity_paid − total_deposits
+      // (reconstructs lifetime net gain; charity is owed on that gain, not on return of principal)
+      const profit = balanceDecimal
+        .plus(pastWithdrawals)
+        .plus(pastCharityPaid)
+        .minus(totalDeposits);
+
+      const charityOwed      = profit.greaterThan(0) ? profit.times("0.2") : new Decimal(0);
+      const charityRemaining = Decimal.max(new Decimal(0), charityOwed.minus(pastCharityPaid));
+
+      // Balance must cover both the withdrawal and any outstanding charity fee.
+      if (balanceDecimal.lessThan(amountDecimal.plus(charityRemaining))) {
         throw new WithdrawalError(
           "INSUFFICIENT_BALANCE",
-          `Insufficient balance at approval: have $${balanceDollars.toFixed(2)}, need $${amountDollars.toFixed(2)}`
+          `Insufficient balance at approval: have $${balanceDollars.toFixed(2)}, ` +
+          `need $${amountDecimal.plus(charityRemaining).toFixed(2)} ` +
+          `(withdrawal $${amountDecimal.toFixed(2)} + charity $${charityRemaining.toFixed(2)})`
         );
       }
 
       // ----------------------------------------------------------------------
-      // 3. Hash chain: get prevHash, compute txHash
+      // 3. Hash chain: fetch current chain tip
       // ----------------------------------------------------------------------
       const lastTx = (await tx.transaction.findFirst({
         orderBy: { createdAt: "desc" },
         select: { txHash: true },
       })) as { txHash: string } | null;
 
-      const prevHash = lastTx?.txHash ?? "0".repeat(64);
+      let prevHash = lastTx?.txHash ?? "0".repeat(64);
       const now = new Date();
+
+      // ----------------------------------------------------------------------
+      // 3a. Optional CHARITY_FEE transaction — debit user → credit charity_pool
+      //     Must be inserted BEFORE the WITHDRAWAL so the hash chain is correct.
+      // ----------------------------------------------------------------------
+      if (charityRemaining.greaterThan(0)) {
+        const charityNow  = now; // same millisecond; ordering guaranteed by prevHash chain
+        const charityHash = computeHash(
+          prevHash,
+          "CHARITY_FEE",
+          charityRemaining.toFixed(6),
+          userId,
+          charityNow.toISOString()
+        );
+
+        await tx.transaction.create({
+          data: {
+            userId,
+            debitAccount:  userAccount,
+            creditAccount: "charity_pool",
+            type:          "CHARITY_FEE",
+            amount:        charityRemaining,
+            prevHash,
+            txHash:        charityHash,
+            createdAt:     charityNow,
+          },
+        });
+
+        // Advance the chain tip to the just-inserted CHARITY_FEE.
+        prevHash = charityHash;
+      }
+
+      // ----------------------------------------------------------------------
+      // 4. INSERT WITHDRAWAL transaction (debits user balance)
+      //    Double-entry: debit user account, credit withdrawal_paid
+      //    When a CHARITY_FEE was inserted, use +1 ms to guarantee createdAt
+      //    ordering so the background chain verifier processes rows in sequence.
+      // ----------------------------------------------------------------------
+      const withdrawalNow = charityRemaining.greaterThan(0)
+        ? new Date(now.getTime() + 1)
+        : now;
+
       const txHash = computeHash(
         prevHash,
         "WITHDRAWAL",
         amountDollars.toFixed(6),
         userId,
-        now.toISOString()
+        withdrawalNow.toISOString()
       );
 
-      // ----------------------------------------------------------------------
-      // 4. INSERT WITHDRAWAL transaction (debits user balance)
-      //    Double-entry: debit user account, credit withdrawal_paid
-      // ----------------------------------------------------------------------
       const txRecord = (await tx.transaction.create({
         data: {
           userId,
-          debitAccount: userAccount,
+          debitAccount:  userAccount,
           creditAccount: "withdrawal_paid",
-          type: "WITHDRAWAL",
-          amount: new Decimal(amountDollars),
+          type:          "WITHDRAWAL",
+          amount:        new Decimal(amountDollars),
           prevHash,
           txHash,
-          createdAt: now,
+          createdAt:     withdrawalNow,
         },
       })) as { id: string };
 
@@ -319,6 +397,7 @@ export async function approveWithdrawal(
           metadata: {
             userId,
             amountDollars,
+            charityFeeDollars: charityRemaining.toNumber(),
             transactionId: txRecord.id,
           },
           ipAddress,
