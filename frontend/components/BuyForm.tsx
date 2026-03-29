@@ -43,7 +43,7 @@ export function BuyForm({
 }: BuyFormProps) {
   const [step, setStep] = useState<FormStep>("select");
   const [selectedOutcomeId, setSelectedOutcomeId] = useState<string | null>(null);
-  const [dollarAmountStr, setDollarAmountStr] = useState("10");
+  const [dollarAmountStr, setDollarAmountStr] = useState("25");
   const [error, setError] = useState<string | null>(null);
 
   const maxDollars = Math.min(200, remainingCapCents / 100);
