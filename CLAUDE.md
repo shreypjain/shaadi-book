@@ -1,7 +1,7 @@
 # Shaadi Book — Project Context
 
 ## What This Is
-Live prediction market web app for Parsh & Spoorthi's wedding in Udaipur. Guests bet real money (USD) on wedding outcomes via an LMSR automated market maker. 20% charity fee on winnings.
+Live prediction market web app for Parsh & Spoorthi's wedding in Udaipur. Guests bet real money (USD) on wedding outcomes via an LMSR automated market maker. 10% of winnings go to charity — collected externally via Venmo after the wedding, not tracked in-app.
 
 ## Stack
 - Frontend: Next.js 14 (App Router) + Tailwind CSS + shadcn/ui
@@ -18,7 +18,7 @@ Live prediction market web app for Parsh & Spoorthi's wedding in Udaipur. Guests
 - The LMSR purchase engine runs inside a single Postgres transaction with row-level locking.
 - Every transaction row has a SHA-256 hash chain. No UPDATE/DELETE on `transactions` or `purchases` — trigger-enforced.
 - Double-entry bookkeeping: every transaction has debit_account and credit_account.
-- Reconciliation invariant: SUM(user balances) + SUM(charity fees) + SUM(withdrawals paid) = SUM(deposits received) — checked on every balance-modifying transaction.
+- Reconciliation invariant: SUM(user balances) + SUM(withdrawals paid) = SUM(deposits received) — checked on every balance-modifying transaction.
 - Adaptive b formula: b(t,V) = max(b_floor, 20 + (0.6 * 0.25 * sqrt(dt_ms)) + (0.4 * 0.5 * V))
 - $200 max bet per user per market.
 - No selling — buy and hold until resolution.

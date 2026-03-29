@@ -34,6 +34,8 @@ function toNumber(val: unknown): number {
 
 /**
  * Conservation invariant (PRD §7.4) — same formula as purchaseEngine.
+ *   SUM(user balances) + SUM(house_amm) + SUM(withdrawals) = SUM(deposits)
+ *
  * Throws WithdrawalError('RECONCILIATION_FAILED') on mismatch > $0.0001.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -50,18 +52,12 @@ async function runReconciliation(tx: any): Promise<void> {
         - SUM(CASE WHEN debit_account  = 'house_amm' THEN amount ELSE 0 END),
         0
       ) AS house_amm,
-      COALESCE(
-        SUM(CASE WHEN credit_account = 'charity_pool' THEN amount ELSE 0 END)
-        - SUM(CASE WHEN debit_account  = 'charity_pool' THEN amount ELSE 0 END),
-        0
-      ) AS charity_pool,
       COALESCE(SUM(CASE WHEN type = 'DEPOSIT'    THEN amount ELSE 0 END), 0) AS total_deposits,
       COALESCE(SUM(CASE WHEN type = 'WITHDRAWAL' THEN amount ELSE 0 END), 0) AS total_withdrawals
     FROM transactions
   `) as Array<{
     user_balances: unknown;
     house_amm: unknown;
-    charity_pool: unknown;
     total_deposits: unknown;
     total_withdrawals: unknown;
   }>;
@@ -71,11 +67,10 @@ async function runReconciliation(tx: any): Promise<void> {
 
   const userBalances = toNumber(row.user_balances);
   const houseAmm = toNumber(row.house_amm);
-  const charityPool = toNumber(row.charity_pool);
   const totalDeposits = toNumber(row.total_deposits);
   const totalWithdrawals = toNumber(row.total_withdrawals);
 
-  const lhs = userBalances + houseAmm + charityPool + totalWithdrawals;
+  const lhs = userBalances + houseAmm + totalWithdrawals;
   const rhs = totalDeposits;
   const diff = Math.abs(lhs - rhs);
 
@@ -258,50 +253,15 @@ export async function approveWithdrawal(
 
       const balanceDollars = toNumber(balanceResult[0]?.balance ?? 0);
 
-      // ----------------------------------------------------------------------
-      // 2b. Charity fee calculation (20% of lifetime profit, deducted at
-      //     cash-out time — PRD §7.5)
-      // ----------------------------------------------------------------------
-      const depositsResult = (await tx.$queryRaw`
-        SELECT COALESCE(SUM(amount), 0) AS total
-        FROM transactions
-        WHERE user_id = ${userId}::uuid AND type = 'DEPOSIT'
-      `) as Array<{ total: unknown }>;
-      const totalDeposits = new Decimal(toNumber(depositsResult[0]?.total ?? 0));
+      const balanceDecimal = new Decimal(balanceDollars);
+      const amountDecimal  = new Decimal(amountDollars);
 
-      const charityPaidResult = (await tx.$queryRaw`
-        SELECT COALESCE(SUM(amount), 0) AS total
-        FROM transactions
-        WHERE user_id = ${userId}::uuid AND type = 'CHARITY_FEE'
-      `) as Array<{ total: unknown }>;
-      const pastCharityPaid = new Decimal(toNumber(charityPaidResult[0]?.total ?? 0));
-
-      const pastWithdrawalsResult = (await tx.$queryRaw`
-        SELECT COALESCE(SUM(amount), 0) AS total
-        FROM transactions
-        WHERE user_id = ${userId}::uuid AND type = 'WITHDRAWAL'
-      `) as Array<{ total: unknown }>;
-      const pastWithdrawals = new Decimal(toNumber(pastWithdrawalsResult[0]?.total ?? 0));
-      const balanceDecimal  = new Decimal(balanceDollars);
-      const amountDecimal   = new Decimal(amountDollars);
-
-      // profit = current_balance + past_withdrawals + past_charity_paid − total_deposits
-      // (reconstructs lifetime net gain; charity is owed on that gain, not on return of principal)
-      const profit = balanceDecimal
-        .plus(pastWithdrawals)
-        .plus(pastCharityPaid)
-        .minus(totalDeposits);
-
-      const charityOwed      = profit.greaterThan(0) ? profit.times("0.2") : new Decimal(0);
-      const charityRemaining = Decimal.max(new Decimal(0), charityOwed.minus(pastCharityPaid));
-
-      // Balance must cover both the withdrawal and any outstanding charity fee.
-      if (balanceDecimal.lessThan(amountDecimal.plus(charityRemaining))) {
+      // Balance must cover the withdrawal amount.
+      if (balanceDecimal.lessThan(amountDecimal)) {
         throw new WithdrawalError(
           "INSUFFICIENT_BALANCE",
           `Insufficient balance at approval: have $${balanceDollars.toFixed(2)}, ` +
-          `need $${amountDecimal.plus(charityRemaining).toFixed(2)} ` +
-          `(withdrawal $${amountDecimal.toFixed(2)} + charity $${charityRemaining.toFixed(2)})`
+          `need $${amountDollars.toFixed(2)}`
         );
       }
 
@@ -317,45 +277,10 @@ export async function approveWithdrawal(
       const now = new Date();
 
       // ----------------------------------------------------------------------
-      // 3a. Optional CHARITY_FEE transaction — debit user → credit charity_pool
-      //     Must be inserted BEFORE the WITHDRAWAL so the hash chain is correct.
-      // ----------------------------------------------------------------------
-      if (charityRemaining.greaterThan(0)) {
-        const charityNow  = now; // same millisecond; ordering guaranteed by prevHash chain
-        const charityHash = computeHash(
-          prevHash,
-          "CHARITY_FEE",
-          charityRemaining.toFixed(6),
-          userId,
-          charityNow.toISOString()
-        );
-
-        await tx.transaction.create({
-          data: {
-            userId,
-            debitAccount:  userAccount,
-            creditAccount: "charity_pool",
-            type:          "CHARITY_FEE",
-            amount:        charityRemaining,
-            prevHash,
-            txHash:        charityHash,
-            createdAt:     charityNow,
-          },
-        });
-
-        // Advance the chain tip to the just-inserted CHARITY_FEE.
-        prevHash = charityHash;
-      }
-
-      // ----------------------------------------------------------------------
       // 4. INSERT WITHDRAWAL transaction (debits user balance)
       //    Double-entry: debit user account, credit withdrawal_paid
-      //    When a CHARITY_FEE was inserted, use +1 ms to guarantee createdAt
-      //    ordering so the background chain verifier processes rows in sequence.
       // ----------------------------------------------------------------------
-      const withdrawalNow = charityRemaining.greaterThan(0)
-        ? new Date(now.getTime() + 1)
-        : now;
+      const withdrawalNow = now;
 
       const txHash = computeHash(
         prevHash,
@@ -397,7 +322,6 @@ export async function approveWithdrawal(
           metadata: {
             userId,
             amountDollars,
-            charityFeeDollars: charityRemaining.toNumber(),
             transactionId: txRecord.id,
           },
           ipAddress,

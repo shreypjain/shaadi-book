@@ -9,7 +9,7 @@
  *   PRD §3.3 — market creation
  *   PRD §3.4 — market resolution
  *   PRD §6.4 — resolution flow pseudocode
- *   PRD §9   — void refund, no charity fee on void
+ *   PRD §9   — void refund
  */
 
 import crypto from "crypto";
@@ -59,11 +59,16 @@ export interface MarketWithPrices {
   winningOutcomeId: string | null;
   outcomes: OutcomeWithPrice[];
   currentB: number;
-  /** Total dollar volume traded in this market (= parimutuel pool). */
+  /** Total dollar volume traded in this market (= sum of all purchase costs). */
   totalVolume: number;
   /**
-   * Parimutuel pool size in dollars.
-   * Equal to totalVolume — explicit alias for clarity in parimutuel context.
+   * Parimutuel pool size in dollars.  Always equal to totalVolume.
+   *
+   * Both fields are kept intentionally:
+   *   - `totalVolume` is the canonical accounting measure (sum of purchases).
+   *   - `totalPool`   is the domain alias used in parimutuel UI logic
+   *     (e.g. estimatedPayoutPerShare = totalPool / sharesSold).
+   * Keeping separate names prevents confusion when reading payout calculations.
    */
   totalPool: number;
   /** Wedding event tag (e.g. 'Sangeet', 'Haldi', 'Reception'). */
@@ -601,7 +606,6 @@ export async function pauseMarket(
 /**
  * Void a market — refund all purchases, reset outcomes, log audit.
  *
- * No charity fee on voided markets (PRD §9 rule 8).
  * Runs in a Serializable transaction.
  */
 export async function voidMarket(
