@@ -196,18 +196,18 @@ export default function MarketDetailPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen">
-        <header className="sticky top-0 z-10 bg-cream-100/95 backdrop-blur border-b border-[#e8e4df] px-4 py-3">
+        <header className="sticky top-0 z-10 bg-ivory/95 backdrop-blur border-b border-[rgba(184,134,11,0.12)] px-4 py-3">
           <div className="max-w-lg mx-auto flex items-center gap-3">
-            <div className="h-5 w-5 bg-[#e8e4df] rounded animate-pulse" />
-            <div className="h-5 bg-[#e8e4df] rounded w-48 animate-pulse" />
+            <div className="h-5 w-5 bg-[#EDE8E0] rounded animate-pulse" />
+            <div className="h-5 bg-[#EDE8E0] rounded w-48 animate-pulse" />
           </div>
         </header>
         <main className="max-w-lg mx-auto px-4 py-4">
-          <div className="rounded-xl bg-white border border-[#e8e4df] p-5 animate-pulse">
-            <div className="h-6 bg-[#e8e4df] rounded w-3/4 mb-4" />
+          <div className="rounded-2xl bg-white/80 border border-[rgba(184,134,11,0.08)] p-6 animate-pulse shadow-[0_2px_16px_rgba(139,109,71,0.06)]">
+            <div className="h-6 bg-[#EDE8E0] rounded w-3/4 mb-4" />
             <div className="space-y-3">
-              <div className="h-2 bg-[#f0ece7] rounded w-full" />
-              <div className="h-2 bg-[#f0ece7] rounded w-5/6" />
+              <div className="h-1.5 bg-[#EDE8E0]/80 rounded w-full" />
+              <div className="h-1.5 bg-[#EDE8E0]/80 rounded w-5/6" />
             </div>
           </div>
         </main>
@@ -218,11 +218,11 @@ export default function MarketDetailPage() {
   if (error || !market) {
     return (
       <div className="min-h-screen flex flex-col">
-        <header className="sticky top-0 z-10 bg-cream-100/95 backdrop-blur border-b border-[#e8e4df] px-4 py-3">
+        <header className="sticky top-0 z-10 bg-ivory/95 backdrop-blur border-b border-[rgba(184,134,11,0.12)] px-4 py-3">
           <div className="max-w-lg mx-auto">
             <button
               onClick={() => router.back()}
-              className="flex items-center gap-2 text-[#4a4a5a]"
+              className="flex items-center gap-2 text-[#6B6156]"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -251,11 +251,11 @@ export default function MarketDetailPage() {
   return (
     <div className="min-h-screen pb-24">
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-cream-100/95 backdrop-blur border-b border-[#e8e4df] px-4 py-3">
+      <header className="sticky top-0 z-10 bg-ivory/95 backdrop-blur border-b border-[rgba(184,134,11,0.12)] px-4 py-3">
         <div className="max-w-lg mx-auto flex items-center gap-3">
           <button
             onClick={() => router.back()}
-            className="p-1.5 rounded-lg hover:bg-[#e8e4df]/60 transition-colors -ml-1.5"
+            className="p-1.5 rounded-lg hover:bg-[#EDE8E0]/60 transition-colors -ml-1.5"
             aria-label="Back"
           >
             <svg className="w-5 h-5 text-[#4a4a5a]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -282,15 +282,15 @@ export default function MarketDetailPage() {
       <main className="max-w-lg mx-auto px-4 py-4 space-y-4 animate-fade-in">
 
         {/* Market question */}
-        <div className="rounded-xl bg-white border border-[#e8e4df] px-5 py-4 shadow-card">
-          <h1 className="text-xl font-bold text-[#1a1a2e] leading-snug mb-3 tracking-tight">
+        <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-[rgba(184,134,11,0.08)] px-6 py-5 shadow-[0_2px_16px_rgba(139,109,71,0.06)]">
+          <h1 className="font-serif text-xl font-semibold text-[#2C2C2C] leading-snug mb-3">
             {market.question}
           </h1>
-          <MarketTags market={market} className="mb-3" />
-          <div className="flex items-center gap-4 text-xs text-[#8a8a9a]">
+          <MarketTags market={market} className="mb-4" />
+          <div className="flex items-center gap-4 text-xs text-[#8B7355]/60 font-sans">
             {openedAt && <span>Opened {timeSince(openedAt)}</span>}
             <span>{formatVolume(market.totalVolume)} volume</span>
-            <span className="font-semibold text-[#1e3a5f]">
+            <span className="font-medium text-[#8B7355]">
               Pool: ${(market.totalPool ?? market.totalVolume).toFixed(2)}
             </span>
             <span>{market.outcomes.length} outcomes</span>
@@ -298,8 +298,8 @@ export default function MarketDetailPage() {
         </div>
 
         {/* Outcomes with live prices */}
-        <div className="rounded-xl bg-white border border-[#e8e4df] px-5 py-4 shadow-card">
-          <h2 className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider mb-4">
+        <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-[rgba(184,134,11,0.08)] px-6 py-5 shadow-[0_2px_16px_rgba(139,109,71,0.06)]">
+          <h2 className="font-serif text-xs font-medium text-[#B8860B]/70 uppercase tracking-[0.2em] mb-4">
             Current Odds
           </h2>
           <div className="flex flex-col gap-4">
@@ -338,8 +338,8 @@ export default function MarketDetailPage() {
 
         {/* Buy form */}
         {isActive && (
-          <div className="rounded-xl bg-white border border-[#e8e4df] px-5 py-4 shadow-card">
-            <h2 className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider mb-4">
+          <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-[rgba(184,134,11,0.08)] px-6 py-5 shadow-[0_2px_16px_rgba(139,109,71,0.06)]">
+            <h2 className="font-serif text-xs font-medium text-[#B8860B]/70 uppercase tracking-[0.2em] mb-4">
               Place a Bet
             </h2>
             <BuyForm
@@ -411,8 +411,8 @@ export default function MarketDetailPage() {
 
         {/* Recent activity feed */}
         {activityFeed.length > 0 && (
-          <div className="rounded-xl bg-white border border-[#e8e4df] px-5 py-4 shadow-card">
-            <h2 className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider mb-3">
+          <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-[rgba(184,134,11,0.08)] px-6 py-5 shadow-[0_2px_16px_rgba(139,109,71,0.06)]">
+            <h2 className="font-serif text-xs font-medium text-[#B8860B]/70 uppercase tracking-[0.2em] mb-3">
               Recent Activity
             </h2>
             <div className="flex flex-col gap-2">

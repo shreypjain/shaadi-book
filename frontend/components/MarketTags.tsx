@@ -13,7 +13,7 @@ import type { MarketWithPrices } from "@/lib/api-types";
 
 function Pill({ label }: { label: string }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-[#6B6156]/25 px-2 py-0.5 text-[10px] font-medium text-[#6B6156] bg-transparent">
+    <span className="inline-flex items-center rounded-full border border-[#D4C5A9]/30 px-2 py-0.5 text-[10px] font-sans font-medium tracking-wide uppercase text-[#8B7355] bg-[#FAF7F2]">
       {label}
     </span>
   );

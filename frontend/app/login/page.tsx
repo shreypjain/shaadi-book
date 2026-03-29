@@ -147,9 +147,9 @@ export default function LoginPage() {
         </div>
 
         {/* Card */}
-        <div className="w-full max-w-sm bg-ivory-card rounded-xl shadow-card border border-[rgba(184,134,11,0.15)] overflow-hidden animate-slide-up">
+        <div className="w-full max-w-sm bg-white/80 backdrop-blur-sm rounded-2xl shadow-[0_2px_16px_rgba(139,109,71,0.06)] border border-[rgba(184,134,11,0.12)] overflow-hidden animate-slide-up">
           {/* Card header */}
-          <div className="px-6 py-4 border-b border-[rgba(184,134,11,0.10)] bg-ivory">
+          <div className="px-6 py-4 border-b border-[rgba(184,134,11,0.08)] bg-[#FAF7F2]/50">
             <h2 className="font-sans text-sm font-semibold text-charcoal">
               {step === "phone" ? "Sign in to your account" : "Enter verification code"}
             </h2>
@@ -234,8 +234,8 @@ export default function LoginPage() {
                 <button
                   onClick={() => void handleSendOTP()}
                   disabled={isLoading}
-                  className="w-full py-3.5 rounded-lg bg-gold hover:bg-gold-600 active:scale-95
-                             text-white font-medium text-sm tracking-wide transition-all
+                  className="w-full py-3.5 rounded-full bg-gold hover:bg-gold-600 active:scale-95
+                             text-white font-sans font-medium text-sm tracking-wide transition-all
                              disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
                 >
                   {isLoading ? (
@@ -285,8 +285,8 @@ export default function LoginPage() {
                 <button
                   onClick={() => void handleVerifyOTP(otp)}
                   disabled={isLoading || otp.length < 6}
-                  className="w-full py-3.5 rounded-lg bg-gold hover:bg-gold-600 active:scale-95
-                             text-white font-medium text-sm tracking-wide transition-all
+                  className="w-full py-3.5 rounded-full bg-gold hover:bg-gold-600 active:scale-95
+                             text-white font-sans font-medium text-sm tracking-wide transition-all
                              disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
                 >
                   {isLoading ? (

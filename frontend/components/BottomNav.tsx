@@ -129,8 +129,8 @@ export function BottomNav() {
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-40
-                 bg-white/85 backdrop-blur-md
-                 border-t border-[#e8e4df]
+                 bg-white/90 backdrop-blur-md
+                 border-t border-[#EDE8E0]
                  safe-area-inset-bottom"
     >
       <div className="flex items-stretch max-w-lg mx-auto">
@@ -141,19 +141,19 @@ export function BottomNav() {
               key={tab.href}
               href={tab.href}
               aria-label={tab.label}
-              className={`flex flex-col items-center justify-center flex-1 pt-3 pb-2 gap-1.5
+              className={`flex flex-col items-center justify-center flex-1 pt-3 pb-2 gap-1
                           transition-colors min-h-[52px]
                           ${
                             active
                               ? "text-[#B8860B]"
-                              : "text-[#6B6156] hover:text-[#2C2C2C]"
+                              : "text-[#8B7355] hover:text-[#2C2C2C]"
                           }`}
             >
               {tab.icon(active)}
-              {/* Gold indicator dot for active tab */}
+              {/* Gold indicator — wider dash for active tab */}
               <span
-                className={`h-1 w-1 rounded-full transition-all duration-200 ${
-                  active ? "bg-[#B8860B]" : "bg-transparent"
+                className={`h-[3px] rounded-full transition-all duration-200 ${
+                  active ? "w-6 bg-[#B8860B]" : "w-0 bg-transparent"
                 }`}
               />
             </Link>

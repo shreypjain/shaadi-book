@@ -2,10 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Google Fonts — Cormorant Garamond (editorial serif) + Inter (clean sans) */
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,600&family=Inter:wght@300;400;500;600&display=swap');
+/* Fonts loaded via next/font/google in layout.tsx — no CDN @import needed */
 
 :root {
+  /* Fallback values — overridden by next/font CSS variables on <html> */
   --font-sans: "Inter", system-ui, sans-serif;
   --font-serif: "Cormorant Garamond", Georgia, serif;
   --color-ivory: #FAF7F2;
@@ -36,4 +36,13 @@ html {
 /* Touch-friendly tap targets — only for interactive elements not inside inputs */
 button:not([class*="otp"]), a, [role="button"] {
   min-height: 44px;
+}
+
+/* Hide scrollbars while keeping scroll functionality */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
 }
