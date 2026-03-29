@@ -12,14 +12,19 @@ export default defineConfig({
   },
   projects: [
     {
+      // Standard suite — all specs except the payment flow
       name: "chromium",
       use: { browserName: "chromium" },
+      testIgnore: ["**/payment-flow.spec.ts"],
+    },
+    {
+      // Payment flow suite — scoped separately because Stripe webhook delivery
+      // + ledger update involve multiple async hops and each step in the
+      // describe.serial block needs more time than the default 30 s.
+      name: "payment-flow",
+      use: { browserName: "chromium" },
+      testMatch: ["**/payment-flow.spec.ts"],
+      timeout: 120_000, // 2 minutes per test step
     },
   ],
-
-  // Override timeout for the payment flow suite — Stripe webhook + balance
-  // update involve multiple async hops and need a longer deadline.
-  // Individual test timeouts are inherited from the project default (30s)
-  // but the full describe.serial block can take longer.
-  globalTimeout: 10 * 60 * 1000, // 10 minutes per full run
 });
