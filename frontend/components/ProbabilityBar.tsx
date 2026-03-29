@@ -33,23 +33,24 @@ export function ProbabilityBar({
   className = "",
 }: ProbabilityBarProps) {
   const clampedPct = Math.max(2, Math.min(98, priceCents)); // never fully empty or full visually
-  const barHeight = size === "sm" ? "h-2" : "h-3";
+  // Elegant thin bar — h-1.5 for both sizes
+  const barHeight = "h-1.5";
   const textSize = size === "sm" ? "text-xs" : "text-sm";
 
   return (
-    <div className={cn("flex flex-col gap-1", className)}>
+    <div className={cn("flex flex-col gap-1.5", className)}>
       <div className="flex items-center justify-between">
-        <span className={cn(textSize, "font-medium text-[#2C2C2C] flex items-center gap-1")}>
+        <span className={cn(textSize, "font-sans font-medium text-[#2C2C2C] flex items-center gap-1")}>
           {isWinner && (
             <span className="text-[#B8860B] text-xs">✓</span>
           )}
           {label}
         </span>
-        <span className={cn(textSize, "font-semibold tabular-nums text-[#B8860B]")}>
+        <span className={cn(textSize, "font-sans font-semibold tabular-nums text-[#B8860B]")}>
           {Math.round(priceCents)}¢
         </span>
       </div>
-      {/* Track: warm gray #EDE8E0 */}
+      {/* Track: warm gray #EDE8E0 — thin, elegant */}
       <div className={cn("w-full rounded-full overflow-hidden bg-[#EDE8E0]", barHeight)}>
         <div
           className={cn(
@@ -58,7 +59,7 @@ export function ProbabilityBar({
           )}
           style={{
             width: `${clampedPct}%`,
-            background: "linear-gradient(90deg, #B8860B 0%, #d4a017 100%)",
+            background: "linear-gradient(90deg, #B8860B 0%, #D4A847 100%)",
           }}
           role="progressbar"
           aria-valuenow={priceCents}
