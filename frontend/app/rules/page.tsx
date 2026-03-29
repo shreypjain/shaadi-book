@@ -29,17 +29,15 @@ export default function RulesPage() {
 
         {/* ── Section 1: The Basics ─────────────────────────────────── */}
         <SectionCard
-          emoji="🎯"
+          label="01"
           title="The Basics"
           subtitle="Everything you need to know in 30 seconds"
         >
           <ul className="flex flex-col gap-3 mt-1">
             <RuleItem
-              icon="💍"
               text="Bet on real outcomes from the wedding — Will the baraat be late? How many outfit changes? Who cries first?"
             />
             <RuleItem
-              icon="💰"
               text={
                 <>
                   Each outcome has a price between{" "}
@@ -51,7 +49,6 @@ export default function RulesPage() {
               }
             />
             <RuleItem
-              icon="📈"
               text={
                 <>
                   If your outcome wins, you{" "}
@@ -63,7 +60,6 @@ export default function RulesPage() {
               }
             />
             <RuleItem
-              icon="💎"
               text={
                 <>
                   <Highlight>$200 max bet per market.</Highlight> No
@@ -77,7 +73,7 @@ export default function RulesPage() {
 
         {/* ── Section 2: How Prices Work ───────────────────────────── */}
         <SectionCard
-          emoji="📊"
+          label="02"
           title="How Prices Work"
           subtitle="The spicy quant stuff — don't skip this"
         >
@@ -176,7 +172,7 @@ export default function RulesPage() {
               </span>{" "}
               — both cause b to grow over time, meaning the market hardens
               and individual bets move prices less. Early bets swing prices
-              hard (first-mover advantage 🏃); late bets barely nudge them.
+              hard (first-mover advantage); late bets barely nudge them.
               Plus a few more features under the hood.
             </p>
 
@@ -201,7 +197,7 @@ export default function RulesPage() {
                     <td className="py-1.5 px-2">0 sec</td>
                     <td className="py-1.5 px-2">$0</td>
                     <td className="py-1.5 px-2 font-semibold text-[#c8a45c]">
-                      96¢ 🚀 (first mover massively rewarded)
+                      96¢ (first mover massively rewarded)
                     </td>
                   </tr>
                   <tr className="border-b border-[#f0ece7]">
@@ -252,14 +248,13 @@ export default function RulesPage() {
 
         {/* ── Section 3: Payouts ────────────────────────────────────── */}
         <SectionCard
-          emoji="🏆"
+          label="03"
           title="Payouts"
           subtitle="The part everyone actually cares about"
         >
           <div className="flex flex-col gap-3 mt-1 text-sm text-[#4a4a5a]">
             <ul className="flex flex-col gap-3">
               <RuleItem
-                icon="✅"
                 text={
                   <>
                     Winning shares split the total market pool. Your payout
@@ -274,7 +269,6 @@ export default function RulesPage() {
                 }
               />
               <RuleItem
-                icon="🎗️"
                 text={
                   <>
                     <Highlight>10% of your profit</Highlight> goes to
@@ -303,7 +297,7 @@ export default function RulesPage() {
                 <div className="border-t border-[#e8e4df] mt-1 pt-2">
                   <ExampleRow
                     label="You take home"
-                    value="$8.50 🎉"
+                    value="$8.50"
                     bold
                   />
                 </div>
@@ -311,7 +305,6 @@ export default function RulesPage() {
             </div>
 
             <RuleItem
-              icon="📱"
               text="Payouts sent via Venmo or Zelle after the wedding. Shrey is the bookie. He&apos;s good for it."
             />
           </div>
@@ -319,14 +312,13 @@ export default function RulesPage() {
 
         {/* ── Section 4: House Rules ────────────────────────────────── */}
         <SectionCard
-          emoji="📜"
+          label="04"
           title="House Rules"
           subtitle="Short list. No fine print."
         >
           <ul className="flex flex-col gap-3 mt-1">
-            <RuleItem icon="🇺🇸" text="All bets are in USD." />
+            <RuleItem text="All bets are in USD." />
             <RuleItem
-              icon="🎲"
               text={
                 <>
                   Shrey is the bookie — but he&apos;s not the house.{" "}
@@ -338,15 +330,12 @@ export default function RulesPage() {
               }
             />
             <RuleItem
-              icon="⚖️"
               text="Markets are resolved by admin decree. No appeals, no arbitration, no crying (unless you bet on it)."
             />
             <RuleItem
-              icon="😂"
               text="Have fun. Don't bet your rent money. This is a wedding, not a hedge fund."
             />
             <RuleItem
-              icon="❤️"
               text="This is for charity and entertainment. Winning feels great. Losing still helped a good cause."
             />
           </ul>
@@ -383,12 +372,12 @@ export default function RulesPage() {
 // ---------------------------------------------------------------------------
 
 function SectionCard({
-  emoji,
+  label,
   title,
   subtitle,
   children,
 }: {
-  emoji: string;
+  label: string;
   title: string;
   subtitle: string;
   children: React.ReactNode;
@@ -397,7 +386,7 @@ function SectionCard({
     <div className="rounded-xl bg-white border border-[#e8e4df] shadow-card overflow-hidden animate-slide-up">
       {/* Card header */}
       <div className="px-5 py-4 border-b border-[#e8e4df] bg-cream-100 flex items-center gap-3">
-        <span className="text-xl leading-none">{emoji}</span>
+        <span className="text-xs font-mono font-bold text-[#c8a45c] leading-none mt-0.5">{label}</span>
         <div>
           <h2 className="text-sm font-semibold text-[#1a1a2e]">{title}</h2>
           <p className="text-xs text-[#8a8a9a] mt-0.5">{subtitle}</p>
@@ -409,15 +398,13 @@ function SectionCard({
 }
 
 function RuleItem({
-  icon,
   text,
 }: {
-  icon: string;
   text: React.ReactNode;
 }) {
   return (
     <li className="flex gap-3 items-start list-none">
-      <span className="text-base leading-none mt-0.5 shrink-0">{icon}</span>
+      <span className="text-[#c8a45c] leading-none mt-1 shrink-0">—</span>
       <p className="text-sm text-[#4a4a5a] leading-relaxed">{text}</p>
     </li>
   );
