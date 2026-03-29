@@ -308,6 +308,12 @@ export default function LoginPage() {
           By continuing you agree to the rules of Parsh &amp; Spoorthi&apos;s
           wedding. All payouts in USD post-event.
         </p>
+        <a
+          href="/rules"
+          className="mt-2 text-[11px] text-[#c8a45c] underline underline-offset-2 text-center"
+        >
+          Read the rules →
+        </a>
       </div>
 
       {/* Bottom accent line */}
