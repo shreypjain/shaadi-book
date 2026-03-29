@@ -91,13 +91,13 @@ export const betsRouter = router({
       const currentPriceCents = Math.round(currentPrice * 100);
       const currentValueCents = Math.round(shares * currentPrice * 100);
 
-      // Parimutuel estimated payout if this outcome wins.
-      // estimatedPayoutPerShare = totalPool / sharesSold (for this outcome)
-      // potentialPayout = userShares × estimatedPayoutPerShare
+      // Capped parimutuel estimated payout if this outcome wins.
+      // payoutPerShare = min($1.00, totalPool / sharesSold)
+      // potentialPayout = userShares × payoutPerShare
       // NOTE: this is an ESTIMATE because the pool grows as more bets come in.
       const sharesSoldOnOutcome = toNum(outcome.sharesSold as unknown as number);
       const estimatedPayoutPerShare =
-        sharesSoldOnOutcome > 0 ? totalVolume / sharesSoldOnOutcome : 0;
+        sharesSoldOnOutcome > 0 ? Math.min(1.0, totalVolume / sharesSoldOnOutcome) : 0;
       const potentialPayoutCents = Math.round(shares * estimatedPayoutPerShare * 100);
 
       return {
