@@ -145,15 +145,15 @@ export function BottomNav() {
                           transition-colors min-h-[52px]
                           ${
                             active
-                              ? "text-[#1e3a5f]"
-                              : "text-[#8a8a9a] hover:text-[#4a4a5a]"
+                              ? "text-[#B8860B]"
+                              : "text-[#6B6156] hover:text-[#2C2C2C]"
                           }`}
             >
               {tab.icon(active)}
               {/* Gold indicator dot for active tab */}
               <span
                 className={`h-1 w-1 rounded-full transition-all duration-200 ${
-                  active ? "bg-[#c8a45c]" : "bg-transparent"
+                  active ? "bg-[#B8860B]" : "bg-transparent"
                 }`}
               />
             </Link>
