@@ -202,7 +202,7 @@ export default function MarketFeedPage() {
             {isLoggedIn && (
               <button
                 onClick={() => setShowSuggestModal(true)}
-                className="flex items-center gap-1.5 rounded-lg border border-gold/40 bg-gold-pale px-3 py-1.5 text-xs font-medium text-gold hover:bg-gold-light hover:border-gold transition-colors"
+                className="flex items-center gap-1.5 rounded-full border border-[#B8860B]/40 bg-transparent px-4 py-2 text-sm font-medium text-[#B8860B] hover:bg-[#B8860B] hover:text-white transition-all duration-200"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -277,10 +277,10 @@ export default function MarketFeedPage() {
                   <button
                     key={tag}
                     onClick={() => selectEventTag(tag)}
-                    className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                    className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-sans font-normal border transition-all duration-200 ${
                       isActive
-                        ? "border-gold bg-gold text-white shadow-sm"
-                        : "border-charcoal/20 bg-transparent text-charcoal hover:border-gold/50 hover:text-gold"
+                        ? "border-transparent bg-[#B8860B] text-white shadow-sm"
+                        : "border-[#D4C5A9]/40 bg-transparent text-[#6B6156] hover:border-[#B8860B]/50 hover:text-[#B8860B]"
                     }`}
                   >
                     {tag}
@@ -305,10 +305,10 @@ export default function MarketFeedPage() {
                   <button
                     key={side}
                     onClick={() => selectFamilySide(side)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                    className={`rounded-full px-4 py-1.5 text-sm font-sans font-normal border transition-all duration-200 ${
                       isActive
-                        ? "border-gold bg-gold text-white shadow-sm"
-                        : "border-charcoal/20 bg-transparent text-charcoal hover:border-gold/50 hover:text-gold"
+                        ? "border-transparent bg-[#B8860B] text-white shadow-sm"
+                        : "border-[#D4C5A9]/40 bg-transparent text-[#6B6156] hover:border-[#B8860B]/50 hover:text-[#B8860B]"
                     }`}
                   >
                     {label}
@@ -379,9 +379,9 @@ export default function MarketFeedPage() {
             {/* Section label for active markets */}
             {sortedMarkets.some((m) => m.status === "ACTIVE") && (
               <div className="flex items-center gap-2 px-1 pt-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-burgundy/80" />
-                <span className="font-serif text-xs font-medium text-gold/80 tracking-[0.12em]"
-                  style={{ fontVariant: "small-caps" }}>
+                <span className="h-1.5 w-1.5 rounded-full bg-[#B8860B] animate-pulse-gold" />
+                <span className="font-serif text-xs font-medium tracking-[0.2em] uppercase"
+                  style={{ color: "rgba(184,134,11,0.70)" }}>
                   Live Markets
                 </span>
               </div>

@@ -9,8 +9,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"Inter"', "system-ui", "sans-serif"],
-        serif: ['"Cormorant Garamond"', "Georgia", "serif"],
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        serif: ["var(--font-serif)", "Georgia", "serif"],
       },
       colors: {
         // Luxury Udaipur palette
@@ -71,6 +71,10 @@ const config: Config = {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.5" },
         },
+        "pulse-gold": {
+          "0%, 100%": { opacity: "1", transform: "scale(1)" },
+          "50%": { opacity: "0.6", transform: "scale(1.2)" },
+        },
         "slide-up": {
           "0%": { transform: "translateY(8px)", opacity: "0" },
           "100%": { transform: "translateY(0)", opacity: "1" },
@@ -87,6 +91,7 @@ const config: Config = {
       },
       animation: {
         pulse_soft: "pulse_soft 2s ease-in-out infinite",
+        "pulse-gold": "pulse-gold 2s ease-in-out infinite",
         "slide-up": "slide-up 0.25s ease-out",
         "fade-in": "fade-in 0.2s ease-out",
         "success-pop": "success-pop 0.4s ease-out",
