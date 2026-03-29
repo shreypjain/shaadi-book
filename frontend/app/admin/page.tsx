@@ -52,8 +52,7 @@ export default function AdminDashboardPage() {
     setError(null);
     try {
       const result = await trpc.admin.dashboard.query();
-      // Cast needed: tRPC infers some fields as any due to missing Prisma types in dev env
-      setData(result as unknown as DashboardData);
+      setData(result as DashboardData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard");
     } finally {

@@ -30,16 +30,16 @@ function toNum(v: { toNumber(): number } | number | string): number {
 // ---------------------------------------------------------------------------
 
 export const betsRouter = router({
-/**
- * bets.myPositions
- * Returns all positions for the authenticated user with current prices.
- * Each position includes:
- *   - market context (question, status)
- *   - outcome details (label, winner status)
- *   - holding details (shares, total cost, avg price)
- *   - live valuation (current price × shares)
- *   - potential payout (parimutuel estimate: userShares/totalWinningShares × totalPool)
- */
+  /**
+   * bets.myPositions
+   * Returns all positions for the authenticated user with current prices.
+   * Each position includes:
+   *   - market context (question, status)
+   *   - outcome details (label, winner status)
+   *   - holding details (shares, total cost, avg price)
+   *   - live valuation (current price × shares)
+   *   - potential payout (parimutuel estimate: userShares/totalWinningShares × totalPool)
+   */
   myPositions: protectedProcedure.query(async ({ ctx }) => {
     const positions = await prisma.position.findMany({
       where: { userId: ctx.userId },

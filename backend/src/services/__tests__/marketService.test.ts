@@ -341,11 +341,15 @@ describe("resolveMarket — capped parimutuel full payout ($1/share)", () => {
     expect(Number(meta["houseSurplus"])).toBeCloseTo(3.0, 4);
   });
 
-  it("no CHARITY_FEE transaction created", async () => {
-    const charityTx = await prisma.transaction.findFirst({
-      where: { userId: guestAId, type: "CHARITY_FEE" },
+  it("no CHARITY_FEE when profit is zero (payout = cost basis)", async () => {
+    // Guest A paid $5 for 5 shares and receives $5 payout ($1/share cap).
+    // profit = $5.00 − $5.00 = $0 → charity fee = $0 → no CHARITY_FEE transaction.
+    const charityTxs = await prisma.transaction.findMany({
+      where: { type: "CHARITY_FEE", creditAccount: "charity_pool" },
+      orderBy: { createdAt: "asc" },
     });
-    expect(charityTx).toBeNull();
+    // No charity fees should exist at this point in the test suite (only Test 3 has run).
+    expect(charityTxs).toHaveLength(0);
   });
 
   it("Guest B (loser) gets no PAYOUT", async () => {
@@ -499,22 +503,40 @@ describe("resolveMarket — capped parimutuel thin pool (pool < winning shares)"
     expect(market!.status).toBe("RESOLVED");
   });
 
-  it("Guest A gets $3.00 — entire pool (rawPPS=$0.60 < $1, no cap)", async () => {
+  it("Guest A gets $2.80 net — $3.00 gross minus $0.20 charity fee (20% of $1 profit)", async () => {
+    // grossPayout = 5 × $0.60 = $3.00; cost basis = $2.00; profit = $1.00
+    // charityFee = 20% × $1.00 = $0.20; netPayout = $3.00 − $0.20 = $2.80
     const payoutTx = await prisma.transaction.findFirst({
       where: { userId: guestAId, type: "PAYOUT", creditAccount: `user:${guestAId}` },
       orderBy: { createdAt: "desc" },
     });
     expect(payoutTx).not.toBeNull();
-    expect(Number(payoutTx!.amount)).toBeCloseTo(3.0, 4);
+    expect(Number(payoutTx!.amount)).toBeCloseTo(2.8, 4);
+  });
+
+  it("CHARITY_FEE of $0.20 created for Guest A (20% of $1 profit)", async () => {
+    const charityTx = await prisma.transaction.findFirst({
+      where: {
+        userId: guestAId,
+        type: "CHARITY_FEE",
+        creditAccount: "charity_pool",
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(charityTx).not.toBeNull();
+    expect(Number(charityTx!.amount)).toBeCloseTo(0.2, 4);
   });
 
   it("audit log: resolution = capped_parimutuel_thin, houseSurplus ≈ 0", async () => {
+    // houseSurplus = pool − totalGrossPayout = $3.00 − $3.00 = $0
+    // (charity fee redirects $0.20 from user to charity pool but doesn't change gross payout)
     const audit = await prisma.adminAuditLog.findFirst({
       where: { targetId: marketId, action: "RESOLVE_MARKET" },
     });
     const meta = audit!.metadata as Record<string, unknown>;
     expect(meta["resolution"]).toBe("capped_parimutuel_thin");
     expect(Number(meta["payoutPerShare"])).toBeCloseTo(0.6, 4);
+    expect(Number(meta["totalCharityFees"])).toBeCloseTo(0.2, 4);
     // house gets rounding dust only — well under $0.001
     expect(Number(meta["houseSurplus"])).toBeLessThan(0.001);
   });
