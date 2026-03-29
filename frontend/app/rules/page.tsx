@@ -201,7 +201,7 @@ export default function RulesPage() {
                     <td className="py-1.5 px-2">0 sec</td>
                     <td className="py-1.5 px-2">$0</td>
                     <td className="py-1.5 px-2 font-semibold text-[#c8a45c]">
-                      96¢ 🚀
+                      96¢ 🚀 (first mover massively rewarded)
                     </td>
                   </tr>
                   <tr className="border-b border-[#f0ece7]">
@@ -292,9 +292,8 @@ export default function RulesPage() {
                 Worked example
               </p>
               <div className="flex flex-col gap-1 text-sm text-[#1a1a2e]">
-                <ExampleRow label="You buy" value="10 shares at 40¢" />
-                <ExampleRow label="Your cost" value="$4.00" />
-                <ExampleRow label="Outcome wins → pool pays $0.90/share" value="$9.00" />
+                <ExampleRow label="You buy: 10 shares at 40¢" value="$4.00" />
+                <ExampleRow label="Outcome wins, pool pays $0.90/share" value="$9.00" />
                 <ExampleRow label="Profit" value="$5.00" />
                 <ExampleRow
                   label="Charity (10% of profit)"
