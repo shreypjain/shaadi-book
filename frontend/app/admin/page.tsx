@@ -168,9 +168,10 @@ export default function AdminDashboardPage() {
         </h2>
         <div className="flex flex-wrap gap-3">
           {[
-            { href: "/admin/markets",     label: "Market Manager" },
-            { href: "/admin/withdrawals", label: "Withdrawal Queue" },
-            { href: "/admin/users",       label: "User Manager" },
+            { href: "/admin/markets",       label: "Market Manager" },
+            { href: "/admin/suggestions",   label: "Suggestions" },
+            { href: "/admin/withdrawals",   label: "Withdrawal Queue" },
+            { href: "/admin/users",         label: "User Manager" },
           ].map((link) => (
             <Link
               key={link.href}
