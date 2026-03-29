@@ -6,15 +6,14 @@ import { BottomNav } from "@/components/BottomNav";
 import { UserMenu } from "@/components/UserMenu";
 
 export const metadata: Metadata = {
-  title: "Shaadi Book | Parsh & Spoorthi's Wedding",
-  description:
-    "Place your bets on wedding moments at Leela Palace, Udaipur. Live prediction markets for Parsh & Spoorthi's shaadi — real stakes, real fun, real charity.",
+  title: "Shaadi Book — Parsh & Spoorthi",
+  description: "Live prediction markets for the wedding",
   manifest: "/manifest.json",
   metadataBase: new URL("https://parshandspoorthi.com"),
   openGraph: {
-    title: "Shaadi Book",
+    title: "Shaadi Book — Parsh & Spoorthi's Wedding",
     description:
-      "Live prediction markets for Parsh & Spoorthi's wedding at Leela Palace, Udaipur. Bet on wedding moments. 20% of winnings go to charity.",
+      "Place your bets on wedding predictions. Live markets for the big day in Udaipur.",
     url: "https://parshandspoorthi.com",
     siteName: "Shaadi Book",
     images: [
@@ -30,9 +29,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Shaadi Book",
+    title: "Shaadi Book — Parsh & Spoorthi's Wedding",
     description:
-      "Live prediction markets for Parsh & Spoorthi's wedding at Leela Palace, Udaipur.",
+      "Place your bets on wedding predictions. Live markets for the big day in Udaipur.",
     images: ["/og-image.svg"],
   },
   icons: {
@@ -51,7 +50,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#FAF7F2",
+  themeColor: "#B8860B",
 };
 
 export default function RootLayout({
