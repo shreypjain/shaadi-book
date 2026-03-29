@@ -185,7 +185,7 @@ async function runReconciliation(tx: any): Promise<void> {
  *  3. Validate market is ACTIVE
  *  4. SELECT outcomes FOR UPDATE (row-level lock)
  *  5. Check user balance >= dollarAmount
- *  6. Check user market spend + dollarAmount <= $50
+ *  6. Check user market spend + dollarAmount <= $200
  *  7. Compute adaptive b (dtMs, totalVolume)
  *  8. Read state vector q[]
  *  9. Compute delta shares via binary search
@@ -320,7 +320,7 @@ export async function buyShares(
       }
 
       // -----------------------------------------------------------------------
-      // 6. Check $50 per-user per-market cap (PRD §9, rule 2)
+      // 6. Check $200 per-user per-market cap (PRD §9, rule 2)
       // -----------------------------------------------------------------------
       const spendResult = (await tx.$queryRaw`
         SELECT COALESCE(SUM(cost), 0) AS total_spend
@@ -331,11 +331,11 @@ export async function buyShares(
 
       const existingSpendDollars = toNumber(spendResult[0]?.total_spend ?? 0);
 
-      if (existingSpendDollars + dollarAmount > 50) {
-        const remaining = Math.max(0, 50 - existingSpendDollars);
+      if (existingSpendDollars + dollarAmount > 200) {
+        const remaining = Math.max(0, 200 - existingSpendDollars);
         throw new PurchaseError(
           "CAP_EXCEEDED",
-          `Purchase would exceed $50 market cap. Already spent: $${existingSpendDollars.toFixed(2)}, remaining: $${remaining.toFixed(2)}, attempted: $${dollarAmount.toFixed(2)}`
+          `Purchase would exceed $200 market cap. Already spent: $${existingSpendDollars.toFixed(2)}, remaining: $${remaining.toFixed(2)}, attempted: $${dollarAmount.toFixed(2)}`
         );
       }
 
