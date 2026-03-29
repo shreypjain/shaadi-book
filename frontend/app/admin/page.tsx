@@ -19,10 +19,6 @@ interface DashboardData {
   totalVolume: string;
   /** Parimutuel pool across all active markets. House exposure = $0 (zero house risk). */
   totalPoolSize: string;
-  charityPool: string;
-  grossCharityPool: string;
-  stripeFees: string;
-  netCharityAmount: string;
   housePool: string;
   totalUserBalances: string;
   isReconciled: boolean;
@@ -52,8 +48,7 @@ export default function AdminDashboardPage() {
     setError(null);
     try {
       const result = await trpc.admin.dashboard.query();
-      // Cast needed: tRPC infers some fields as any due to missing Prisma types in dev env
-      setData(result as unknown as DashboardData);
+      setData(result as DashboardData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard");
     } finally {
@@ -97,12 +92,6 @@ export default function AdminDashboardPage() {
           value={data ? String(data.totalUsers) : "—"}
           subtext={`${data?.activeMarketCount ?? 0} active markets`}
           accent="text-gray-900"
-        />
-        <DashboardStat
-          label="Net Charity"
-          value={data ? formatUSD(data.netCharityAmount) : "—"}
-          subtext={data ? `gross ${formatUSD(data.grossCharityPool)} − fees ${formatUSD(data.stripeFees)}` : "20% of resolved payouts"}
-          accent="text-emerald-600"
         />
         <DashboardStat
           label="Active Pool"

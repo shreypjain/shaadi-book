@@ -50,11 +50,10 @@ Shaadi Book is a mobile-first web application that runs a live prediction market
 - **Web admin panel:** Select market → select winning outcome → confirm → market resolved.
 - **SMS shortcut:** Admin texts `RESOLVE | <market_id> | <winning_outcome>` → system resolves → confirms via SMS.
 - On resolution:
-  1. Each share of the winning outcome pays out $1.00 gross.
-  2. 20% charity fee deducted → net $0.80 per winning share credited to balance.
-  3. Losing shares pay $0.00.
-  4. Charity fee accumulated in charity pool (displayed on leaderboard).
-  5. All prices freeze and market is marked resolved.
+   1. Each share of the winning outcome pays out $1.00 (full amount credited to balance).
+   2. Losing shares pay $0.00.
+   3. All prices freeze and market is marked resolved.
+   4. 10% charity contribution requested via Venmo post-wedding (external, not tracked in-app).
 
 ### 3.5 Cash-Out
 1. Guest navigates to "Wallet" → taps "Withdraw."
@@ -150,7 +149,7 @@ t=45s   V=$30   Guest C bets $15 on "Yes" → b=56  → price moves to  Yes=$0.8
 t=2min  V=$45   Guest D bets $50 on "No"  → b=90  → price corrects to Yes=$0.65, No=$0.35
 t=5min  V=$95   Guest E bets $10 on "Yes" → b=141 → price nudges to  Yes=$0.67, No=$0.33
 ...
-Market resolves → "Yes" wins → each "Yes" share pays $1.00 (minus 20% charity fee)
+Market resolves → "Yes" wins → each "Yes" share pays $1.00 (full amount in-app; 10% charity via Venmo post-wedding)
 ```
 
 Early movers (Guest A) got cheap shares and moved the market dramatically. Late movers (Guest E) paid more and barely moved it. This creates a natural incentive to bet early — perfect for generating excitement at the start of each wedding event.
@@ -251,20 +250,19 @@ No limit orders, no order types, no cancellation, no selling. Just buy and hold.
 │ created_at        │     │   purchase        │     │ avg_price (dec)   │
 │ updated_at        │     │   withdrawal      │     │ price_before (dec)│
 └──────────────────┘     │   payout          │     │ price_after (dec) │
-                          │   charity_fee     │     │ created_at        │
                           │ amount (decimal)  │     └──────────────────┘
-                          │ prev_hash (char64)│
-                          │ tx_hash (char64)  │     ┌──────────────────┐
-                          │ created_at        │     │   admin_audit_log │
-                          └──────────────────┘     ├──────────────────┤
-                                                    │ id (uuid)         │
-┌──────────────────┐                                │ admin_id (fk)     │
-│   charity_pool    │                                │ action (enum)     │
-├──────────────────┤                                │ target_id (uuid)  │
-│ total (decimal)   │  ← derived from SUM           │ metadata (jsonb)  │
-└──────────────────┘    of charity_fee txns          │ ip_address (inet) │
-                                                    │ created_at        │
-                                                    └──────────────────┘
+                           │ prev_hash (char64)│
+                           │ tx_hash (char64)  │     ┌──────────────────┐
+                           │ created_at        │     │   admin_audit_log │
+                           └──────────────────┘     ├──────────────────┤
+                                                     │ id (uuid)         │
+                                                     │ admin_id (fk)     │
+                                                     │ action (enum)     │
+                                                     │ target_id (uuid)  │
+                                                     │ metadata (jsonb)  │
+                                                     │ ip_address (inet) │
+                                                     │ created_at        │
+                                                     └──────────────────┘
 ```
 
 **Key differences from an order book model:**
@@ -323,19 +321,17 @@ buyShares(userId, marketId, outcomeId, dollarAmount):
 resolveMarket(marketId, winningOutcomeId):
   1. BEGIN TRANSACTION
   2. Set market.status = 'resolved', market.winning_outcome_id.
-  3. For each user holding shares of winning outcome (from positions table):
-       - gross_payout = shares × $1.00
-       - charity_fee = gross_payout × 0.20
-       - net_payout = gross_payout - charity_fee
-       - Credit user balance: net_payout.
-       - Credit charity_pool account: charity_fee.
-       - Create payout + fee transaction records (append-only).
-  4. For losing outcome shares: no action (already paid for via AMM).
-  5. Run reconciliation invariant check — ROLLBACK if fails.
-  6. Append hash-chain entry for all new transactions.
-  7. COMMIT TRANSACTION
-  8. Broadcast resolution event to all clients (winning outcome, payout amounts).
-  9. Send SMS confirmation to admin with payout summary.
+   3. For each user holding shares of winning outcome (from positions table):
+        - payout = shares × $1.00
+        - Credit user balance: payout (full amount — no in-app charity deduction).
+        - Create PAYOUT transaction record (append-only).
+   4. For losing outcome shares: no action (already paid for via AMM).
+   5. Run reconciliation invariant check — ROLLBACK if fails.
+   6. Append hash-chain entry for all new transactions.
+   7. COMMIT TRANSACTION
+   8. Broadcast resolution event to all clients (winning outcome, payout amounts).
+   9. Send SMS confirmation to admin with payout summary.
+   Note: 10% charity contribution requested via Venmo post-wedding (external, not in-app).
 ```
 
 ### 6.5 SMS Command Interface (Twilio Webhook)
@@ -395,11 +391,11 @@ Guest taps "Withdraw" → enters amount + Venmo handle or Zelle email/phone
 ```
 
 **Payout flow on market resolution:**
-1. Market resolves → system calculates gross winnings per user.
-2. **20% charity fee** deducted from each user's gross winnings (see §7.5).
-3. Net winnings credited to user's in-app balance.
-4. User requests withdrawal → provides Venmo handle or Zelle email/phone.
-5. Shrey sends payout manually from his Venmo/Zelle and marks the withdrawal complete in admin panel.
+1. Market resolves → system calculates winnings per user.
+2. Full winnings credited to user's in-app balance (no in-app deduction).
+3. User requests withdrawal → provides Venmo handle or Zelle email/phone.
+4. Shrey sends payout manually from his Venmo/Zelle and marks the withdrawal complete in admin panel.
+5. Shrey separately requests 10% charity contribution via Venmo (external, post-wedding).
 6. Ledger records the withdrawal with Shrey's confirmation timestamp.
 
 All payouts batched post-event — Shrey settles all withdrawals after the wedding.
@@ -427,7 +423,7 @@ Because all money sits in Shrey's bank account, the ledger must be bulletproof. 
 
 **Reconciliation invariant:**
 ```
-SUM(all user balances) + SUM(charity_fee_collected) + SUM(withdrawals_paid) = SUM(deposits_received)
+SUM(user balances) + SUM(withdrawals_paid) = SUM(deposits_received)
 ```
 This check runs inside every transaction that modifies a balance. If it fails, the transaction is rolled back and an alert fires.
 
@@ -440,29 +436,20 @@ This check runs inside every transaction that modifies a balance. If it fails, t
 - All admin actions (confirm deposit, resolve market, approve withdrawal) logged with timestamp, IP, and admin user ID.
 - Admin cannot modify the transaction ledger directly — only trigger predefined operations that append to it.
 
-### 7.5 Charity Fee — 20% of Winnings
+### 7.5 Charity — 10% of Winnings (External)
 
-On every market resolution, 20% of each winner's gross payout is retained as a charity fee, donated to a charity of Parsh and Spoorthi's choice.
-
-**Calculation:**
-```
-gross_payout     = winning_shares × $1.00
-charity_fee      = gross_payout × 0.20
-net_payout       = gross_payout × 0.80
-```
+10% of each winner's gross payout goes to a charity of Parsh and Spoorthi's choice. This is **collected externally via Venmo/Zelle after the wedding** — it is NOT deducted from in-app balances and is NOT tracked as a ledger transaction.
 
 **Example:** Guest holds 10 shares of winning outcome at avg cost $0.40.
 - Gross payout: 10 × $1.00 = $10.00
-- Charity fee: $10.00 × 0.20 = $2.00
-- Net payout credited to balance: $8.00
-- Guest's P&L: $8.00 - $4.00 (cost basis) = +$4.00
+- Full $10.00 credited to balance in-app.
+- Post-wedding, Shrey requests 10% (≈ $1.00) via Venmo for charity.
+- Guest's net P&L: $10.00 - $4.00 (cost basis) - $1.00 (charity) = +$5.00
 
-**The fee is deducted from the payout, not from the user's existing balance.** Losing bets have no fee (they already lost their stake).
-
-**Charity pool tracking:**
-- A dedicated `charity_pool` ledger account accumulates all fees.
-- The admin dashboard shows running total of charity fees collected.
-- Post-wedding, Shrey donates the full charity pool amount and records the donation receipt.
+**Charity is not tracked in the ledger.** No `CHARITY_FEE` transactions are created. The reconciliation invariant is simply:
+```
+SUM(user balances) + SUM(withdrawals paid) = SUM(deposits received)
+```
 
 ### 7.6 Currency Handling
 
@@ -491,8 +478,8 @@ All transactions are in USD. There is no INR accounting. Indian guests are charg
 5. **Inactive markets:** Markets with no purchases for 30+ minutes auto-display a "low activity" badge.
 6. **Duplicate phone numbers:** Rejected at registration. One account per phone.
 7. **Currency:** Everything is USD. Indian guests are charged in USD via credit card (their bank handles FX). A ₹93 ≈ $1 reference rate is displayed for convenience only.
-8. **Refunds on cancelled markets:** If admin voids a market, all purchase costs refunded to users' balances via the AMM. No charity fee on voided markets. `outcomes.shares_sold` reset to 0.
-9. **Charity fee:** 20% of gross winnings deducted on resolution. Fee applies to payouts only — losing bets are fee-free.
+8. **Refunds on cancelled markets:** If admin voids a market, all purchase costs refunded to users' balances via the AMM. `outcomes.shares_sold` reset to 0.
+9. **Charity (external):** 10% of winnings collected via Venmo post-wedding. Not tracked in-app.
 10. **Withdrawal ceiling:** No user can withdraw more than their ledger balance. Total withdrawals across all users can never exceed total deposits. The system blocks any withdrawal that would violate this.
 11. **Ledger corruption recovery:** If hash chain integrity check fails, all purchasing is halted immediately. Admin is alerted. System enters read-only mode until manual review and PITR restore if needed.
 12. **House exposure:** The admin dashboard shows real-time worst-case house loss per market (`b × ln(n)`) and aggregate across all active markets. If aggregate exposure exceeds the house pool, admin should pause new market creation.
@@ -504,17 +491,17 @@ All transactions are in USD. There is no INR accounting. Indian guests are charg
 Ranked by **realized P&L** across all resolved markets:
 
 ```
-P&L = (total net payouts after 20% charity fee) - (total cost of all positions taken)
+P&L = (total payouts received) - (total cost of all positions taken)
 ```
 
-Leaderboard is public and updates in real-time as markets resolve. Top 3 get bragging rights (and maybe a toast at the reception). A separate "Charity Impact" counter shows total fees collected for the couple's chosen charity.
+Leaderboard is public and updates in real-time as markets resolve. Top 3 get bragging rights (and maybe a toast at the reception).
 
 ---
 
 ## 11. MVP Scope & Phasing
 
 ### Phase 1 — MVP (Build This)
-- Guest auth (OTP), market feed with live prices, LMSR purchase engine, price slippage preview, admin panel for market CRUD + resolution (with `b` parameter tuning), wallet with Stripe deposits (Apple Pay + card, USD only), immutable transaction ledger with hash chain, 20% charity fee on resolution, leaderboard with charity counter, WebSocket real-time price updates.
+- Guest auth (OTP), market feed with live prices, LMSR purchase engine, price slippage preview, admin panel for market CRUD + resolution (with `b` parameter tuning), wallet with Stripe deposits (Apple Pay + card, USD only), immutable transaction ledger with hash chain, leaderboard, WebSocket real-time price updates. (10% charity collected externally via Venmo post-wedding.)
 
 ### Phase 2 — Polish (If Time Permits)
 - SMS admin commands via Twilio.
@@ -535,7 +522,7 @@ Leaderboard is public and updates in real-time as markets resolve. Top 3 get bra
 |---|----------|--------|
 | 1 | House pool size — need to cover worst-case LMSR exposure. ~$70 per binary market, ~$120 per 5-way. If running 10 markets simultaneously, need $700–$1200 seed. | Shrey's upfront capital |
 | 2 | Post-wedding: kill the app or keep it for future events? | Infra decisions |
-| 3 | Which charity will Parsh & Spoorthi choose for the 20% fee pool? | Leaderboard display + post-event donation |
+| 3 | Which charity will Parsh & Spoorthi choose for the 10% donation? | Post-event Venmo request |
 
 ---
 
@@ -868,19 +855,19 @@ TASK 2.1: Purchase Engine (Full Transaction)
 TASK 2.2: Market CRUD + Resolution + Notifications
   Input:  TASK 1.1 (schema) + TASK 1.4 (WebSocket) + §3.3, §3.4, §4.5, §6.4
   Do:     Admin endpoints: createMarket, resolveMarket, pauseMarket, voidMarket.
-          Resolution: compute payouts, apply 20% charity fee, credit balances.
+          Resolution: compute payouts, credit balances (no in-app charity deduction).
           Notifications: WebSocket push on market create/open, SMS via Twilio
           to all registered users on new market. Scheduled market support
           (opens at future time, 5-min countdown push).
   Output: Full market lifecycle with notifications.
-  Test:   Create → buy shares → resolve → verify payouts + charity fee.
+  Test:   Create → buy shares → resolve → verify payouts.
           Void market → verify full refunds.
 
 TASK 2.3: Immutable Ledger + Reconciliation
   Input:  TASK 1.1 (schema) + §7.4 (ledger guarantees)
   Do:     Implement hash chain (SHA-256). Background worker that verifies
           chain integrity every 60s. Reconciliation function that checks
-          SUM(balances) + SUM(charity) + SUM(withdrawals) = SUM(deposits).
+          SUM(balances) + SUM(withdrawals) = SUM(deposits).
           Admin audit log for all admin actions. Read-only mode trigger
           on integrity failure.
   Output: Ledger module with chain verification + reconciliation.
@@ -938,7 +925,7 @@ TASK 4.2: Guest App — Wallet + My Bets + Leaderboard
 TASK 4.3: Admin Panel
   Input:  §5.2 (admin views), §3.3 (market creation), §3.4 (resolution)
   Do:     Admin dashboard: active users, total volume, house exposure
-          per market, charity pool total. Market manager: create market
+          per market. Market manager: create market
           form (question, outcomes, b_floor override, open time), resolve
           button, void button. Withdrawal queue: list pending, approve/reject.
           User manager: list guests, balances, flag suspicious.

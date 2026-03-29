@@ -4,19 +4,10 @@
  * Handles all Stripe-related operations:
  *  - createPaymentIntent: Creates a Stripe PaymentIntent for inline Payment Element.
  *  - handlePaymentIntentSucceeded: Idempotent handler for payment_intent.succeeded webhook.
- *    Credits user balance via ledger DEPOSIT transaction, then records a STRIPE_FEE
- *    transaction to track the processing cost absorbed by the charity pool.
+ *    Credits user balance via ledger DEPOSIT transaction.
  *  - estimateStripeFee: Pure helper — computes the estimated Stripe fee in cents.
  *
- * Double-entry convention for STRIPE_FEE:
- *   debitAccount  = 'charity_pool'     (charity absorbs the processing cost)
- *   creditAccount = 'stripe_processor' (Stripe retains the fee)
- *
- * Reconciliation invariant:
- *   SUM(user balances) + SUM(charity_fees) + SUM(stripe_fees) + SUM(withdrawals) + house_pool
- *     = SUM(deposits)
- *
- * PRD §7.2, §7.5, Appendix A.1
+ * PRD §7.2, Appendix A.1
  */
 
 import Stripe from "stripe";
@@ -97,7 +88,7 @@ export async function createPaymentIntent(
  * 1. Extract userId from paymentIntent.metadata.userId.
  * 2. Idempotency check: return early if already processed.
  * 3. Credit user balance: INSERT a DEPOSIT transaction.
- * 4. Record STRIPE_FEE: INSERT a fee transaction absorbed by charity pool.
+ * 4. (STRIPE_FEE tracking removed — house absorbs processing cost.)
  */
 export async function handlePaymentIntentSucceeded(
   paymentIntent: Stripe.PaymentIntent

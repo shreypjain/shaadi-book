@@ -2,14 +2,14 @@
  * Leaderboard tRPC Router — Task 4.2
  *
  * Endpoints (public — no auth required):
- *   leaderboard.list        — users ranked by realized P&L
- *   leaderboard.charityTotal — total charity fees collected across all markets
+ *   leaderboard.list — users ranked by realized P&L
  *
  * Realized P&L formula (PRD §10):
- *   P&L = SUM(net payouts received) − SUM(purchase costs in resolved markets)
+ *   P&L = SUM(payouts received) − SUM(purchase costs in resolved markets)
  *
- * Net payouts are already after the 20% charity fee (PRD §7.5).
  * Only resolved-market purchase costs are counted (unrealized positions excluded).
+ * Note: the 10% charity fee is collected externally (via Venmo post-wedding)
+ * and is not deducted from payouts in-app.
  */
 
 import { router, publicProcedure } from "../trpc.js";
@@ -72,19 +72,4 @@ export const leaderboardRouter = router({
     }));
   }),
 
-  /**
-   * leaderboard.charityTotal
-   * Returns the running total of all charity fees collected from resolved markets.
-   * Displayed on the leaderboard page as a "Charity Impact" counter.
-   */
-  charityTotal: publicProcedure.query(async () => {
-    const result = await prisma.$queryRaw<Array<{ total: unknown }>>`
-      SELECT COALESCE(SUM(amount), 0) AS total
-      FROM transactions
-      WHERE type = 'CHARITY_FEE'
-    `;
-
-    const totalDollars = Number(result[0]?.total ?? 0);
-    return { totalCents: Math.round(totalDollars * 100) };
-  }),
 });
