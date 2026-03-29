@@ -7,12 +7,13 @@
  * Covered paths:
  *   1. createMarket with 2 outcomes → status ACTIVE, prices at 50%
  *   2. createMarket with scheduledOpenAt → status PENDING, openedAt null
- *   3. resolveMarket — parimutuel: single winner side gets entire pool
- *   4. resolveMarket — parimutuel: proportional split among multiple winners
- *   5. resolveMarket — edge case: no bets on winning outcome → refund all
- *   6. resolveMarket — reconciliation holds after parimutuel resolution
- *   7. voidMarket → all purchases refunded, reconciliation holds
- *   8. pauseMarket → status PAUSED
+ *   3. resolveMarket — capped parimutuel: pool > shares → $1.00/share, house keeps surplus
+ *   4. resolveMarket — capped parimutuel: multi-winner, pool > shares → $1.00/share each
+ *   4b. resolveMarket — capped parimutuel: thin pool (pool < shares) → pool/shares per share
+ *   5. resolveMarket — edge case: no bets on winning outcome → refund all purchases
+ *   6. voidMarket → all purchases refunded, reconciliation holds
+ *   7. pauseMarket → status PAUSED
+ *   8. getMarketWithPrices — LMSR prices, totalPool, estimatedPayoutPerShare
  *   + guard tests: double-resolve, void-resolved, pause non-active
  */
 
