@@ -6,7 +6,6 @@ import { io, type Socket } from "socket.io-client";
 import { api } from "@/lib/api";
 import { getToken, getStoredUser } from "@/lib/auth";
 import { LeaderboardRow } from "@/components/LeaderboardRow";
-import { CharityCounter } from "@/components/CharityCounter";
 
 export default function LeaderboardPage() {
   const queryClient = useQueryClient();
@@ -16,12 +15,6 @@ export default function LeaderboardPage() {
   const { data: entries, isLoading: entriesLoading } = useQuery({
     queryKey: ["leaderboard.list"],
     queryFn: () => api.leaderboard.list(),
-    staleTime: 10_000,
-  });
-
-  const { data: charityData, isLoading: charityLoading } = useQuery({
-    queryKey: ["leaderboard.charityTotal"],
-    queryFn: () => api.leaderboard.charityTotal(),
     staleTime: 10_000,
   });
 
@@ -36,7 +29,7 @@ export default function LeaderboardPage() {
 
     socket.on("marketResolved", () => {
       void queryClient.invalidateQueries({ queryKey: ["leaderboard.list"] });
-      void queryClient.invalidateQueries({ queryKey: ["leaderboard.charityTotal"] });
+
     });
 
     socketRef.current = socket;
@@ -54,12 +47,6 @@ export default function LeaderboardPage() {
       </div>
 
       <div className="max-w-lg mx-auto px-4 pt-4 space-y-4">
-        {/* Charity counter */}
-        <CharityCounter
-          totalCents={charityData?.totalCents ?? 0}
-          loading={charityLoading}
-        />
-
         {/* Leaderboard list */}
         <div className="bg-white rounded-xl shadow-card border border-[#e8e4df] p-4">
           {entriesLoading ? (

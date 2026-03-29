@@ -38,7 +38,7 @@ export const betsRouter = router({
    *   - outcome details (label, winner status)
    *   - holding details (shares, total cost, avg price)
    *   - live valuation (current price × shares)
-   *   - potential payout (shares × $1.00 at resolution)
+   *   - potential payout (parimutuel estimate: userShares/totalWinningShares × totalPool)
    */
   myPositions: protectedProcedure.query(async ({ ctx }) => {
     const positions = await prisma.position.findMany({
@@ -91,8 +91,14 @@ export const betsRouter = router({
       const currentPriceCents = Math.round(currentPrice * 100);
       const currentValueCents = Math.round(shares * currentPrice * 100);
 
-      // Potential payout if this outcome wins — full $1.00 per share at resolution
-      const potentialPayoutCents = Math.round(shares * 100);
+      // Capped parimutuel estimated payout if this outcome wins.
+      // payoutPerShare = min($1.00, totalPool / sharesSold)
+      // potentialPayout = userShares × payoutPerShare
+      // NOTE: this is an ESTIMATE because the pool grows as more bets come in.
+      const sharesSoldOnOutcome = toNum(outcome.sharesSold as unknown as number);
+      const estimatedPayoutPerShare =
+        sharesSoldOnOutcome > 0 ? Math.min(1.0, totalVolume / sharesSoldOnOutcome) : 0;
+      const potentialPayoutCents = Math.round(shares * estimatedPayoutPerShare * 100);
 
       return {
         id: pos.id,

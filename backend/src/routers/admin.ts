@@ -17,11 +17,11 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { router, adminProcedure } from "../trpc.js";
-import { runReconciliation, getTotalDeposits, getNetCharityAmount } from "../services/ledger.js";
+import { runReconciliation, getTotalDeposits } from "../services/ledger.js";
 import { verifyChainIntegrity } from "../services/hashChainVerifier.js";
 import { getRecentAuditLog } from "../services/auditLog.js";
 import { prisma } from "../db.js";
-import { maxHouseExposure, adaptiveB } from "../services/lmsr.js";
+import { adaptiveB } from "../services/lmsr.js";
 import { Decimal } from "decimal.js";
 
 // ---------------------------------------------------------------------------
@@ -40,9 +40,6 @@ export const adminRouter = router({
         isBalanced: result.isBalanced,
         totalDeposits: result.totalDeposits.toFixed(6),
         totalUserBalances: result.totalUserBalances.toFixed(6),
-        charityPool: result.charityPool.toFixed(6),
-        stripeFees: result.stripeFees.toFixed(6),
-        netCharityAmount: result.netCharityAmount.toFixed(6),
         withdrawalsPaid: result.withdrawalsPaid.toFixed(6),
         housePool: result.housePool.toFixed(6),
         checkedAt: result.checkedAt.toISOString(),
@@ -116,7 +113,9 @@ export const adminRouter = router({
 
   // -------------------------------------------------------------------------
   // admin.dashboard
-  // Aggregate stats: total volume, active users, house exposure, charity pool.
+  // Aggregate stats: total volume, active users, pool sizes, charity pool.
+  // With parimutuel resolution, house exposure is zero — we show pool sizes
+  // instead of worst-case loss estimates.
   // -------------------------------------------------------------------------
   dashboard: adminProcedure.query(async () => {
     try {
@@ -138,11 +137,11 @@ export const adminRouter = router({
         runReconciliation(),
       ]);
 
-      // Compute total volume and per-market worst-case house exposure.
+      // Compute total volume and per-market pool sizes.
+      // Parimutuel: pool = volume (no house exposure — all pool pays to winners).
       let totalVolume = new Decimal(0);
-      let totalHouseExposure = new Decimal(0);
 
-      const marketExposures = activeMarketsResult.map(
+      const marketPools = activeMarketsResult.map(
         (market: (typeof activeMarketsResult)[number]) => {
         const marketVolume = market.purchases.reduce(
           (sum: Decimal, p: { cost: Decimal }) => sum.plus(p.cost),
@@ -157,16 +156,13 @@ export const adminRouter = router({
           ? Number(market.bFloorOverride)
           : 20;
         const b = adaptiveB(bFloor, dtMs, marketVolume.toNumber());
-        const exposure = new Decimal(
-          maxHouseExposure(b, Math.max(market.outcomes.length, 2))
-        );
-        totalHouseExposure = totalHouseExposure.plus(exposure);
 
         return {
           marketId: market.id,
           question: market.question,
           volume: marketVolume.toFixed(2),
-          worstCaseLoss: exposure.toFixed(2),
+          /** Parimutuel pool size = volume (100% goes to winners at resolution). */
+          poolSize: marketVolume.toFixed(2),
           b: b.toFixed(2),
         };
       });
@@ -176,19 +172,12 @@ export const adminRouter = router({
         totalUsers: totalUsersResult,
         activeMarketCount: activeMarketsResult.length,
         totalVolume: totalVolume.toFixed(2),
-        totalHouseExposure: totalHouseExposure.toFixed(2),
-        /** Gross charity pool: total 20% fees collected across all market resolutions. */
-        charityPool: reconciliation.charityPool.toFixed(2),
-        /** Gross alias — same as charityPool, explicit for dashboard clarity. */
-        grossCharityPool: reconciliation.charityPool.toFixed(2),
-        /** Total Stripe processing fees absorbed from the charity pool. */
-        stripeFees: reconciliation.stripeFees.toFixed(2),
-        /** Net charity amount available for donation = grossCharityPool − stripeFees. */
-        netCharityAmount: reconciliation.netCharityAmount.toFixed(2),
+        /** Total parimutuel pool across all active markets = totalVolume. House exposure = $0. */
+        totalPoolSize: totalVolume.toFixed(2),
         housePool: reconciliation.housePool.toFixed(2),
         totalUserBalances: reconciliation.totalUserBalances.toFixed(2),
         isReconciled: reconciliation.isBalanced,
-        marketExposures,
+        marketPools,
       };
     } catch (err) {
       throw new TRPCError({

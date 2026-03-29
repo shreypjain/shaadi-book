@@ -107,12 +107,14 @@ interface LockedOutcomeRow {
 /**
  * Conservation invariant (PRD §7.4):
  *
- *   SUM(user balances) + SUM(house_amm) + SUM(charity_pool) + SUM(withdrawals)
- *     = SUM(deposits)
+ *   SUM(user balances) + SUM(house_amm) + SUM(withdrawals) = SUM(deposits)
  *
  * Where each term is derived from the credit/debit accounts in the ledger.
  * This is the double-entry conservation law; any violation indicates a bug or
  * tampered row.
+ *
+ * Note: charity fees are collected externally (10% via Venmo post-wedding)
+ * and are NOT tracked as ledger transactions.
  *
  * Throws PurchaseError('RECONCILIATION_FAILED', ...) on mismatch > 0.0001 USD.
  */
@@ -130,18 +132,12 @@ async function runReconciliation(tx: any): Promise<void> {
         - SUM(CASE WHEN debit_account  = 'house_amm' THEN amount ELSE 0 END),
         0
       ) AS house_amm,
-      COALESCE(
-        SUM(CASE WHEN credit_account = 'charity_pool' THEN amount ELSE 0 END)
-        - SUM(CASE WHEN debit_account  = 'charity_pool' THEN amount ELSE 0 END),
-        0
-      ) AS charity_pool,
       COALESCE(SUM(CASE WHEN type = 'DEPOSIT'    THEN amount ELSE 0 END), 0) AS total_deposits,
       COALESCE(SUM(CASE WHEN type = 'WITHDRAWAL' THEN amount ELSE 0 END), 0) AS total_withdrawals
     FROM transactions
   `) as Array<{
     user_balances: unknown;
     house_amm: unknown;
-    charity_pool: unknown;
     total_deposits: unknown;
     total_withdrawals: unknown;
   }>;
@@ -154,14 +150,13 @@ async function runReconciliation(tx: any): Promise<void> {
 
   const userBalances = toNumber(row.user_balances);
   const houseAmm = toNumber(row.house_amm);
-  const charityPool = toNumber(row.charity_pool);
   const totalDeposits = toNumber(row.total_deposits);
   const totalWithdrawals = toNumber(row.total_withdrawals);
 
   // Conservation: money attributed to all accounts equals money deposited minus money withdrawn.
-  // lhs = user balances + AMM pool + charity pool + withdrawals-paid
+  // lhs = user balances + AMM pool + withdrawals-paid
   // rhs = total deposits received
-  const lhs = userBalances + houseAmm + charityPool + totalWithdrawals;
+  const lhs = userBalances + houseAmm + totalWithdrawals;
   const rhs = totalDeposits;
   const diff = Math.abs(lhs - rhs);
 
@@ -321,7 +316,7 @@ export async function buyShares(
       }
 
       // -----------------------------------------------------------------------
-      // 6. Check $200 per-user per-market cap (PRD §9, rule 2)
+      // 6. Check $200 per-user per-market cap
       // -----------------------------------------------------------------------
       const spendResult = (await tx.$queryRaw`
         SELECT COALESCE(SUM(cost), 0) AS total_spend
