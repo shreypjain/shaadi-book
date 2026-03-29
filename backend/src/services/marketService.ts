@@ -187,9 +187,9 @@ function buildMarketWithPrices(market: RawMarket): MarketWithPrices {
         isWinner: o.isWinner,
         price: prices[i] ?? 0,
         priceCents: Math.round((prices[i] ?? 0) * 100),
-        // Parimutuel: estimated payout per share = totalPool / sharesSold
-        // 0 when no shares sold (avoids division by zero)
-        estimatedPayoutPerShare: sharesSold > 0 ? totalVolume / sharesSold : 0,
+        // Capped parimutuel: payout/share = min($1.00, totalPool / sharesSold)
+        // $1.00 cap means house never loses; thin pools pay proportionally less.
+        estimatedPayoutPerShare: sharesSold > 0 ? Math.min(1.0, totalVolume / sharesSold) : 0,
       };
     }),
     currentB: b,
@@ -314,22 +314,25 @@ export async function openMarket(
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve a market using parimutuel distribution:
+ * Resolve a market using CAPPED PARIMUTUEL distribution (zero house loss):
  *   1. Set status = RESOLVED, winningOutcomeId, resolvedAt.
  *   2. Mark winning outcome isWinner = true.
  *   3. Compute totalPool = SUM(purchase.cost) for this market.
  *   4a. If no one bet on the winning outcome: REFUND all purchases
  *       (debit house_amm, credit each user their purchase cost; type=REFUND).
- *   4b. Otherwise: distribute pool proportionally among winning positions.
- *       payoutPerShare = totalPool / totalWinningShares
- *       For each position: payout = shares × payoutPerShare (truncated to 6 dp)
- *       INSERT PAYOUT (debit house_amm, credit user; type=PAYOUT)
+ *   4b. Otherwise: distribute using capped parimutuel —
+ *         payoutPerShare = min($1.00, totalPool / totalWinningShares)
+ *         Pool > winning_shares  → $1.00/share (house keeps surplus; profits from losers)
+ *         Pool < winning_shares  → pool/shares (house breaks even; thin-market protection)
+ *         For each position: payout = shares × payoutPerShare (truncated to 6 dp)
+ *         INSERT PAYOUT (debit house_amm, credit user; type=PAYOUT)
  *   5. Maintain SHA-256 hash chain on every transaction.
- *   6. Log to AdminAuditLog.
+ *   6. Log to AdminAuditLog with resolution tag and houseSurplus.
  *
- * Accounting invariant:
- *   SUM(payouts) ≤ totalPool  (rounding dust ≥ 0 stays in house_amm)
- *   ⟹ housePool ≥ 0 after resolution (reconciliation still holds)
+ * Accounting invariant (always holds):
+ *   SUM(payouts) ≤ totalPool  ⟹  housePool ≥ 0  (reconciliation passes)
+ *   With full-dollar payout: houseSurplus = pool − payouts > 0 (house profits)
+ *   With thin pool:          houseSurplus ≈ 0 (only rounding dust)
  *
  * References:
  *   PRD §6.4 — resolution flow pseudocode
@@ -474,10 +477,10 @@ export async function resolveMarket(
       } else {
         // ---- Normal path: capped parimutuel distribution ----
         // payoutPerShare = min($1.00, totalPool / totalWinningShares)
-        // If pool covers $1/share: winners get $1, house keeps surplus.
-        // If pool is thin: winners split the pool, house breaks even.
+        // Pool > winning_shares  → winners get $1/share, house keeps surplus
+        // Pool < winning_shares  → winners split pool proportionally, house breaks even
         const rawPayoutPerShare = poolDollars.dividedBy(totalWinningShares);
-        const payoutPerShare = Decimal.min(rawPayoutPerShare, new Decimal(1));
+        const payoutPerShare = Decimal.min(rawPayoutPerShare, new Decimal("1.000000"));
 
         let totalGrossPayout = new Decimal(0);
 
@@ -516,12 +519,15 @@ export async function resolveMarket(
         // Sanity check: SUM(payouts) must not exceed pool (rounding guard)
         if (totalGrossPayout.greaterThan(poolDollars.plus(new Decimal("0.000001")))) {
           throw new Error(
-            `Parimutuel invariant violated: ` +
+            `Capped parimutuel invariant violated: ` +
               `payouts(${totalGrossPayout.toFixed(6)}) > pool(${poolDollars.toFixed(6)})`
           );
         }
 
-        // Audit log — normal parimutuel path
+        const houseSurplus = poolDollars.minus(totalGrossPayout);
+        const isFullDollarPayout = rawPayoutPerShare.greaterThanOrEqualTo(new Decimal("1"));
+
+        // Audit log — capped parimutuel path
         await tx.adminAuditLog.create({
           data: {
             adminId,
@@ -529,10 +535,11 @@ export async function resolveMarket(
             targetId: marketId,
             metadata: {
               winningOutcomeId,
-              resolution: "parimutuel",
+              resolution: isFullDollarPayout ? "capped_parimutuel_full" : "capped_parimutuel_thin",
               totalPool: poolDollars.toFixed(6),
               totalGrossPayout: totalGrossPayout.toFixed(6),
               payoutPerShare: payoutPerShare.toFixed(6),
+              houseSurplus: houseSurplus.toFixed(6),
               payoutsCount: winningPositions.length,
             },
             ipAddress: opts?.ipAddress ?? "0.0.0.0",

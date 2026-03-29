@@ -358,8 +358,10 @@ export default function MarketDetailPage() {
           const winningOutcome = market.outcomes.find((o) => o.id === winningOutcomeId);
           const totalPool = market.totalPool ?? market.totalVolume ?? 0;
           const totalWinningShares = winningOutcome?.sharesSold ?? 0;
-          const payoutPerShare =
-            totalWinningShares > 0 ? totalPool / totalWinningShares : 0;
+          // Capped parimutuel: min($1.00, pool / winning_shares)
+          const rawPPS = totalWinningShares > 0 ? totalPool / totalWinningShares : 0;
+          const payoutPerShare = Math.min(1.0, rawPPS);
+          const isFullPayout = rawPPS >= 1.0 - 1e-6;
           return (
             <div className="rounded-xl bg-[#f5efd9] border border-[#c8a45c]/30 px-5 py-4">
               <div className="flex items-center gap-2 mb-1.5">
@@ -377,13 +379,25 @@ export default function MarketDetailPage() {
               </p>
               {totalWinningShares > 0 ? (
                 <p className="text-sm text-[#8a6d30] mt-1">
-                  Pool of{" "}
-                  <span className="font-bold">${totalPool.toFixed(2)}</span>{" "}
-                  split among{" "}
-                  <span className="font-bold">{totalWinningShares.toFixed(2)} winning shares</span>{" "}
-                  (
-                  <span className="font-bold">${payoutPerShare.toFixed(4)}/share</span>
-                  ).
+                  {isFullPayout ? (
+                    <>
+                      Winning shares paid{" "}
+                      <span className="font-bold">$1.00/share</span>
+                      {" "}(pool of{" "}
+                      <span className="font-bold">${totalPool.toFixed(2)}</span>{" "}
+                      covered all{" "}
+                      <span className="font-bold">{totalWinningShares.toFixed(2)} shares</span>).
+                    </>
+                  ) : (
+                    <>
+                      Estimated payout:{" "}
+                      <span className="font-bold">${payoutPerShare.toFixed(4)}/share</span>
+                      {" "}(pool:{" "}
+                      <span className="font-bold">${totalPool.toFixed(2)}</span>{" "}
+                      split among{" "}
+                      <span className="font-bold">{totalWinningShares.toFixed(2)} shares</span>).
+                    </>
+                  )}
                 </p>
               ) : (
                 <p className="text-sm text-[#8a6d30] mt-1">

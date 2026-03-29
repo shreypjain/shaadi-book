@@ -28,7 +28,7 @@ interface BuyFormProps {
 
 type FormStep = "select" | "amount" | "confirm" | "success";
 
-const PRESET_AMOUNTS = [10, 25, 50, 100, 200] as const;
+const PRESET_AMOUNTS = [25, 50, 100, 200] as const;
 
 // Hex values aligned to OUTCOME_COLORS bar variants for inline border styling
 const OUTCOME_BAR_HEX = ["#3b6fa3", "#fbbf24", "#2dd4bf", "#34d399", "#a78bfa"];
@@ -270,38 +270,49 @@ export function BuyForm({
               <span className="text-xs text-[#8a8a9a] ml-auto">price impact</span>
             </div>
 
-            {/* Bottom: gold payout banner — parimutuel estimate */}
-            <div className="rounded-lg bg-[#f5efd9] px-3 py-2.5 flex items-center justify-between">
-              <span className="text-sm text-[#8a6d30]">
-                If{" "}
-                <span className="font-semibold">{selectedOutcome?.label}</span>{" "}
-                wins
-              </span>
-              <div className="text-right">
-                {(() => {
-                  // Parimutuel estimated payout (capped at $1/share):
-                  // pool after bet = totalPool + dollarAmount
-                  // shares on this outcome after bet = sharesSold + preview.shares
-                  const newPool = totalPool + dollarAmount;
-                  const newSharesOnOutcome = (selectedOutcome?.sharesSold ?? 0) + preview.shares;
-                  const estimatedPayout =
-                    newSharesOnOutcome > 0
-                      ? (preview.shares / newSharesOnOutcome) * newPool
-                      : 0;
-                  const estimatedProfit = estimatedPayout - dollarAmount;
-                  return (
-                    <>
-                      <span className="text-sm font-bold text-[#8a6d30]">
-                        +{formatDollars(estimatedProfit)}
-                      </span>
-                      <span className="text-xs text-[#b08940] ml-1">est. profit</span>
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
+            {/* Bottom: gold payout banner — capped parimutuel estimate */}
+            {(() => {
+              // Capped parimutuel: payoutPerShare = min($1.00, newPool / newSharesOnOutcome)
+              // Pool > shares  → $1.00/share (house keeps surplus)
+              // Pool < shares  → pool/shares (thin market, house breaks even)
+              const newPool = totalPool + dollarAmount;
+              const newSharesOnOutcome = (selectedOutcome?.sharesSold ?? 0) + preview.shares;
+              const rawPPS = newSharesOnOutcome > 0 ? newPool / newSharesOnOutcome : 0;
+              const payoutPerShare = Math.min(1.0, rawPPS);
+              const isFullPayout = rawPPS >= 1.0 - 1e-6;
+              const estimatedPayout = preview.shares * payoutPerShare;
+              const estimatedProfit = estimatedPayout - dollarAmount;
+              return (
+                <div className="rounded-lg bg-[#f5efd9] px-3 py-2.5 flex items-center justify-between">
+                  <span className="text-sm text-[#8a6d30]">
+                    If{" "}
+                    <span className="font-semibold">{selectedOutcome?.label}</span>{" "}
+                    wins
+                  </span>
+                  <div className="text-right">
+                    {isFullPayout ? (
+                      <>
+                        <span className="text-sm font-bold text-[#8a6d30]">
+                          $1.00/share
+                        </span>
+                        <span className="text-xs text-[#b08940] ml-1">
+                          ≈{formatDollars(estimatedPayout)} total
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-sm font-bold text-[#8a6d30]">
+                          +{formatDollars(estimatedProfit)}
+                        </span>
+                        <span className="text-xs text-[#b08940] ml-1">est. profit</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
             <p className="text-[10px] text-[#8a8a9a] leading-tight">
-              Estimate grows as more bets come in.
+              Max $1.00/share. Estimate updates as more bets come in.
             </p>
           </div>
         )}
