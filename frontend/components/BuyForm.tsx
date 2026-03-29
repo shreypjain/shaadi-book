@@ -28,7 +28,7 @@ interface BuyFormProps {
 
 type FormStep = "select" | "amount" | "confirm" | "success";
 
-const PRESET_AMOUNTS = [5, 10, 25, 50] as const;
+const PRESET_AMOUNTS = [10, 25, 50, 100, 200] as const;
 
 export function BuyForm({
   marketId,
@@ -43,7 +43,7 @@ export function BuyForm({
   const [dollarAmountStr, setDollarAmountStr] = useState("10");
   const [error, setError] = useState<string | null>(null);
 
-  const maxDollars = Math.min(50, remainingCapCents / 100);
+  const maxDollars = Math.min(200, remainingCapCents / 100);
   const dollarAmount = parseFloat(dollarAmountStr) || 0;
   const dollarAmountCents = Math.round(dollarAmount * 100);
 

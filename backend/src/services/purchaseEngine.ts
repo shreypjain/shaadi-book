@@ -320,7 +320,7 @@ export async function buyShares(
       }
 
       // -----------------------------------------------------------------------
-      // 6. Check $50 per-user per-market cap (PRD §9, rule 2)
+      // 6. Check $200 per-user per-market cap
       // -----------------------------------------------------------------------
       const spendResult = (await tx.$queryRaw`
         SELECT COALESCE(SUM(cost), 0) AS total_spend
@@ -331,11 +331,11 @@ export async function buyShares(
 
       const existingSpendDollars = toNumber(spendResult[0]?.total_spend ?? 0);
 
-      if (existingSpendDollars + dollarAmount > 50) {
-        const remaining = Math.max(0, 50 - existingSpendDollars);
+      if (existingSpendDollars + dollarAmount > 200) {
+        const remaining = Math.max(0, 200 - existingSpendDollars);
         throw new PurchaseError(
           "CAP_EXCEEDED",
-          `Purchase would exceed $50 market cap. Already spent: $${existingSpendDollars.toFixed(2)}, remaining: $${remaining.toFixed(2)}, attempted: $${dollarAmount.toFixed(2)}`
+          `Purchase would exceed $200 market cap. Already spent: $${existingSpendDollars.toFixed(2)}, remaining: $${remaining.toFixed(2)}, attempted: $${dollarAmount.toFixed(2)}`
         );
       }
 

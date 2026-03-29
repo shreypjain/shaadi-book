@@ -347,7 +347,7 @@ export default function MarketDetailPage() {
               outcomes={market.outcomes}
               currentB={market.currentB}
               totalPool={market.totalPool ?? market.totalVolume ?? 0}
-              remainingCapCents={5000}
+              remainingCapCents={20000}
               onSuccess={handleBuySuccess}
             />
           </div>
