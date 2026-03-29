@@ -3,7 +3,7 @@
  *
  * Steps:
  *   1. Select outcome (tap to pick)
- *   2. Enter dollar amount (1–50, capped by remaining capacity)
+ *   2. Enter dollar amount (1–200, capped by remaining capacity)
  *   3. Preview shows shares + avg price + slippage
  *   4. Confirm button → loading → success animation
  */
@@ -40,7 +40,7 @@ export function BuyForm({
   const [dollarAmountStr, setDollarAmountStr] = useState("10");
   const [error, setError] = useState<string | null>(null);
 
-  const maxDollars = Math.min(50, remainingCapCents / 100);
+  const maxDollars = Math.min(200, remainingCapCents / 100);
   const dollarAmount = parseFloat(dollarAmountStr) || 0;
   const dollarAmountCents = Math.round(dollarAmount * 100);
 

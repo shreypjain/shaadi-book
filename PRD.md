@@ -36,7 +36,7 @@ Shaadi Book is a mobile-first web application that runs a live prediction market
 1. Guest taps into a market (e.g., "Will the groom cry during the pheras?").
 2. Sees current prices for each outcome (e.g., Yes: 62¢ / No: 38¢) with implied probability bars.
 3. Selects an outcome (e.g., "Yes").
-4. Enters dollar amount (max $50 per market, system shows remaining capacity).
+4. Enters dollar amount (max $200 per market, system shows remaining capacity).
 5. UI previews the purchase: "You'll get 14.3 shares of Yes at avg $0.70. Price moves from $0.62 → $0.78."
 6. Confirms → balance debited, shares added to position, prices update for everyone.
 7. Position appears in "My Bets" tab. No cancellation, no selling — you're locked in until resolution.
@@ -116,9 +116,9 @@ where:
 
 **Why hybrid:** Pure time-based means a market open for an hour with zero bets is rock-solid stable (wrong — it has no price discovery). Pure volume-based means a market that gets $500 in the first 10 seconds is already frozen (wrong — it should still be reactive early). The hybrid ensures you need **both** time **and** money to harden a market.
 
-**Behavior — effect of a single $50 max bet on a 50/50 binary:**
+**Behavior — effect of a single $200 max bet on a 50/50 binary:**
 
-| Market age | Volume before bet | b(t,V) | $50 bet moves price from 50¢ to... |
+| Market age | Volume before bet | b(t,V) | $200 bet moves price from 50¢ to... |
 |------------|-------------------|--------|-------------------------------------|
 | 0 sec | $0 | 20 | 92¢ (first mover massively rewarded) |
 | 30 sec | $0 | 46 | 83¢ (time alone provides some stability) |
@@ -175,7 +175,7 @@ The UX is radically simple compared to an order book:
 1. **Get notified** — "New market just opened: Will the groom cry?"
 2. **See the odds** — "Yes: 62¢ / No: 38¢"
 3. **Pick a side** — tap "Yes" or "No"
-4. **Enter dollar amount** — "$10" (max $50 per market)
+4. **Enter dollar amount** — "$10" (max $200 per market)
 5. **System calculates shares** — "You get 14.3 shares of Yes at avg price $0.70" (price slides as you buy more)
 6. **Confirm** — balance debited, position locked until resolution
 7. **Watch odds move** — your purchase just shifted the price for everyone
@@ -279,14 +279,14 @@ No limit orders, no order types, no cancellation, no selling. Just buy and hold.
 - **Hash chain:** Each row's `tx_hash = SHA256(prev_hash || type || amount || user_id || created_at)`. Background worker verifies chain integrity every 60s.
 - **Reconciliation invariant:** `SUM(user balances) + SUM(charity fees) + SUM(withdrawals paid) + SUM(house AMM pool) = SUM(deposits received)` — checked inside every balance-modifying transaction. Violation = ROLLBACK + admin alert.
 - **User balance** is derived from the `transactions` ledger (never stored independently — always computed).
-- **$50 per market cap** enforced at purchase: `SUM(purchases.cost) WHERE user_id = X AND market_id = Y <= 50.00`.
+- **$200 per market cap** enforced at purchase: `SUM(purchases.cost) WHERE user_id = X AND market_id = Y <= 200.00`.
 
 ### 6.3 Purchase Engine (LMSR)
 
 ```
 buyShares(userId, marketId, outcomeId, dollarAmount):
   1. Validate: market is active, user balance >= dollarAmount,
-     user's total spend in this market + dollarAmount <= $50.
+     user's total spend in this market + dollarAmount <= $200.
   2. BEGIN TRANSACTION
   3. Lock market's outcome rows (SELECT ... FOR UPDATE on outcomes where market_id).
   4. Compute adaptive b:
@@ -485,8 +485,8 @@ All transactions are in USD. There is no INR accounting. Indian guests are charg
 ## 9. Edge Cases & Rules
 
 1. **No selling.** Once you buy shares, you hold them until the market resolves. No secondary market, no cancellation, no exit. This is by design — keeps UX dead simple and prevents gaming.
-2. **Market cap enforcement:** The $50 cap is enforced per user per market. `SUM(purchases.cost) WHERE user_id = X AND market_id = Y` must not exceed $50. The UI prevents overspending and shows remaining capacity.
-3. **Price slippage on large buys:** A $50 purchase will move the price significantly. The UI must show the user their effective average price and the post-purchase price before they confirm. No surprises.
+2. **Market cap enforcement:** The $200 cap is enforced per user per market. `SUM(purchases.cost) WHERE user_id = X AND market_id = Y` must not exceed $200. The UI prevents overspending and shows remaining capacity.
+3. **Price slippage on large buys:** A $200 purchase will move the price significantly. The UI must show the user their effective average price and the post-purchase price before they confirm. No surprises.
 4. **Resolution disputes:** Admin decision is final. No appeal process (it's a wedding, not the SEC).
 5. **Inactive markets:** Markets with no purchases for 30+ minutes auto-display a "low activity" badge.
 6. **Duplicate phone numbers:** Rejected at registration. One account per phone.

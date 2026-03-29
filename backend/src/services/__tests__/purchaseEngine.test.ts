@@ -3,7 +3,7 @@
  *
  * Tests:
  *  1. Basic purchase: $10 on a binary market → shares > 0, prices changed
- *  2. $50 cap enforcement: buy $50, then try $1 more → CAP_EXCEEDED error
+ *  2. $200 cap enforcement: buy $200, then try $1 more → CAP_EXCEEDED error
  *  3. Insufficient balance: $0 balance tries to buy → INSUFFICIENT_BALANCE error
  *  4. Market not active: PENDING market → MARKET_NOT_ACTIVE error
  *  5. Reconciliation: post-purchase invariant holds with consistent mock data
@@ -253,10 +253,10 @@ describe("buyShares — basic purchase", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. $50 cap enforcement
+// 2. $200 cap enforcement
 // ---------------------------------------------------------------------------
 
-describe("buyShares — $50 market cap", () => {
+describe("buyShares — $200 market cap", () => {
   let tx: ReturnType<typeof makeTx>;
 
   beforeEach(() => {
@@ -265,13 +265,13 @@ describe("buyShares — $50 market cap", () => {
     mockTransaction(tx);
   });
 
-  it("throws CAP_EXCEEDED when existing spend + new amount > $50", async () => {
-    // User has already spent $50 in this market; trying to spend $1 more
+  it("throws CAP_EXCEEDED when existing spend + new amount > $200", async () => {
+    // User has already spent $200 in this market; trying to spend $1 more
     tx.market.findUnique.mockResolvedValue(mockMarket);
     tx.$queryRaw
       .mockResolvedValueOnce(mockOutcomes) // FOR UPDATE lock
-      .mockResolvedValueOnce([{ balance: 100 }]) // balance: $100
-      .mockResolvedValueOnce([{ total_spend: 50 }]); // already at $50 cap
+      .mockResolvedValueOnce([{ balance: 300 }]) // balance: $300
+      .mockResolvedValueOnce([{ total_spend: 200 }]); // already at $200 cap
 
     // Single call: verify it rejects with the right PurchaseError code
     await expect(
@@ -279,27 +279,26 @@ describe("buyShares — $50 market cap", () => {
     ).rejects.toMatchObject({ code: "CAP_EXCEEDED" });
   });
 
-  it("allows purchase that exactly reaches $50 cap", async () => {
-    // User has spent $40, wants to spend $10 more — exactly $50 total
-    wireHappyPath(tx, { balanceDollars: 100, spendDollars: 40 });
+  it("allows purchase that exactly reaches $200 cap", async () => {
+    // User has spent $190, wants to spend $10 more — exactly $200 total
+    wireHappyPath(tx, { balanceDollars: 300, spendDollars: 190 });
 
     const result = await buyShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 1000); // $10
 
     expect(result.costCents).toBe(1000);
   });
 
-  it("throws CAP_EXCEEDED when new amount alone equals $50 + $0.01", async () => {
-    // No prior spend, but trying to buy $50.01 (5001 cents) — over the limit per transaction
-    // This is caught by zod validation in the router, but the engine also checks
+  it("throws CAP_EXCEEDED when total spend would exceed $200 by $0.01", async () => {
+    // $0.01 existing spend, trying to buy $200.00 (20000 cents) = $200.01 total → over $200 cap
     tx.market.findUnique.mockResolvedValue(mockMarket);
     tx.$queryRaw
       .mockResolvedValueOnce(mockOutcomes)
       .mockResolvedValueOnce([{ balance: 200 }])
       .mockResolvedValueOnce([{ total_spend: 0.01 }]); // $0.01 existing spend
 
-    // Try buying $50.00 = $50.01 total → exceeds cap
+    // Try buying $200.00 = $200.01 total → exceeds cap
     await expect(
-      buyShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 5000)
+      buyShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 20000)
     ).rejects.toMatchObject({ code: "CAP_EXCEEDED" });
   });
 });

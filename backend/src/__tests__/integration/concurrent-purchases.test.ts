@@ -274,7 +274,7 @@ describe("Concurrent safety edge cases", () => {
     expect(yes.price).toBeGreaterThan(0.5);
   });
 
-  it("$50 cap is not exceeded — each user only bought $20 in this market", async () => {
+  it("$200 cap is not exceeded — each user only bought $20 in this market", async () => {
     for (const userId of userIds) {
       const spendResult = await prisma.$queryRaw<Array<{ total_spend: unknown }>>`
         SELECT COALESCE(SUM(cost), 0) AS total_spend
@@ -285,7 +285,7 @@ describe("Concurrent safety edge cases", () => {
       const spent = Number(
         (spendResult[0] as { total_spend: unknown })?.total_spend ?? 0
       );
-      expect(spent).toBeLessThanOrEqual(50);
+      expect(spent).toBeLessThanOrEqual(200);
     }
   });
 });
