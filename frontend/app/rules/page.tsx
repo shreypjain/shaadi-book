@@ -54,9 +54,11 @@ export default function RulesPage() {
               icon="📈"
               text={
                 <>
-                  If your outcome wins, each share pays{" "}
-                  <Highlight>$1.00</Highlight>. Buy low, win big.
-                  Simple.
+                  If your outcome wins, you{" "}
+                  <Highlight>split the total pool</Highlight> with other
+                  winners. The fewer people on your side, the bigger your
+                  share. Payouts are capped at{" "}
+                  <Highlight>$1.00 per share</Highlight>.
                 </>
               }
             />
@@ -64,7 +66,7 @@ export default function RulesPage() {
               icon="💎"
               text={
                 <>
-                  <Highlight>$50 max bet per market.</Highlight> No
+                  <Highlight>$200 max bet per market.</Highlight> No
                   selling — diamond hands only. You hold till
                   resolution.
                 </>
@@ -85,12 +87,66 @@ export default function RulesPage() {
               <span className="font-semibold text-[#1a1a2e]">
                 Logarithmic Market Scoring Rule (LMSR)
               </span>{" "}
-              — the same mechanism used by real prediction markets like
-              PredictIt and early Betfair. Think of it as a mini stock
-              exchange where the more people bet on an outcome, the more
-              expensive it gets. The crowd <em>is</em> the market maker.
+              — inspired by previous attempts to build prediction markets
+              optimized for low volume and small numbers of traders. Shrey
+              is the bookie, but{" "}
+              <span className="font-semibold text-[#1a1a2e]">
+                not the house or market maker
+              </span>
+              . This is a{" "}
+              <span className="font-semibold text-[#1a1a2e]">
+                parimutuel system
+              </span>{" "}
+              — you&apos;re betting against other guests, not against
+              the house.
             </p>
 
+            {/* LMSR mechanics block */}
+            <div className="rounded-lg bg-[#f5f1eb] border border-[#e8e4df] p-4 flex flex-col gap-2.5">
+              <p className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider">
+                LMSR mechanics
+              </p>
+              <p className="text-sm text-[#1a1a2e]">
+                The market maintains a{" "}
+                <span className="font-semibold">cost function</span>:
+              </p>
+              <p className="text-sm font-mono text-[#1a1a2e] bg-white border border-[#e8e4df] rounded px-3 py-2 text-center tracking-tight">
+                C(q) = b · ln( Σ exp(q<sub>i</sub> / b) )
+              </p>
+              <p className="text-sm text-[#4a4a5a]">
+                where <span className="font-mono font-semibold">q<sub>i</sub></span> is the
+                total shares outstanding for outcome <em>i</em> and{" "}
+                <span className="font-mono font-semibold">b</span> is the
+                liquidity parameter. You pay the{" "}
+                <span className="font-semibold text-[#1a1a2e]">
+                  change in cost
+                </span>{" "}
+                — C(q_after) − C(q_before) — not a fixed price per share.
+              </p>
+              <p className="text-sm text-[#4a4a5a]">
+                The exponential in the sum guarantees that the implied
+                probability of each outcome is{" "}
+                <span className="font-semibold text-[#1a1a2e]">
+                  exp(q<sub>i</sub>/b) / Σ exp(q<sub>j</sub>/b)
+                </span>
+                , which always sums to exactly 1 across all outcomes.
+                Buy shares on &quot;Yes&quot; and its price rises;
+                &quot;No&quot; falls proportionally — the market
+                reprices continuously, with no manual intervention.
+              </p>
+              <p className="text-sm text-[#4a4a5a]">
+                When you enter a dollar amount, the engine runs a{" "}
+                <span className="font-semibold text-[#1a1a2e]">
+                  binary search
+                </span>{" "}
+                over share counts to find the exact quantity that costs
+                that amount under the current cost function — no
+                closed-form inverse, just fast iteration inside a
+                single Postgres transaction with row-level locks.
+              </p>
+            </div>
+
+            {/* Example block */}
             <div className="rounded-lg bg-[#f5f1eb] border border-[#e8e4df] p-4 flex flex-col gap-1.5">
               <p className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider">
                 Example
@@ -106,14 +162,22 @@ export default function RulesPage() {
             </div>
 
             <p>
-              Liquidity adjusts dynamically as time passes and volume
-              grows — early bets swing prices hard (first-mover
-              advantage 🏃), and the market hardens as more money flows
-              in. This is the{" "}
+              Liquidity adjusts dynamically via the{" "}
               <span className="font-semibold text-[#1a1a2e]">
                 adaptive b parameter
               </span>
-              , for those keeping score at home.
+              . The two dominant factors are{" "}
+              <span className="font-semibold text-[#1a1a2e]">
+                time since market open
+              </span>{" "}
+              and{" "}
+              <span className="font-semibold text-[#1a1a2e]">
+                total market volume
+              </span>{" "}
+              — both cause b to grow over time, meaning the market hardens
+              and individual bets move prices less. Early bets swing prices
+              hard (first-mover advantage 🏃); late bets barely nudge them.
+              Plus a few more features under the hood.
             </p>
 
             {/* b table */}
@@ -137,21 +201,21 @@ export default function RulesPage() {
                     <td className="py-1.5 px-2">0 sec</td>
                     <td className="py-1.5 px-2">$0</td>
                     <td className="py-1.5 px-2 font-semibold text-[#c8a45c]">
-                      92¢ 🚀
+                      96¢ 🚀
                     </td>
                   </tr>
                   <tr className="border-b border-[#f0ece7]">
                     <td className="py-1.5 px-2">30 sec</td>
                     <td className="py-1.5 px-2">$100</td>
                     <td className="py-1.5 px-2 font-semibold text-[#1a1a2e]">
-                      75¢
+                      77¢
                     </td>
                   </tr>
                   <tr className="border-b border-[#f0ece7]">
                     <td className="py-1.5 px-2">5 min</td>
                     <td className="py-1.5 px-2">$500</td>
                     <td className="py-1.5 px-2 font-semibold text-[#1a1a2e]">
-                      60¢
+                      61¢
                     </td>
                   </tr>
                   <tr>
@@ -168,6 +232,21 @@ export default function RulesPage() {
             <p className="text-xs text-[#8a8a9a]">
               tl;dr — be early, be right, print money.
             </p>
+
+            {/* Strategy note */}
+            <div className="rounded-lg bg-[#1a1a2e] p-4 flex flex-col gap-1.5">
+              <p className="text-xs font-semibold text-[#c8a45c] uppercase tracking-wider">
+                Pro tip
+              </p>
+              <p className="text-sm text-[#e8e4df] leading-relaxed">
+                When a whale drops a big bet early and the market
+                hasn&apos;t settled yet, there&apos;s serious money to be
+                made taking the other side. The market maker doesn&apos;t
+                need to find a matching bet for you — it automatically
+                evens out the pricing. Early contrarian bets on an
+                unsettled market can print.
+              </p>
+            </div>
           </div>
         </SectionCard>
 
@@ -183,9 +262,14 @@ export default function RulesPage() {
                 icon="✅"
                 text={
                   <>
-                    Winning shares pay <Highlight>$1.00 each</Highlight>,
-                    regardless of what you paid. Losing shares pay $0.00.
-                    That&apos;s it.
+                    Winning shares split the total market pool. Your payout
+                    per share ={" "}
+                    <Highlight>
+                      min(total pool / winning shares, $1.00)
+                    </Highlight>
+                    . If the pool is thin, you might get less than $1.00.
+                    If few people picked your side, you can make bank.
+                    Losing shares pay $0.00.
                   </>
                 }
               />
@@ -193,9 +277,10 @@ export default function RulesPage() {
                 icon="🎗️"
                 text={
                   <>
-                    <Highlight>20% of your profit</Highlight> goes to
-                    charity when you cash out. The couple chose the cause.
-                    You&apos;re basically a quantitative philanthropist.
+                    <Highlight>10% of your profit</Highlight> goes to
+                    charity when you cash out. The couple hasn&apos;t
+                    chosen the cause yet. You&apos;re basically a
+                    quantitative philanthropist.
                   </>
                 }
               />
@@ -209,17 +294,17 @@ export default function RulesPage() {
               <div className="flex flex-col gap-1 text-sm text-[#1a1a2e]">
                 <ExampleRow label="You buy" value="10 shares at 40¢" />
                 <ExampleRow label="Your cost" value="$4.00" />
-                <ExampleRow label="Outcome wins → gross" value="$10.00" />
-                <ExampleRow label="Profit" value="$6.00" />
+                <ExampleRow label="Outcome wins → pool pays $0.90/share" value="$9.00" />
+                <ExampleRow label="Profit" value="$5.00" />
                 <ExampleRow
-                  label="Charity (20% of profit)"
-                  value="− $1.20"
+                  label="Charity (10% of profit)"
+                  value="− $0.50"
                   accent
                 />
                 <div className="border-t border-[#e8e4df] mt-1 pt-2">
                   <ExampleRow
                     label="You take home"
-                    value="$8.80 🎉"
+                    value="$8.50 🎉"
                     bold
                   />
                 </div>
@@ -240,14 +325,15 @@ export default function RulesPage() {
           subtitle="Short list. No fine print."
         >
           <ul className="flex flex-col gap-3 mt-1">
-            <RuleItem icon="🇺🇸" text="All bets are in USD. Indian guests: $1 ≈ ₹93 for reference." />
+            <RuleItem icon="🇺🇸" text="All bets are in USD." />
             <RuleItem
               icon="🎲"
               text={
                 <>
-                  Shrey is the house{" "}
+                  Shrey is the bookie — but he&apos;s not the house.{" "}
                   <span className="text-[#8a8a9a]">
-                    (and the bookie, and the bartender in spirit).
+                    You&apos;re betting against each other in a parimutuel
+                    pool.
                   </span>
                 </>
               }
@@ -271,8 +357,8 @@ export default function RulesPage() {
         <div className="px-2 pb-2">
           <p className="text-[10px] text-[#8a8a9a] text-center leading-relaxed">
             This is a private entertainment experience for the wedding of
-            Parsh &amp; Spoorthi. Not a licensed gambling platform. All
-            proceeds benefit charity. Play responsibly.
+            Parsh &amp; Spoorthi. All proceeds benefit charity. Play
+            responsibly.
           </p>
         </div>
 
