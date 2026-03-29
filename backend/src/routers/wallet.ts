@@ -16,9 +16,26 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import Stripe from "stripe";
+import { Decimal } from "decimal.js";
 import { router, protectedProcedure } from "../trpc.js";
 import { prisma } from "../db.js";
 import { getUserBalance } from "../services/balance.js";
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/** Coerce any Prisma/Postgres numeric return to a plain JS number. */
+function toNumber(val: unknown): number {
+  if (val === null || val === undefined) return 0;
+  if (typeof val === "number") return val;
+  if (typeof val === "bigint") return Number(val);
+  if (typeof val === "string") return parseFloat(val) || 0;
+  if (typeof val === "object" && "toNumber" in val) {
+    return (val as { toNumber(): number }).toNumber();
+  }
+  return parseFloat(String(val)) || 0;
+}
 
 // ---------------------------------------------------------------------------
 // Stripe client (lazy — fails gracefully if key not configured)
@@ -222,5 +239,63 @@ export const walletRouter = router({
       createdAt: r.createdAt.toISOString(),
       processedAt: r.processedAt?.toISOString() ?? null,
     }));
+  }),
+
+  /**
+   * wallet.charityInfo
+   *
+   * Returns the charity fee breakdown for the authenticated user so the
+   * withdrawal form can show how much will be deducted at cash-out time.
+   *
+   * Charity rule (PRD §7.5): 20% of lifetime profit is donated to charity.
+   * Profit = current_balance + past_withdrawals + past_charity_paid − total_deposits.
+   * Any charity already paid in prior withdrawals is subtracted from what is owed.
+   *
+   * All values returned in integer cents.
+   */
+  charityInfo: protectedProcedure.query(async ({ ctx }) => {
+    const { userId } = ctx;
+
+    // Current balance (cents → convert to dollars for Decimal math).
+    const balanceCents   = await getUserBalance(userId);
+    const balanceDecimal = new Decimal(balanceCents).dividedBy(100);
+
+    // User-specific transaction totals (three separate queries per task spec).
+    const depositsResult = await prisma.$queryRaw<Array<{ total: unknown }>>`
+      SELECT COALESCE(SUM(amount), 0) AS total
+      FROM transactions
+      WHERE user_id = ${userId}::uuid AND type = 'DEPOSIT'
+    `;
+    const totalDeposits = new Decimal(toNumber(depositsResult[0]?.total ?? 0));
+
+    const charityPaidResult = await prisma.$queryRaw<Array<{ total: unknown }>>`
+      SELECT COALESCE(SUM(amount), 0) AS total
+      FROM transactions
+      WHERE user_id = ${userId}::uuid AND type = 'CHARITY_FEE'
+    `;
+    const pastCharityPaid = new Decimal(toNumber(charityPaidResult[0]?.total ?? 0));
+
+    const pastWithdrawalsResult = await prisma.$queryRaw<Array<{ total: unknown }>>`
+      SELECT COALESCE(SUM(amount), 0) AS total
+      FROM transactions
+      WHERE user_id = ${userId}::uuid AND type = 'WITHDRAWAL'
+    `;
+    const pastWithdrawals = new Decimal(toNumber(pastWithdrawalsResult[0]?.total ?? 0));
+
+    // profit = current_balance + past_withdrawals + past_charity_paid − total_deposits
+    const profit = balanceDecimal
+      .plus(pastWithdrawals)
+      .plus(pastCharityPaid)
+      .minus(totalDeposits);
+
+    const charityOwed      = profit.greaterThan(0) ? profit.times("0.2") : new Decimal(0);
+    const charityRemaining = Decimal.max(new Decimal(0), charityOwed.minus(pastCharityPaid));
+
+    return {
+      profitCents:           Math.round(profit.toNumber()           * 100),
+      charityOwedCents:      Math.round(charityOwed.toNumber()      * 100),
+      charityPaidCents:      Math.round(pastCharityPaid.toNumber()  * 100),
+      charityRemainingCents: Math.round(charityRemaining.toNumber() * 100),
+    };
   }),
 });
