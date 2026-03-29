@@ -24,6 +24,11 @@
  *     = SUM(deposits)
  *   where house_pool >= 0 (ensures solvency).
  *
+ * With parimutuel resolution (zero house exposure):
+ *   - At resolution, 100% of the pool is paid to winners (PAYOUT transactions).
+ *   - house_pool ≈ 0 after resolution (may be slightly positive due to rounding truncation).
+ *   - The invariant still holds: housePool ≥ 0 because we always truncate payouts down.
+ *
  * References:
  *   PRD §7.4 — Immutable Ledger Guarantees
  *   PRD §7.5 — Charity Fee (20% of winnings)
@@ -275,7 +280,8 @@ export interface ReconciliationResult {
   withdrawalsPaid: Decimal;
   /**
    * Residual house pool = deposits − userBalances − charity − stripeFees − withdrawals.
-   * Represents LMSR profit from losing bets minus Stripe processing costs.
+   * With parimutuel resolution: should be ~0 after markets resolve (all pool paid to winners).
+   * A small positive value is expected due to rounding truncation on payouts.
    * Negative value = insolvency (system owes more than it received).
    */
   housePool: Decimal;
@@ -291,6 +297,11 @@ export interface ReconciliationResult {
  *
  * Stripe fees come out of the charity pool (not from user balances or house pool):
  *   net_charity = charityPool − stripeFees
+ *
+ * Parimutuel note:
+ *   After market resolution, house_pool ≈ 0 (all pool distributed to winners).
+ *   A tiny positive remainder is normal (rounding truncation dust from payout calc).
+ *   house_pool >= 0 is always satisfied.
  *
  * Runs inside a READ-COMMITTED snapshot to get a consistent view.
  * Returns a structured result; does NOT throw on imbalance — callers

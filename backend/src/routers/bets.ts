@@ -30,16 +30,16 @@ function toNum(v: { toNumber(): number } | number | string): number {
 // ---------------------------------------------------------------------------
 
 export const betsRouter = router({
-  /**
-   * bets.myPositions
-   * Returns all positions for the authenticated user with current prices.
-   * Each position includes:
-   *   - market context (question, status)
-   *   - outcome details (label, winner status)
-   *   - holding details (shares, total cost, avg price)
-   *   - live valuation (current price × shares)
-   *   - potential payout (shares × $1.00 at resolution)
-   */
+/**
+ * bets.myPositions
+ * Returns all positions for the authenticated user with current prices.
+ * Each position includes:
+ *   - market context (question, status)
+ *   - outcome details (label, winner status)
+ *   - holding details (shares, total cost, avg price)
+ *   - live valuation (current price × shares)
+ *   - potential payout (parimutuel estimate: userShares/totalWinningShares × totalPool)
+ */
   myPositions: protectedProcedure.query(async ({ ctx }) => {
     const positions = await prisma.position.findMany({
       where: { userId: ctx.userId },
@@ -91,8 +91,14 @@ export const betsRouter = router({
       const currentPriceCents = Math.round(currentPrice * 100);
       const currentValueCents = Math.round(shares * currentPrice * 100);
 
-      // Potential payout if this outcome wins — full $1.00 per share at resolution
-      const potentialPayoutCents = Math.round(shares * 100);
+      // Parimutuel estimated payout if this outcome wins.
+      // estimatedPayoutPerShare = totalPool / sharesSold (for this outcome)
+      // potentialPayout = userShares × estimatedPayoutPerShare
+      // NOTE: this is an ESTIMATE because the pool grows as more bets come in.
+      const sharesSoldOnOutcome = toNum(outcome.sharesSold as unknown as number);
+      const estimatedPayoutPerShare =
+        sharesSoldOnOutcome > 0 ? totalVolume / sharesSoldOnOutcome : 0;
+      const potentialPayoutCents = Math.round(shares * estimatedPayoutPerShare * 100);
 
       return {
         id: pos.id,
