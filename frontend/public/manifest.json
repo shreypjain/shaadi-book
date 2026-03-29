@@ -1,0 +1,12 @@
+{
+  "name": "Shaadi Book",
+  "short_name": "PS Markets",
+  "description": "Wedding prediction markets for Parsh & Spoorthi",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAF7F2",
+  "theme_color": "#B8860B",
+  "icons": [
+    { "src": "/favicon.svg", "type": "image/svg+xml", "sizes": "any" }
+  ]
+}
