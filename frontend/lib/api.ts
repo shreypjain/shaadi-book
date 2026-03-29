@@ -121,6 +121,24 @@ export interface VerifyOTPResult {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Market Suggestion types
+// ---------------------------------------------------------------------------
+
+export interface MarketSuggestionItem {
+  id: string;
+  userId: string;
+  questionText: string;
+  outcomes: string[];
+  description: string | null;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  adminNotes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  userName?: string;
+  userPhone?: string;
+}
+
 export const api = {
   auth: {
     sendOTP: (input: {
@@ -198,6 +216,32 @@ export const api = {
     charityTotal: (): Promise<CharityTotal> =>
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       (_client as any).leaderboard.charityTotal.query() as Promise<CharityTotal>,
+  },
+
+  suggest: {
+    submit: (input: {
+      questionText: string;
+      outcomes: string[];
+      description?: string;
+    }): Promise<MarketSuggestionItem> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).suggest.submit.mutate(input) as Promise<MarketSuggestionItem>,
+
+    myList: (): Promise<MarketSuggestionItem[]> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).suggest.myList.query() as Promise<MarketSuggestionItem[]>,
+
+    adminList: (input?: { status?: "PENDING" | "APPROVED" | "REJECTED" }): Promise<MarketSuggestionItem[]> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).suggest.adminList.query(input ?? {}) as Promise<MarketSuggestionItem[]>,
+
+    adminReview: (input: {
+      suggestionId: string;
+      status: "APPROVED" | "REJECTED";
+      adminNotes?: string;
+    }): Promise<MarketSuggestionItem> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).suggest.adminReview.mutate(input) as Promise<MarketSuggestionItem>,
   },
 };
 
