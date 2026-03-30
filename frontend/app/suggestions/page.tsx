@@ -35,9 +35,9 @@ const STATUS_CONFIG = {
   },
   REJECTED: {
     label: "Not approved",
-    bg: "bg-[#f5f5f5]",
-    text: "text-[#8a8a9a]",
-    border: "border-[#e8e4df]",
+    bg: "bg-cream-100",
+    text: "text-warmGray",
+    border: "border-[rgba(184,134,11,0.12)]",
     dot: "bg-[#c8c8d0]",
   },
 } as const;
@@ -64,10 +64,10 @@ function SuggestionCard({ suggestion }: { suggestion: MarketSuggestionItem }) {
   const timeAgo = getTimeAgo(createdAt);
 
   return (
-    <div className="rounded-xl border border-[#e8e4df] bg-white shadow-sm p-4 sm:p-5">
+    <div className="rounded-xl border border-[rgba(184,134,11,0.12)] bg-ivory-card shadow-sm p-4 sm:p-5">
       {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-3">
-        <p className="text-sm font-semibold text-[#1a1a2e] leading-snug flex-1">
+        <p className="text-sm font-semibold text-charcoal leading-snug flex-1">
           {suggestion.questionText}
         </p>
         <StatusBadge status={suggestion.status} />
@@ -78,7 +78,7 @@ function SuggestionCard({ suggestion }: { suggestion: MarketSuggestionItem }) {
         {outcomes.map((outcome, i) => (
           <span
             key={i}
-            className="rounded-full border border-[#e8e4df] bg-[#faf9f7] px-2.5 py-0.5 text-xs text-[#4a4a5a]"
+            className="rounded-full border border-[rgba(184,134,11,0.12)] bg-cream-100 px-2.5 py-0.5 text-xs text-warmGray"
           >
             {outcome}
           </span>
@@ -87,14 +87,14 @@ function SuggestionCard({ suggestion }: { suggestion: MarketSuggestionItem }) {
 
       {/* Description */}
       {suggestion.description && (
-        <p className="text-xs text-[#8a8a9a] mb-3 italic">{suggestion.description}</p>
+        <p className="text-xs text-warmGray mb-3 italic">{suggestion.description}</p>
       )}
 
       {/* Admin notes */}
       {suggestion.adminNotes && (
-        <div className="rounded-lg border border-[#e8e4df] bg-[#faf9f7] px-3 py-2 mb-3">
-          <p className="text-xs font-semibold text-[#4a4a5a] mb-0.5">Admin note</p>
-          <p className="text-xs text-[#8a8a9a]">{suggestion.adminNotes}</p>
+        <div className="rounded-lg border border-[rgba(184,134,11,0.12)] bg-cream-100 px-3 py-2 mb-3">
+          <p className="text-xs font-semibold text-warmGray mb-0.5">Admin note</p>
+          <p className="text-xs text-warmGray">{suggestion.adminNotes}</p>
         </div>
       )}
 
@@ -155,8 +155,8 @@ export default function MySuggestionsPage() {
   if (!user) {
     return (
       <main className="max-w-lg mx-auto px-4 py-8">
-        <div className="rounded-xl border border-[#e8e4df] bg-white p-8 text-center">
-          <p className="text-sm text-[#8a8a9a]">
+        <div className="rounded-xl border border-[rgba(184,134,11,0.12)] bg-ivory-card p-8 text-center">
+          <p className="text-sm text-warmGray">
             Please log in to see your suggestions.
           </p>
         </div>
@@ -174,15 +174,15 @@ export default function MySuggestionsPage() {
 
       <div className="min-h-screen">
         {/* Header */}
-        <header className="sticky top-0 z-10 bg-cream-100/95 backdrop-blur border-b border-[#e8e4df] px-4 py-3">
+        <header className="sticky top-0 z-10 bg-cream-100/95 backdrop-blur border-b border-[rgba(184,134,11,0.12)] px-4 py-3">
           <div className="max-w-lg mx-auto flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-bold text-[#1a1a2e] tracking-tight">My Suggestions</h1>
-              <p className="text-xs text-[#8a8a9a]">Market ideas you've submitted</p>
+              <h1 className="text-xl font-bold text-charcoal tracking-tight">My Suggestions</h1>
+              <p className="text-xs text-warmGray">Market ideas you've submitted</p>
             </div>
             <button
               onClick={() => setShowModal(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-[#c8a45c] bg-[#faf7f0] px-3 py-1.5 text-xs font-semibold text-[#8a6d30] hover:bg-[#f5f0e0] transition-colors"
+              className="flex items-center gap-1.5 rounded-lg border border-gold bg-gold-pale px-3 py-1.5 text-xs font-semibold text-[#8a6d30] hover:bg-[#f5f0e0] transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -197,14 +197,14 @@ export default function MySuggestionsPage() {
           {isLoading && (
             <div className="flex flex-col gap-3">
               {[1, 2, 3].map((n) => (
-                <div key={n} className="rounded-xl border border-[#e8e4df] bg-white p-5 animate-pulse">
+                <div key={n} className="rounded-xl border border-[rgba(184,134,11,0.12)] bg-ivory-card p-5 animate-pulse">
                   <div className="flex items-start justify-between mb-3">
-                    <div className="h-4 bg-[#e8e4df] rounded w-2/3" />
-                    <div className="h-5 bg-[#f0ece7] rounded-full w-20" />
+                    <div className="h-4 bg-gold-light rounded w-2/3" />
+                    <div className="h-5 bg-gold-light rounded-full w-20" />
                   </div>
                   <div className="flex gap-2 mb-3">
-                    <div className="h-5 bg-[#f0ece7] rounded-full w-12" />
-                    <div className="h-5 bg-[#f0ece7] rounded-full w-10" />
+                    <div className="h-5 bg-gold-light rounded-full w-12" />
+                    <div className="h-5 bg-gold-light rounded-full w-10" />
                   </div>
                 </div>
               ))}
@@ -229,21 +229,21 @@ export default function MySuggestionsPage() {
           {/* Empty state */}
           {!isLoading && !error && suggestions?.length === 0 && (
             <div className="flex flex-col items-center justify-center py-16 gap-4">
-              <div className="w-16 h-16 rounded-full bg-[#faf7f0] flex items-center justify-center">
-                <svg className="w-8 h-8 text-[#c8a45c]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-16 h-16 rounded-full bg-gold-pale flex items-center justify-center">
+                <svg className="w-8 h-8 text-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                     d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                 </svg>
               </div>
               <div className="text-center">
-                <p className="font-semibold text-[#1a1a2e]">No suggestions yet</p>
-                <p className="text-sm text-[#8a8a9a] mt-1 max-w-xs">
+                <p className="font-semibold text-charcoal">No suggestions yet</p>
+                <p className="text-sm text-warmGray mt-1 max-w-xs">
                   Have an idea for a fun prediction market? Share it with the admins!
                 </p>
               </div>
               <button
                 onClick={() => setShowModal(true)}
-                className="rounded-xl bg-[#1e3a5f] text-white font-semibold text-sm px-5 py-2.5 hover:bg-[#162d4a] transition-colors"
+                className="rounded-xl bg-gold text-white font-semibold text-sm px-5 py-2.5 hover:bg-gold-600 transition-colors"
               >
                 Suggest a market
               </button>
@@ -258,7 +258,7 @@ export default function MySuggestionsPage() {
                 <section>
                   <div className="flex items-center gap-2 px-1 mb-3">
                     <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                    <span className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider">
+                    <span className="text-xs font-semibold text-warmGray uppercase tracking-wider">
                       Pending review ({pending.length})
                     </span>
                   </div>
@@ -275,7 +275,7 @@ export default function MySuggestionsPage() {
                 <section>
                   <div className="flex items-center gap-2 px-1 mb-3">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                    <span className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider">
+                    <span className="text-xs font-semibold text-warmGray uppercase tracking-wider">
                       Approved ({approved.length})
                     </span>
                   </div>
@@ -292,7 +292,7 @@ export default function MySuggestionsPage() {
                 <section>
                   <div className="flex items-center gap-2 px-1 mb-3">
                     <span className="h-1.5 w-1.5 rounded-full bg-[#c8c8d0]" />
-                    <span className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider">
+                    <span className="text-xs font-semibold text-warmGray uppercase tracking-wider">
                       Not approved ({rejected.length})
                     </span>
                   </div>

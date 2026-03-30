@@ -129,8 +129,8 @@ export function BottomNav() {
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-40
-                 bg-white/90 backdrop-blur-md
-                 border-t border-[#EDE8E0]
+                 bg-cream-100/90 backdrop-blur-md
+                 border-t border-[rgba(184,134,11,0.12)]
                  safe-area-inset-bottom"
     >
       <div className="flex items-stretch max-w-lg mx-auto">
