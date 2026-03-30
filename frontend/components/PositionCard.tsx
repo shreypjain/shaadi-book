@@ -101,6 +101,14 @@ export function PositionCard({
   const canSell =
     position.marketStatus === "active" && position.shares > 0;
 
+  // Derived payout / P&L values for active/pending positions
+  const estimatedPayoutCentsPerShare =
+    position.shares > 0 ? position.potentialPayoutCents / position.shares : 0;
+  const pnlCents = position.potentialPayoutCents - position.totalCostCents;
+  const isThinPool =
+    position.shares > 0 &&
+    estimatedPayoutCentsPerShare < position.avgPriceCents;
+
   const handleSellSuccess = useCallback(
     (_result: { shares: number; revenueCents: number }) => {
       setSellOpen(false);
@@ -198,21 +206,54 @@ export function PositionCard({
             </div>
           </div>
 
-          {/* Parimutuel estimated payout for active/pending */}
+          {/* Estimated payout details for active/pending */}
           {(position.marketStatus === "active" || position.marketStatus === "pending") && (
-            <div className="mt-3 pt-3 border-t border-[#f0ece7]">
-              <p className="text-xs bg-[#f5efd9] text-[#8a6d30] rounded-lg px-2.5 py-1.5">
-                Est. payout if wins:{" "}
-                <span className="font-bold">
-                  {formatDollars(position.potentialPayoutCents)}
-                </span>
-                {" · "}Est. profit:{" "}
-                <span className="font-bold">
-                  {formatDollars(position.potentialPayoutCents - position.totalCostCents)}
-                </span>
-                <span className="block text-[#a08050] mt-0.5 opacity-75">
-                  Pool-based estimate — grows as more bets come in
-                </span>
+            <div className="mt-3 pt-3 border-t border-[#f0ece7] space-y-2">
+              {/* Per-share payout + P&L grid */}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                <div>
+                  <p className="text-warmGray">Est. payout/share</p>
+                  <p className="font-semibold text-charcoal tabular-nums">
+                    {position.shares > 0
+                      ? `${Math.round(estimatedPayoutCentsPerShare)}¢`
+                      : "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-warmGray">Avg cost/share</p>
+                  <p className="font-semibold text-charcoal tabular-nums">
+                    {position.avgPriceCents.toFixed(0)}¢
+                  </p>
+                </div>
+                <div>
+                  <p className="text-warmGray">Est. total payout</p>
+                  <p className="font-semibold text-charcoal">
+                    {formatDollars(position.potentialPayoutCents)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-warmGray">Est. P&L</p>
+                  <p
+                    className={`font-semibold ${
+                      pnlCents >= 0 ? "text-emerald-600" : "text-[#dc2626]"
+                    }`}
+                  >
+                    {pnlCents >= 0 ? "+" : ""}
+                    {formatDollars(pnlCents)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Thin-pool nudge — shown when you'd lose money even if you win */}
+              {isThinPool && (
+                <p className="text-xs bg-amber-50 border border-amber-200/60 text-amber-800 rounded-lg px-2.5 py-1.5 leading-snug">
+                  The pool is thin — more bets means bigger payouts for everyone.
+                  Share the market with the group chat!
+                </p>
+              )}
+
+              <p className="text-[10px] text-[#a08050] opacity-70">
+                Pool-based estimate — grows as more bets come in
               </p>
             </div>
           )}
