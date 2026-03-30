@@ -39,16 +39,18 @@ export default function LeaderboardPage() {
   return (
     <div className="min-h-screen pb-24">
       {/* Header */}
-      <div className="bg-white border-b border-[rgba(184,134,11,0.12)] px-4 pt-12 pb-2">
-        <h1 className="text-2xl font-bold text-charcoal tracking-tight">Leaderboard</h1>
-        <p className="text-sm text-warmGray mt-0.5">
-          Ranked by realized P&amp;L across resolved markets
-        </p>
+      <div className="sticky top-0 z-10 bg-ivory/95 backdrop-blur border-b border-[rgba(184,134,11,0.12)] px-4 py-3">
+        <div className="max-w-lg mx-auto">
+          <h1 className="font-serif text-xl font-semibold text-charcoal tracking-[0.05em] uppercase">Leaderboard</h1>
+          <p className="text-xs text-warmGray mt-0.5">
+            Ranked by realized P&amp;L across resolved markets
+          </p>
+        </div>
       </div>
 
       <div className="max-w-lg mx-auto px-4 pt-4 space-y-4">
         {/* Leaderboard list */}
-        <div className="bg-white rounded-xl shadow-card border border-[rgba(184,134,11,0.12)] p-4">
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-[0_2px_16px_rgba(139,109,71,0.06)] border border-[rgba(184,134,11,0.08)] p-6">
           {entriesLoading ? (
             <div className="space-y-3">
               {[1, 2, 3, 4, 5].map((i) => (
