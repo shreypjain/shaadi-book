@@ -163,7 +163,7 @@ export default function LoginPage() {
     if (step === "phone") return "Sign in to your account";
     if (step === "name") return "Create your account";
     // otp step
-    return isNewUser ? "Verify your number" : "Welcome back!";
+    return isNewUser ? "Verify your number" : "Welcome back";
   }
 
   function cardSubtitle(): string {
