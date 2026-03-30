@@ -367,7 +367,7 @@ export default function MarketFeedPage() {
               <p className="text-sm text-warmGray mt-1">
                 {activeEventTag || activeFamilySide
                   ? "Try a different event or clear the filter."
-                  : "Check back when the celebration starts!"}
+                  : "Check back when the celebration starts."}
               </p>
             </div>
           </div>

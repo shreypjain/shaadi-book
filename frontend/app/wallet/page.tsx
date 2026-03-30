@@ -86,7 +86,7 @@ function WalletPage() {
 
   useEffect(() => {
     if (depositStatus === "success") {
-      setToastMsg("Deposit received! Credits will appear shortly.");
+      setToastMsg("Deposit received. Credits will appear shortly.");
     } else if (depositStatus === "cancelled") {
       setToastMsg("Deposit cancelled.");
     }
@@ -119,7 +119,7 @@ function WalletPage() {
 
   const handleWithdrawalSuccess = useCallback(() => {
     setShowWithdrawal(false);
-    setToastMsg("Withdrawal request submitted!");
+    setToastMsg("Withdrawal request submitted.");
     void refetchBalance();
   }, [refetchBalance]);
 

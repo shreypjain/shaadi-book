@@ -246,7 +246,7 @@ export function SellDialog({
                 </svg>
               </div>
               <div className="text-center">
-                <p className="text-base font-bold text-charcoal">Shares sold!</p>
+                <p className="text-base font-bold text-charcoal">Shares sold</p>
                 {preview && (
                   <p className="text-sm text-warmGray mt-1">
                     You received{" "}
