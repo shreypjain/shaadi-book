@@ -335,6 +335,8 @@ export default function MarketDetailPage() {
               const colors = outcomeColor(i);
               const history = priceHistory[outcome.id] ?? [];
               const isWinner = outcome.isWinner === true || outcome.id === winningOutcomeId;
+              const sharesSold = Number(outcome.sharesSold ?? 0);
+              const sharesAvailable = Math.max(0, 100 - sharesSold);
 
               return (
                 <div key={outcome.id} className="space-y-1.5">
@@ -347,6 +349,13 @@ export default function MarketDetailPage() {
                     isWinner={isWinner}
                     size="md"
                   />
+                  {/* Shares availability */}
+                  <p className="text-[11px] text-warmGray pl-0.5">
+                    <span className="font-semibold text-charcoal tabular-nums">
+                      {sharesAvailable.toFixed(1)}
+                    </span>
+                    /100 shares available
+                  </p>
                   {history.length >= 3 && (
                     <div className="opacity-50">
                       <Sparkline
