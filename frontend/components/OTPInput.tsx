@@ -64,14 +64,16 @@ export function OTPInput({
       if (!raw) return;
 
       if (raw.length > 1) {
+        // Full-length code (paste / SMS autofill) → always fill from box 0
+        const startIndex = raw.length >= OTP_LENGTH ? 0 : index;
         const filled = raw.slice(0, OTP_LENGTH);
         const chars = value.split("").concat(Array(OTP_LENGTH).fill(""));
-        for (let i = 0; i < filled.length && index + i < OTP_LENGTH; i++) {
-          chars[index + i] = filled[i] ?? "";
+        for (let i = 0; i < filled.length && startIndex + i < OTP_LENGTH; i++) {
+          chars[startIndex + i] = filled[i] ?? "";
         }
         const next = chars.slice(0, OTP_LENGTH).join("").replace(/ /g, "").slice(0, OTP_LENGTH);
         onChange(next);
-        const nextFocus = Math.min(index + filled.length, OTP_LENGTH - 1);
+        const nextFocus = Math.min(startIndex + filled.length, OTP_LENGTH - 1);
         focusBox(nextFocus);
         if (next.length === OTP_LENGTH) onComplete(next);
         return;
@@ -128,7 +130,6 @@ export function OTPInput({
               type="text"
               inputMode="numeric"
               pattern="[0-9]*"
-              maxLength={1}
               value={isFilled ? digit : ""}
               onChange={(e) => handleChange(e, i)}
               onKeyDown={(e) => handleKeyDown(e, i)}
