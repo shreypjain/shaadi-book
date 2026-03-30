@@ -40,6 +40,7 @@ export default function AdminMarketsPage() {
         })),
         createdAt: m.createdAt,
         resolvedAt: m.resolvedAt,
+        uniqueBettorCount: m.uniqueBettorCount,
       }));
       setMarkets(rows);
     } catch (err) {
