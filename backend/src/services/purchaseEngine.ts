@@ -136,6 +136,7 @@ interface LockedOutcomeRow {
   market_id: string;
   position: number | bigint;
   shares_sold: unknown;
+  max_shares: number | bigint;
   label: string;
 }
 
@@ -275,12 +276,16 @@ export async function buyShares(
           status: true,
           openedAt: true,
           bFloorOverride: true,
+          bParameter: true,
+          maxSharesPerOutcome: true,
         },
       })) as {
         id: string;
         status: string;
         openedAt: Date | null;
         bFloorOverride: unknown | null;
+        bParameter: unknown | null;
+        maxSharesPerOutcome: number | null;
       } | null;
 
       if (!market) {
@@ -307,7 +312,7 @@ export async function buyShares(
       //    Orders by position so state vector q[] is always deterministic.
       // -----------------------------------------------------------------------
       const lockedOutcomes = (await tx.$queryRaw`
-        SELECT id, market_id, position, shares_sold, label
+        SELECT id, market_id, position, shares_sold, max_shares, label
         FROM outcomes
         WHERE market_id = ${marketId}
         ORDER BY position
@@ -402,7 +407,8 @@ export async function buyShares(
         market.bFloorOverride !== null && market.bFloorOverride !== undefined
           ? toNumber(market.bFloorOverride)
           : 0;
-      const b = bOverride > 0 ? bOverride : defaultB(lockedOutcomes.length);
+      const maxSharesPerOutcome = Number(lockedOutcomes[0]?.max_shares ?? 1000);
+      const b = bOverride > 0 ? bOverride : defaultB(lockedOutcomes.length, maxSharesPerOutcome);
 
       // -----------------------------------------------------------------------
       // 8. Read state vector q[] from locked outcome rows
@@ -420,7 +426,8 @@ export async function buyShares(
         q,
         b,
         outcomeIndex,
-        dollarAmount
+        dollarAmount,
+        maxSharesPerOutcome
       );
 
       // -----------------------------------------------------------------------
@@ -621,12 +628,16 @@ export async function sellShares(
           status: true,
           openedAt: true,
           bFloorOverride: true,
+          bParameter: true,
+          maxSharesPerOutcome: true,
         },
       })) as {
         id: string;
         status: string;
         openedAt: Date | null;
         bFloorOverride: unknown | null;
+        bParameter: unknown | null;
+        maxSharesPerOutcome: number | null;
       } | null;
 
       if (!market) {
@@ -653,7 +664,7 @@ export async function sellShares(
       //    Orders by position so state vector q[] is always deterministic.
       // -----------------------------------------------------------------------
       const lockedOutcomes = (await tx.$queryRaw`
-        SELECT id, market_id, position, shares_sold, label
+        SELECT id, market_id, position, shares_sold, max_shares, label
         FROM outcomes
         WHERE market_id = ${marketId}
         ORDER BY position
@@ -734,7 +745,8 @@ export async function sellShares(
         market.bFloorOverride !== null && market.bFloorOverride !== undefined
           ? toNumber(market.bFloorOverride)
           : 0;
-      const b = bOverride > 0 ? bOverride : defaultB(lockedOutcomes.length);
+      const maxSharesPerOutcome = Number(lockedOutcomes[0]?.max_shares ?? 1000);
+      const b = bOverride > 0 ? bOverride : defaultB(lockedOutcomes.length, maxSharesPerOutcome);
 
       // -----------------------------------------------------------------------
       // 7. Read state vector q[] from locked outcome rows
