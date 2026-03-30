@@ -97,16 +97,16 @@ function SuggestionRow({ suggestion, onReviewed }: SuggestionRowProps) {
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+    <div className="rounded-lg border border-[rgba(184,134,11,0.12)] bg-ivory-card p-4 space-y-3">
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-gray-800 text-sm leading-snug">
+          <p className="font-semibold text-charcoal text-sm leading-snug">
             {suggestion.questionText}
           </p>
-          <p className="text-xs text-gray-400 mt-0.5">
+          <p className="text-xs text-warmGray mt-0.5">
             by{" "}
-            <span className="font-medium text-gray-500">
+            <span className="font-medium text-warmGray">
               {suggestion.userName ?? "Unknown"}
             </span>
             {suggestion.userPhone ? ` · ${suggestion.userPhone}` : ""}
@@ -122,7 +122,7 @@ function SuggestionRow({ suggestion, onReviewed }: SuggestionRowProps) {
         {suggestion.outcomes.map((outcome, i) => (
           <span
             key={i}
-            className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs text-gray-600"
+            className="rounded-full border border-[rgba(184,134,11,0.12)] bg-cream-100 px-2.5 py-0.5 text-xs text-warmGray"
           >
             {outcome}
           </span>
@@ -131,16 +131,16 @@ function SuggestionRow({ suggestion, onReviewed }: SuggestionRowProps) {
 
       {/* Description */}
       {suggestion.description && (
-        <p className="text-xs text-gray-500 italic bg-gray-50 rounded px-3 py-2">
+        <p className="text-xs text-warmGray italic bg-cream-100 rounded px-3 py-2">
           {suggestion.description}
         </p>
       )}
 
       {/* Existing admin notes */}
       {suggestion.adminNotes && (
-        <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2">
-          <p className="text-xs font-semibold text-gray-500 mb-0.5">Admin note</p>
-          <p className="text-xs text-gray-600">{suggestion.adminNotes}</p>
+        <div className="rounded border border-[rgba(184,134,11,0.12)] bg-cream-100 px-3 py-2">
+          <p className="text-xs font-semibold text-warmGray mb-0.5">Admin note</p>
+          <p className="text-xs text-warmGray">{suggestion.adminNotes}</p>
         </div>
       )}
 
@@ -152,7 +152,7 @@ function SuggestionRow({ suggestion, onReviewed }: SuggestionRowProps) {
             <button
               type="button"
               onClick={() => setShowNotes(true)}
-              className="text-xs text-gray-400 hover:text-gray-600 underline min-h-0 min-w-0 h-auto"
+              className="text-xs text-warmGray hover:text-charcoal underline min-h-0 min-w-0 h-auto"
             >
               + Add a note (optional)
             </button>
@@ -164,7 +164,7 @@ function SuggestionRow({ suggestion, onReviewed }: SuggestionRowProps) {
                 value={adminNotes}
                 onChange={(e) => setAdminNotes(e.target.value)}
                 placeholder="Optional note for the guest…"
-                className="w-full rounded border border-gray-200 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-gray-300 resize-none"
+                className="w-full rounded border border-[rgba(184,134,11,0.12)] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-gold/30 resize-none"
               />
             </div>
           )}
@@ -231,8 +231,8 @@ export default function AdminSuggestionsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Market Suggestions</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-xl font-bold text-charcoal">Market Suggestions</h1>
+          <p className="text-sm text-warmGray mt-0.5">
             Review guest-submitted market ideas
             {pendingCount > 0 && (
               <span className="ml-2 inline-block rounded-full bg-amber-100 text-amber-800 text-xs font-semibold px-2 py-0.5">
@@ -244,22 +244,22 @@ export default function AdminSuggestionsPage() {
         <button
           onClick={() => void load()}
           disabled={isLoading}
-          className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50 min-h-0 min-w-0 h-auto"
+          className="text-sm text-warmGray hover:text-charcoal disabled:opacity-50 min-h-0 min-w-0 h-auto"
         >
           {isLoading ? "Refreshing…" : "↻ Refresh"}
         </button>
       </div>
 
       {/* Filter tabs */}
-      <div className="flex gap-1 border-b border-gray-200">
+      <div className="flex gap-1 border-b border-[rgba(184,134,11,0.12)]">
         {(["PENDING", "APPROVED", "REJECTED", "ALL"] as StatusFilter[]).map((f) => (
           <button
             key={f}
             onClick={() => setStatusFilter(f)}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
               statusFilter === f
-                ? "border-gray-800 text-gray-900"
-                : "border-transparent text-gray-500 hover:text-gray-700"
+                ? "border-gold text-charcoal"
+                : "border-transparent text-warmGray hover:text-charcoal"
             }`}
           >
             {f === "ALL" ? "All" : f.charAt(0) + f.slice(1).toLowerCase()}
@@ -278,11 +278,11 @@ export default function AdminSuggestionsPage() {
       {isLoading && (
         <div className="space-y-3">
           {[1, 2, 3].map((n) => (
-            <div key={n} className="rounded-lg border border-gray-200 bg-white p-4 animate-pulse">
-              <div className="h-4 bg-gray-200 rounded w-2/3 mb-3" />
+            <div key={n} className="rounded-lg border border-[rgba(184,134,11,0.12)] bg-ivory-card p-4 animate-pulse">
+              <div className="h-4 bg-gold-light rounded w-2/3 mb-3" />
               <div className="flex gap-2">
-                <div className="h-5 bg-gray-100 rounded-full w-12" />
-                <div className="h-5 bg-gray-100 rounded-full w-10" />
+                <div className="h-5 bg-gold-light rounded-full w-12" />
+                <div className="h-5 bg-gold-light rounded-full w-10" />
               </div>
             </div>
           ))}
@@ -292,7 +292,7 @@ export default function AdminSuggestionsPage() {
       {/* Empty state */}
       {!isLoading && !error && suggestions?.length === 0 && (
         <div className="text-center py-12">
-          <p className="text-gray-500 text-sm">No {statusFilter === "ALL" ? "" : statusFilter.toLowerCase() + " "}suggestions.</p>
+          <p className="text-warmGray text-sm">No {statusFilter === "ALL" ? "" : statusFilter.toLowerCase() + " "}suggestions.</p>
         </div>
       )}
 

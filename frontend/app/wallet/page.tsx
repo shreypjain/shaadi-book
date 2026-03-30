@@ -26,14 +26,14 @@ const TX_ICON_COLORS: Record<string, string> = {
   DEPOSIT:    "bg-emerald-50 text-emerald-600",
   PURCHASE:   "bg-brand-50 text-brand-600",
   PAYOUT:     "bg-emerald-50 text-emerald-600",
-  WITHDRAWAL: "bg-[#f0ece7] text-[#4a4a5a]",
+  WITHDRAWAL: "bg-gold-light text-warmGray",
 
-  REFUND:     "bg-[#f0ece7] text-[#4a4a5a]",
+  REFUND:     "bg-gold-light text-warmGray",
 };
 
 function TxRow({ tx }: { tx: TransactionItem }) {
   const meta = TX_LABELS[tx.type] ?? { label: tx.type, icon: "·" };
-  const iconColor = TX_ICON_COLORS[tx.type] ?? "bg-[#f0ece7] text-[#4a4a5a]";
+  const iconColor = TX_ICON_COLORS[tx.type] ?? "bg-gold-light text-warmGray";
   const isPositive = tx.amountCents >= 0;
 
   return (
@@ -70,7 +70,7 @@ function TxRow({ tx }: { tx: TransactionItem }) {
 
 export default function WalletPageWrapper() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-gray-400">Loading wallet...</div>}>
+    <Suspense fallback={<div className="p-8 text-center text-warmGray">Loading wallet...</div>}>
       <WalletPage />
     </Suspense>
   );
@@ -129,7 +129,7 @@ function WalletPage() {
     <div className="min-h-screen pb-24">
       {/* Toast */}
       {toastMsg && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[#1a1a2e] text-white
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-charcoal text-white
                         text-sm px-4 py-2.5 rounded-full shadow-lg whitespace-nowrap">
           {toastMsg}
         </div>
@@ -187,17 +187,17 @@ function WalletPage() {
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="flex items-center gap-3 animate-pulse">
-                  <div className="w-8 h-8 bg-[#f0ece7] rounded-full" />
+                  <div className="w-8 h-8 bg-gold-light rounded-full" />
                   <div className="flex-1">
-                    <div className="h-3 w-32 bg-[#f0ece7] rounded mb-1" />
-                    <div className="h-2 w-20 bg-[#f5f2ed] rounded" />
+                    <div className="h-3 w-32 bg-gold-light rounded mb-1" />
+                    <div className="h-2 w-20 bg-gold-light rounded" />
                   </div>
-                  <div className="h-3 w-14 bg-[#f0ece7] rounded" />
+                  <div className="h-3 w-14 bg-gold-light rounded" />
                 </div>
               ))}
             </div>
           ) : !txData || txData.length === 0 ? (
-            <p className="text-sm text-[#8a8a9a] text-center py-6">
+            <p className="text-sm text-warmGray text-center py-6">
               No transactions yet.
             </p>
           ) : (

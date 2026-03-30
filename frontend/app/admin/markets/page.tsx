@@ -64,7 +64,7 @@ export default function AdminMarketsPage() {
 
   return (
     <div className="max-w-3xl space-y-8">
-      <h1 className="text-xl font-bold text-gray-900">Market Manager</h1>
+      <h1 className="text-xl font-bold text-charcoal">Market Manager</h1>
 
       {/* Create form */}
       <CreateMarketForm onCreated={() => void load()} />
@@ -72,16 +72,16 @@ export default function AdminMarketsPage() {
       {/* Filter + list */}
       <section className="space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <h2 className="text-sm font-semibold text-gray-700">All Markets</h2>
+          <h2 className="text-sm font-semibold text-charcoal">All Markets</h2>
           <div className="flex items-center gap-1 flex-wrap">
             {STATUS_FILTERS.map((s) => (
               <button
                 key={s}
                 onClick={() => setFilter(s)}
-                className={`rounded px-2 py-0.5 text-xs font-medium transition-colors min-h-0 min-w-0 h-auto ${
+                className={`rounded-full border px-2 py-0.5 text-xs font-medium transition-colors min-h-0 min-w-0 h-auto ${
                   filter === s
-                    ? "bg-gray-800 text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    ? "border-gold bg-gold text-white shadow-sm"
+                    : "border-charcoal/20 bg-transparent text-charcoal hover:border-gold/50 hover:text-gold"
                 }`}
               >
                 {s}
@@ -90,7 +90,7 @@ export default function AdminMarketsPage() {
             <button
               onClick={() => void load()}
               disabled={loading}
-              className="ml-2 text-xs text-gray-400 hover:text-gray-600 disabled:opacity-50 min-h-0 min-w-0 h-auto"
+              className="ml-2 text-xs text-warmGray hover:text-charcoal disabled:opacity-50 min-h-0 min-w-0 h-auto"
             >
               {loading ? "…" : "↻"}
             </button>
@@ -104,7 +104,7 @@ export default function AdminMarketsPage() {
         )}
 
         {!loading && markets.length === 0 && (
-          <p className="text-sm text-gray-400">No markets found.</p>
+          <p className="text-sm text-warmGray">No markets found.</p>
         )}
 
         <div className="space-y-3">
