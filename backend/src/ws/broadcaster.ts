@@ -46,6 +46,8 @@ export interface PurchaseEvent {
   dollarAmount: number;
   /** Post-purchase price in cents */
   priceAfterCents: number;
+  /** Display name of the bettor. Never includes userId or phone number. */
+  userName: string | null;
 }
 
 export interface MarketEvent {
@@ -93,8 +95,8 @@ export function broadcastPriceUpdate(
 }
 
 /**
- * Emit an anonymised purchase event to a market's activity feed.
- * Anonymised: no userId in the payload.
+ * Emit a named purchase event to a market's activity feed.
+ * Includes the bettor's display name but never userId or phone number.
  * Throttled: max 2/sec per market channel.
  */
 export function broadcastPurchase(
@@ -110,6 +112,7 @@ export function broadcastPurchase(
     outcomeLabel: event.outcomeLabel,
     dollarAmount: event.dollarAmount,
     priceAfterCents: event.priceAfterCents,
+    userName: event.userName,
     timestamp: Date.now(),
   });
 }
