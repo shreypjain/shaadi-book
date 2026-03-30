@@ -137,6 +137,7 @@ export const marketRouter = router({
           priceAfter: true,
           createdAt: true,
           outcome: { select: { id: true, label: true } },
+          user: { select: { name: true } },
         },
       });
 
@@ -146,6 +147,7 @@ export const marketRouter = router({
           id: p.id,
           outcomeId: p.outcome.id,
           outcomeLabel: p.outcome.label,
+          userName: p.user?.name ?? null,
           shares: Number(p.shares),
           cost: Number(p.cost),
           avgPrice: Number(p.avgPrice),
@@ -218,10 +220,16 @@ export const marketRouter = router({
             }))
           );
 
+          const buyer = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { name: true },
+          });
+
           broadcastPurchase(io, marketId, {
             outcomeLabel: result.outcomeLabel,
             dollarAmount: dollarAmountCents / 100,
             priceAfterCents: result.priceAfterCents,
+            userName: buyer?.name ?? null,
           });
 
           const newBalanceCents = await getUserBalance(userId);
