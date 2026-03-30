@@ -130,10 +130,10 @@ export async function seedMarket(
     },
   });
 
-  // 4. Buy shares for each outcome (bypasses $200/market cap)
+  // 4. Buy shares for each outcome.
+  //    The house user's phone (+0000000000) is checked in purchaseEngine.ts
+  //    to bypass the $200/market cap automatically.
   for (const outcome of market.outcomes) {
-    await buyShares(houseUser.id, marketId, outcome.id, seedAmountCentsPerOutcome, {
-      skipCapCheck: true,
-    });
+    await buyShares(houseUser.id, marketId, outcome.id, seedAmountCentsPerOutcome);
   }
 }
