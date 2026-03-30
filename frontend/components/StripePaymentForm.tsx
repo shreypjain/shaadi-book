@@ -88,7 +88,7 @@ export function StripePaymentForm({
       <button
         type="button"
         onClick={onCancel}
-        className="w-full py-2 text-sm text-gray-400 hover:text-gray-600 transition"
+        className="w-full py-2 text-sm text-warmGray hover:text-warmGray transition"
       >
         Cancel
       </button>

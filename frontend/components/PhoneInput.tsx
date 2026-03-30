@@ -120,7 +120,7 @@ export function PhoneInput({
       <div
         className={`flex items-center rounded-lg border bg-white overflow-hidden
           transition-colors
-          ${hasError ? "border-[#dc2626] ring-1 ring-[#dc2626]" : "border-[#e8e4df] focus-within:border-[#1e3a5f] focus-within:ring-1 focus-within:ring-[#1e3a5f]"}
+          ${hasError ? "border-[#dc2626] ring-1 ring-[#dc2626]" : "border-[rgba(184,134,11,0.12)] focus-within:border-[#1e3a5f] focus-within:ring-1 focus-within:ring-[#1e3a5f]"}
           ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
       >
         {/* Country selector */}
@@ -130,8 +130,8 @@ export function PhoneInput({
             onChange={handleCountryChange}
             disabled={disabled}
             aria-label="Select country"
-            className="appearance-none bg-cream-100 border-r border-[#e8e4df] pl-3 pr-7 py-3.5
-                       text-sm font-medium text-[#1a1a2e] cursor-pointer
+            className="appearance-none bg-cream-100 border-r border-[rgba(184,134,11,0.12)] pl-3 pr-7 py-3.5
+                       text-sm font-medium text-charcoal cursor-pointer
                        focus:outline-none focus:bg-cream-200
                        disabled:cursor-not-allowed"
           >
@@ -144,7 +144,7 @@ export function PhoneInput({
           {/* Chevron icon */}
           <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
             <svg
-              className="w-3 h-3 text-[#8a8a9a]"
+              className="w-3 h-3 text-warmGray"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -171,7 +171,7 @@ export function PhoneInput({
           aria-label="Phone number"
           aria-invalid={hasError}
           className="flex-1 px-4 py-3.5 text-sm bg-transparent focus:outline-none
-                     placeholder:text-[#c8c8d0] text-[#1a1a2e]
+                     placeholder:text-[#c8c8d0] text-charcoal
                      disabled:cursor-not-allowed"
         />
       </div>

@@ -21,7 +21,7 @@ interface CharityCounterProps {
  */
 export function CharityCounter({ totalCents, loading = false }: CharityCounterProps) {
   return (
-    <div className="rounded-xl bg-white border border-[#e8e4df] shadow-card p-4">
+    <div className="rounded-xl bg-white border border-[rgba(184,134,11,0.12)] shadow-card p-4">
       <div className="flex items-center gap-4">
         {/* Gold heart icon */}
         <div className="w-10 h-10 rounded-full bg-[#f5efd9] flex items-center justify-center flex-shrink-0">
@@ -31,17 +31,17 @@ export function CharityCounter({ totalCents, loading = false }: CharityCounterPr
         </div>
 
         <div className="flex-1">
-          <p className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider">
+          <p className="text-xs font-semibold text-warmGray uppercase tracking-wider">
             Charity Impact
           </p>
           {loading ? (
             <div className="h-7 w-24 bg-[#e8e4df] rounded-lg animate-pulse mt-1" />
           ) : (
-            <p className="text-2xl font-bold text-[#1a1a2e] tabular-nums">
+            <p className="text-2xl font-bold text-charcoal tabular-nums">
               {formatDollars(totalCents)}
             </p>
           )}
-          <p className="text-xs text-[#8a8a9a] mt-0.5">
+          <p className="text-xs text-warmGray mt-0.5">
             donated from 20% of winnings (net of processing fees)
           </p>
         </div>
