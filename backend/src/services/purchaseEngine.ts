@@ -18,7 +18,7 @@ import { Decimal } from "decimal.js";
 
 import { prisma } from "../db.js";
 import {
-  adaptiveB,
+  defaultB,
   allPrices,
   computeSharesForDollarAmount,
   price,
@@ -336,26 +336,15 @@ export async function buyShares(
       }
 
       // -----------------------------------------------------------------------
-      // 7. Compute adaptive b (PRD §4.3)
-      //    dtMs   = now - market.openedAt
-      //    V      = SUM(purchases.cost) for this market (total volume in $)
-      //    bFloor = market.bFloorOverride ?? B_FLOOR_DEFAULT ?? 20
+      // 7. Compute b — fixed per market shape, admin-overridable via bFloorOverride
+      //    With fixed 100-share supply, b is constant for the lifetime of the market.
+      //    defaultB(n) targets p≈0.95 when the leading outcome holds 80% of shares.
       // -----------------------------------------------------------------------
-      const volumeResult = (await tx.$queryRaw`
-        SELECT COALESCE(SUM(cost), 0) AS total_volume
-        FROM purchases
-        WHERE market_id = ${marketId}
-      `) as Array<{ total_volume: unknown }>;
-
-      const totalVolume = toNumber(volumeResult[0]?.total_volume ?? 0);
-
-      const dtMs = Date.now() - market.openedAt.getTime();
-      const bFloor =
+      const bOverride =
         market.bFloorOverride !== null && market.bFloorOverride !== undefined
           ? toNumber(market.bFloorOverride)
-          : parseFloat(process.env["B_FLOOR_DEFAULT"] ?? "20");
-
-      const b = adaptiveB(bFloor, dtMs, totalVolume);
+          : 0;
+      const b = bOverride > 0 ? bOverride : defaultB(lockedOutcomes.length);
 
       // -----------------------------------------------------------------------
       // 8. Read state vector q[] from locked outcome rows

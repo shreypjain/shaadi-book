@@ -1,12 +1,14 @@
 /**
  * LMSR (Logarithmic Market Scoring Rule) Pricing Engine
  *
+ * Fixed 100-shares-per-outcome model with buying and selling support.
+ * Uses a closed-form analytical solution instead of binary search.
+ *
  * Pure functions with zero DB dependency. All monetary values are in dollars
  * (the caller converts cents↔dollars at the transaction boundary).
  *
  * References:
  *   PRD §4.2 — cost function and price formula
- *   PRD §4.3 — adaptive b parameter
  *   PRD §6.3 — purchase engine pseudocode
  */
 
@@ -101,22 +103,30 @@ export function allPrices(q: number[], b: number): number[] {
 }
 
 /**
- * Binary search: find Δ shares such that
+ * Closed-form solution: find Δ shares such that
  *   C(q₁, …, qᵢ + Δ, …, qₙ) − C(q₁, …, qₙ) = dollarAmount
  *
- * Precision: converges to within 1e-7; result is rounded to 4 decimal places.
+ * Derivation (let S = Σⱼ≠ᵢ e^(qⱼ/b), eᵢ = e^(qᵢ/b)):
+ *   b·ln(S + eᵢ·e^(Δ/b)) − b·ln(S + eᵢ) = X
+ *   e^(Δ/b) = (e^(X/b)·(S + eᵢ) − S) / eᵢ
+ *   Δ = b·ln((e^(X/b)·(S + eᵢ) − S) / eᵢ)
+ *
+ * Precision: Decimal.js at 50 digits; result rounded to 4 decimal places.
  *
  * @param q            - Current shares-sold vector.
  * @param b            - Liquidity parameter.
  * @param outcomeIndex - Outcome being purchased.
  * @param dollarAmount - Dollar amount being spent (must be > 0).
+ * @param maxShares    - Per-outcome share cap (default 100). Throws
+ *                       SHARE_CAP_EXCEEDED if the purchase would breach it.
  * @returns Number of shares received (rounded to 4 d.p.).
  */
 export function computeSharesForDollarAmount(
   q: number[],
   b: number,
   outcomeIndex: number,
-  dollarAmount: number
+  dollarAmount: number,
+  maxShares: number = 100
 ): number {
   if (dollarAmount <= 0) {
     throw new Error("computeSharesForDollarAmount: dollarAmount must be > 0");
@@ -127,66 +137,103 @@ export function computeSharesForDollarAmount(
     );
   }
 
-  const cBefore = costFunction(q, b);
-  const target = cBefore + dollarAmount;
+  const bd = new Decimal(b);
+  const qi = new Decimal(q[outcomeIndex]!);
+  const X = new Decimal(dollarAmount);
 
-  /** Cost of the state vector after buying `delta` additional shares. */
-  const costAtDelta = (delta: number): number => {
-    const qNew = q.slice();
-    qNew[outcomeIndex] = (q[outcomeIndex] ?? 0) + delta;
-    return costFunction(qNew, b);
-  };
+  // S = Σⱼ≠ᵢ e^(qⱼ/b)  — sum of exponentials for all outcomes except i.
+  const S = q.reduce((acc: Decimal, qj, j) => {
+    if (j === outcomeIndex) return acc;
+    return acc.plus(new Decimal(qj).dividedBy(bd).exp());
+  }, new Decimal(0));
 
-  // Expand upper bound until cost(hi) > target.
-  let lo = 0;
-  let hi = Math.max(dollarAmount, 1);
-  while (costAtDelta(hi) < target) {
-    hi *= 2;
+  // eᵢ = e^(qᵢ/b)
+  const ei = qi.dividedBy(bd).exp();
+
+  // Δ = b × ln((e^(X/b) × (S + eᵢ) − S) / eᵢ)
+  const eXb = X.dividedBy(bd).exp(); // e^(X/b)
+  const numerator = eXb.times(S.plus(ei)).minus(S);
+  const delta = bd.times(numerator.dividedBy(ei).ln());
+
+  // Guard: reject before rounding if the purchase would breach the share cap.
+  const newQi = qi.plus(delta).toNumber();
+  if (newQi > maxShares) {
+    const err = new Error(
+      `SHARE_CAP_EXCEEDED: purchase would bring shares to ${newQi.toFixed(4)}, exceeding cap of ${maxShares}`
+    );
+    (err as Error & { code: string }).code = "SHARE_CAP_EXCEEDED";
+    throw err;
   }
 
-  // Bisection — 200 iterations gives precision << 1e-7 for any reasonable range.
-  for (let i = 0; i < 200; i++) {
-    const mid = (lo + hi) / 2;
-    const diff = costAtDelta(mid) - target;
-
-    if (Math.abs(diff) < 1e-7) break;
-
-    if (diff < 0) {
-      lo = mid;
-    } else {
-      hi = mid;
-    }
-  }
-
-  // Round to 4 decimal places as required.
-  return Math.round(((lo + hi) / 2) * 10_000) / 10_000;
+  return Math.round(delta.toNumber() * 10_000) / 10_000;
 }
 
 /**
- * Adaptive liquidity parameter.
+ * Compute the dollar revenue from selling a given number of shares.
  *
- * b(t, V) = max(bFloor, 20 + (0.6 × 0.25 × √(Δt_ms)) + (0.4 × 0.5 × V))
+ * revenue = C(q_before) − C(q_after)
+ * where q_after[i] = q_before[i] − sharesToSell
  *
- * The hybrid time/volume formula ensures markets are price-sensitive early
- * (driving excitement) and stabilise as both time and money flow in.
- *
- * @param bFloor      - Minimum allowed b (default 20; admin-configurable per market).
- * @param dtMs        - Milliseconds elapsed since the market opened.
- * @param totalVolume - Total dollar volume traded in this market so far.
- * @returns The current b value (≥ bFloor).
+ * @param q            - Current shares-sold vector (before the sale).
+ * @param b            - Liquidity parameter.
+ * @param outcomeIndex - Outcome whose shares are being sold.
+ * @param sharesToSell - Number of shares to sell (must be > 0 and ≤ qᵢ).
+ * @returns Dollar amount received (rounded to 4 d.p.).
  */
-export function adaptiveB(
-  bFloor: number,
-  dtMs: number,
-  totalVolume: number
+export function computeDollarAmountForShares(
+  q: number[],
+  b: number,
+  outcomeIndex: number,
+  sharesToSell: number
 ): number {
-  if (bFloor <= 0) throw new Error("adaptiveB: bFloor must be positive");
-  if (dtMs < 0) throw new Error("adaptiveB: dtMs must be >= 0");
-  if (totalVolume < 0) throw new Error("adaptiveB: totalVolume must be >= 0");
+  if (sharesToSell <= 0) {
+    throw new Error("computeDollarAmountForShares: sharesToSell must be > 0");
+  }
+  if (outcomeIndex < 0 || outcomeIndex >= q.length) {
+    throw new Error(
+      `computeDollarAmountForShares: outcomeIndex ${outcomeIndex} out of range`
+    );
+  }
 
-  const computed =
-    20 + 0.6 * 0.25 * Math.sqrt(dtMs) + 0.4 * 0.5 * totalVolume;
-  return Math.max(bFloor, computed);
+  const qi = q[outcomeIndex] ?? 0;
+  if (sharesToSell > qi) {
+    throw new Error(
+      `computeDollarAmountForShares: cannot sell ${sharesToSell} shares, only ${qi} owned`
+    );
+  }
+
+  const cBefore = costFunction(q, b);
+  const qAfter = q.slice();
+  qAfter[outcomeIndex] = qi - sharesToSell;
+  const cAfter = costFunction(qAfter, b);
+
+  const revenue = cBefore - cAfter;
+  return Math.round(revenue * 10_000) / 10_000;
+}
+
+/**
+ * Sensible default liquidity parameter for a new market.
+ *
+ * Derivation: targets p ≈ 0.95 when the leading outcome has sold 80% of
+ * maxShares while all others remain at 0.
+ *
+ *   p(i) = e^(0.8·M/b) / (e^(0.8·M/b) + (n−1)) = 0.95
+ *   ⟹  e^(0.8·M/b) = 19·(n−1)
+ *   ⟹  b = 0.8·M / ln(19·(n−1))
+ *
+ * For a binary market with M=100:  b = 80/ln(19) ≈ 27.2
+ *   p at q=(0,0):    0.50
+ *   p at q=(50,0):  ~0.86
+ *   p at q=(80,0):  ~0.95  ← target
+ *   p at q=(100,0): ~0.98
+ *
+ * @param numOutcomes - Number of outcomes (≥ 2).
+ * @param maxShares   - Per-outcome share cap (default 100).
+ * @returns A b value calibrated for the given market shape.
+ */
+export function defaultB(numOutcomes: number, maxShares: number = 100): number {
+  if (numOutcomes < 2) throw new Error("defaultB: numOutcomes must be >= 2");
+  return (0.8 * maxShares) / Math.log(19 * (numOutcomes - 1));
 }
 
 /**
@@ -219,16 +266,17 @@ export function priceAfterPurchase(
 }
 
 /**
- * Worst-case house exposure for a market with the given parameters.
+ * Worst-case theoretical house exposure for a market with the given parameters.
  *
  * max_loss = b × ln(n)
  *
- * This is the maximum possible net payout the house could owe if one outcome
- * captures all the liquidity. Displayed on the admin dashboard in real-time.
+ * NOTE: With capped parimutuel resolution (payout_per_share = min($1, pool/winning_shares))
+ * the house never actually realises this loss in practice — this is a theoretical
+ * maximum from the raw LMSR formula, displayed on the admin dashboard for monitoring.
  *
  * @param b           - Current liquidity parameter.
  * @param numOutcomes - Number of outcomes in the market (n ≥ 2).
- * @returns Maximum possible house loss in dollars.
+ * @returns Theoretical maximum house loss in dollars.
  */
 export function maxHouseExposure(b: number, numOutcomes: number): number {
   if (b <= 0) throw new Error("maxHouseExposure: b must be positive");

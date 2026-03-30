@@ -12,7 +12,7 @@
  */
 
 import { prisma } from "../db.js";
-import { adaptiveB, allPrices } from "./lmsr.js";
+import { defaultB, allPrices } from "./lmsr.js";
 import { toNumber } from "./purchaseEngine.js";
 
 // ---------------------------------------------------------------------------
@@ -55,19 +55,11 @@ export async function snapshotMarketPrices(marketId: string): Promise<void> {
 
   if (!market || market.status !== "ACTIVE") return;
 
-  const bFloor =
-    market.bFloorOverride != null
-      ? toNumber(market.bFloorOverride)
-      : parseFloat(process.env["B_FLOOR_DEFAULT"] ?? "20");
-
-  // Use a SUM aggregate instead of loading all purchase rows into memory
-  const volumeAgg = await prisma.purchase.aggregate({
-    where: { marketId },
-    _sum: { cost: true },
-  });
-  const totalVolume = toNumber(volumeAgg._sum.cost ?? 0);
-  const dtMs = market.openedAt ? Date.now() - market.openedAt.getTime() : 0;
-  const b = adaptiveB(bFloor, dtMs, totalVolume);
+  // Fixed b per market shape (admin-overridable via bFloorOverride).
+  // With fixed 100-share supply, b does not change during the market's lifetime.
+  const bOverride =
+    market.bFloorOverride != null ? toNumber(market.bFloorOverride) : 0;
+  const b = bOverride > 0 ? bOverride : defaultB(market.outcomes.length);
 
   const q = (market.outcomes as Array<{ sharesSold: unknown }>).map((o) =>
     toNumber(o.sharesSold)
