@@ -59,7 +59,7 @@ export function UserMenu() {
         onClick={() => setOpen((v) => !v)}
         aria-label="User menu"
         aria-expanded={open}
-        className="flex items-center gap-2 bg-white/90 backdrop-blur border border-[#e8e4df]
+        className="flex items-center gap-2 bg-white/90 backdrop-blur border border-[rgba(184,134,11,0.12)]
                    rounded-full pl-1.5 pr-3 py-1.5 shadow-card
                    hover:bg-cream-100 active:scale-95 transition-all"
       >
@@ -71,12 +71,12 @@ export function UserMenu() {
         >
           {initials}
         </div>
-        <span className="text-xs font-semibold text-[#1a1a2e] max-w-[80px] truncate">
+        <span className="text-xs font-semibold text-charcoal max-w-[80px] truncate">
           {firstName}
         </span>
         {/* Chevron */}
         <svg
-          className={`w-3 h-3 text-[#8a8a9a] transition-transform ${open ? "rotate-180" : ""}`}
+          className={`w-3 h-3 text-warmGray transition-transform ${open ? "rotate-180" : ""}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -95,16 +95,16 @@ export function UserMenu() {
       {open && (
         <div
           className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl
-                     border border-[#e8e4df] shadow-xl shadow-black/5
+                     border border-[rgba(184,134,11,0.12)] shadow-xl shadow-black/5
                      animate-slide-up overflow-hidden"
           role="menu"
         >
           {/* User info */}
           <div className="px-4 py-3 border-b border-[#f0ece7]">
-            <p className="text-sm font-semibold text-[#1a1a2e] truncate">
+            <p className="text-sm font-semibold text-charcoal truncate">
               {user.name}
             </p>
-            <p className="text-xs text-[#8a8a9a] truncate mt-0.5">{user.phone}</p>
+            <p className="text-xs text-warmGray truncate mt-0.5">{user.phone}</p>
             {user.role === "admin" && (
               <span
                 className="inline-block mt-1 text-[10px] font-bold uppercase tracking-wider

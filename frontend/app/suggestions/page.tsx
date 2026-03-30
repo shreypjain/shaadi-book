@@ -36,8 +36,8 @@ const STATUS_CONFIG = {
   REJECTED: {
     label: "Not approved",
     bg: "bg-[#f5f5f5]",
-    text: "text-[#8a8a9a]",
-    border: "border-[#e8e4df]",
+    text: "text-warmGray",
+    border: "border-[rgba(184,134,11,0.12)]",
     dot: "bg-[#c8c8d0]",
   },
 } as const;
@@ -64,10 +64,10 @@ function SuggestionCard({ suggestion }: { suggestion: MarketSuggestionItem }) {
   const timeAgo = getTimeAgo(createdAt);
 
   return (
-    <div className="rounded-xl border border-[#e8e4df] bg-white shadow-sm p-4 sm:p-5">
+    <div className="rounded-xl border border-[rgba(184,134,11,0.12)] bg-white shadow-sm p-4 sm:p-5">
       {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-3">
-        <p className="text-sm font-semibold text-[#1a1a2e] leading-snug flex-1">
+        <p className="text-sm font-semibold text-charcoal leading-snug flex-1">
           {suggestion.questionText}
         </p>
         <StatusBadge status={suggestion.status} />
@@ -78,7 +78,7 @@ function SuggestionCard({ suggestion }: { suggestion: MarketSuggestionItem }) {
         {outcomes.map((outcome, i) => (
           <span
             key={i}
-            className="rounded-full border border-[#e8e4df] bg-[#faf9f7] px-2.5 py-0.5 text-xs text-[#4a4a5a]"
+            className="rounded-full border border-[rgba(184,134,11,0.12)] bg-[#faf9f7] px-2.5 py-0.5 text-xs text-warmGray"
           >
             {outcome}
           </span>
@@ -87,14 +87,14 @@ function SuggestionCard({ suggestion }: { suggestion: MarketSuggestionItem }) {
 
       {/* Description */}
       {suggestion.description && (
-        <p className="text-xs text-[#8a8a9a] mb-3 italic">{suggestion.description}</p>
+        <p className="text-xs text-warmGray mb-3 italic">{suggestion.description}</p>
       )}
 
       {/* Admin notes */}
       {suggestion.adminNotes && (
-        <div className="rounded-lg border border-[#e8e4df] bg-[#faf9f7] px-3 py-2 mb-3">
-          <p className="text-xs font-semibold text-[#4a4a5a] mb-0.5">Admin note</p>
-          <p className="text-xs text-[#8a8a9a]">{suggestion.adminNotes}</p>
+        <div className="rounded-lg border border-[rgba(184,134,11,0.12)] bg-[#faf9f7] px-3 py-2 mb-3">
+          <p className="text-xs font-semibold text-warmGray mb-0.5">Admin note</p>
+          <p className="text-xs text-warmGray">{suggestion.adminNotes}</p>
         </div>
       )}
 
@@ -155,8 +155,8 @@ export default function MySuggestionsPage() {
   if (!user) {
     return (
       <main className="max-w-lg mx-auto px-4 py-8">
-        <div className="rounded-xl border border-[#e8e4df] bg-white p-8 text-center">
-          <p className="text-sm text-[#8a8a9a]">
+        <div className="rounded-xl border border-[rgba(184,134,11,0.12)] bg-white p-8 text-center">
+          <p className="text-sm text-warmGray">
             Please log in to see your suggestions.
           </p>
         </div>
@@ -174,11 +174,11 @@ export default function MySuggestionsPage() {
 
       <div className="min-h-screen">
         {/* Header */}
-        <header className="sticky top-0 z-10 bg-cream-100/95 backdrop-blur border-b border-[#e8e4df] px-4 py-3">
+        <header className="sticky top-0 z-10 bg-cream-100/95 backdrop-blur border-b border-[rgba(184,134,11,0.12)] px-4 py-3">
           <div className="max-w-lg mx-auto flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-bold text-[#1a1a2e] tracking-tight">My Suggestions</h1>
-              <p className="text-xs text-[#8a8a9a]">Market ideas you've submitted</p>
+              <h1 className="text-xl font-bold text-charcoal tracking-tight">My Suggestions</h1>
+              <p className="text-xs text-warmGray">Market ideas you've submitted</p>
             </div>
             <button
               onClick={() => setShowModal(true)}
@@ -197,7 +197,7 @@ export default function MySuggestionsPage() {
           {isLoading && (
             <div className="flex flex-col gap-3">
               {[1, 2, 3].map((n) => (
-                <div key={n} className="rounded-xl border border-[#e8e4df] bg-white p-5 animate-pulse">
+                <div key={n} className="rounded-xl border border-[rgba(184,134,11,0.12)] bg-white p-5 animate-pulse">
                   <div className="flex items-start justify-between mb-3">
                     <div className="h-4 bg-[#e8e4df] rounded w-2/3" />
                     <div className="h-5 bg-[#f0ece7] rounded-full w-20" />
@@ -236,8 +236,8 @@ export default function MySuggestionsPage() {
                 </svg>
               </div>
               <div className="text-center">
-                <p className="font-semibold text-[#1a1a2e]">No suggestions yet</p>
-                <p className="text-sm text-[#8a8a9a] mt-1 max-w-xs">
+                <p className="font-semibold text-charcoal">No suggestions yet</p>
+                <p className="text-sm text-warmGray mt-1 max-w-xs">
                   Have an idea for a fun prediction market? Share it with the admins!
                 </p>
               </div>
@@ -258,7 +258,7 @@ export default function MySuggestionsPage() {
                 <section>
                   <div className="flex items-center gap-2 px-1 mb-3">
                     <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                    <span className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider">
+                    <span className="text-xs font-semibold text-warmGray uppercase tracking-wider">
                       Pending review ({pending.length})
                     </span>
                   </div>
@@ -275,7 +275,7 @@ export default function MySuggestionsPage() {
                 <section>
                   <div className="flex items-center gap-2 px-1 mb-3">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                    <span className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider">
+                    <span className="text-xs font-semibold text-warmGray uppercase tracking-wider">
                       Approved ({approved.length})
                     </span>
                   </div>
@@ -292,7 +292,7 @@ export default function MySuggestionsPage() {
                 <section>
                   <div className="flex items-center gap-2 px-1 mb-3">
                     <span className="h-1.5 w-1.5 rounded-full bg-[#c8c8d0]" />
-                    <span className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider">
+                    <span className="text-xs font-semibold text-warmGray uppercase tracking-wider">
                       Not approved ({rejected.length})
                     </span>
                   </div>

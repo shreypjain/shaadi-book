@@ -152,18 +152,18 @@ export function SuggestMarketModal({ isOpen, onClose }: Props) {
             <div>
               <h2
                 id="suggest-modal-title"
-                className="text-base font-bold text-[#1a1a2e] tracking-tight"
+                className="text-base font-bold text-charcoal tracking-tight"
               >
                 Suggest a Market
               </h2>
-              <p className="text-xs text-[#8a8a9a] mt-0.5">
+              <p className="text-xs text-warmGray mt-0.5">
                 Propose a prediction market for Parsh &amp; Spoorthi's wedding
               </p>
             </div>
             <button
               onClick={handleClose}
               disabled={isLoading}
-              className="w-8 h-8 flex items-center justify-center rounded-lg text-[#8a8a9a] hover:bg-[#f0ece7] hover:text-[#1a1a2e] transition-colors disabled:opacity-50"
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-warmGray hover:bg-[#f0ece7] hover:text-charcoal transition-colors disabled:opacity-50"
               aria-label="Close modal"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -183,10 +183,10 @@ export function SuggestMarketModal({ isOpen, onClose }: Props) {
                   </svg>
                 </div>
                 <div>
-                  <p className="text-base font-semibold text-[#1a1a2e]">
+                  <p className="text-base font-semibold text-charcoal">
                     Suggestion submitted!
                   </p>
-                  <p className="text-sm text-[#8a8a9a] mt-1 max-w-xs">
+                  <p className="text-sm text-warmGray mt-1 max-w-xs">
                     The admins will review your idea and let you know. Check "My Suggestions" to track the status.
                   </p>
                 </div>
@@ -213,7 +213,7 @@ export function SuggestMarketModal({ isOpen, onClose }: Props) {
                 <div>
                   <label
                     htmlFor="suggestion-question"
-                    className="block text-sm font-semibold text-[#1a1a2e] mb-1.5"
+                    className="block text-sm font-semibold text-charcoal mb-1.5"
                   >
                     Your question <span className="text-[#dc2626]">*</span>
                   </label>
@@ -226,19 +226,19 @@ export function SuggestMarketModal({ isOpen, onClose }: Props) {
                     value={questionText}
                     onChange={(e) => setQuestionText(e.target.value)}
                     placeholder="Will the baraat arrive on time?"
-                    className="w-full rounded-xl border border-[#e8e4df] bg-[#faf9f7] px-4 py-3 text-sm text-[#1a1a2e] placeholder:text-[#c0bbb5] focus:outline-none focus:ring-2 focus:ring-[#c8a45c]/40 focus:border-[#c8a45c] transition-colors"
+                    className="w-full rounded-xl border border-[rgba(184,134,11,0.12)] bg-[#faf9f7] px-4 py-3 text-sm text-charcoal placeholder:text-[#c0bbb5] focus:outline-none focus:ring-2 focus:ring-[#c8a45c]/40 focus:border-[#c8a45c] transition-colors"
                   />
-                  <p className="mt-1 text-xs text-[#8a8a9a]">
+                  <p className="mt-1 text-xs text-warmGray">
                     {questionText.length}/500
                   </p>
                 </div>
 
                 {/* Outcomes */}
                 <div>
-                  <label className="block text-sm font-semibold text-[#1a1a2e] mb-1.5">
+                  <label className="block text-sm font-semibold text-charcoal mb-1.5">
                     Possible outcomes{" "}
                     <span className="text-[#dc2626]">*</span>
-                    <span className="text-[#8a8a9a] font-normal ml-1">
+                    <span className="text-warmGray font-normal ml-1">
                       ({outcomes.length}/{MAX_OUTCOMES})
                     </span>
                   </label>
@@ -259,14 +259,14 @@ export function SuggestMarketModal({ isOpen, onClose }: Props) {
                                 ? "e.g. No"
                                 : `Outcome ${i + 1}`
                             }
-                            className="w-full rounded-xl border border-[#e8e4df] bg-[#faf9f7] px-4 py-2.5 text-sm text-[#1a1a2e] placeholder:text-[#c0bbb5] focus:outline-none focus:ring-2 focus:ring-[#c8a45c]/40 focus:border-[#c8a45c] transition-colors"
+                            className="w-full rounded-xl border border-[rgba(184,134,11,0.12)] bg-[#faf9f7] px-4 py-2.5 text-sm text-charcoal placeholder:text-[#c0bbb5] focus:outline-none focus:ring-2 focus:ring-[#c8a45c]/40 focus:border-[#c8a45c] transition-colors"
                           />
                         </div>
                         {outcomes.length > MIN_OUTCOMES && (
                           <button
                             type="button"
                             onClick={() => removeOutcome(i)}
-                            className="w-8 h-8 flex items-center justify-center rounded-lg text-[#8a8a9a] hover:bg-red-50 hover:text-red-500 transition-colors shrink-0"
+                            className="w-8 h-8 flex items-center justify-center rounded-lg text-warmGray hover:bg-red-50 hover:text-red-500 transition-colors shrink-0"
                             aria-label={`Remove outcome ${i + 1}`}
                           >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -295,10 +295,10 @@ export function SuggestMarketModal({ isOpen, onClose }: Props) {
                 <div>
                   <label
                     htmlFor="suggestion-description"
-                    className="block text-sm font-semibold text-[#1a1a2e] mb-1.5"
+                    className="block text-sm font-semibold text-charcoal mb-1.5"
                   >
                     Context{" "}
-                    <span className="text-[#8a8a9a] font-normal">(optional)</span>
+                    <span className="text-warmGray font-normal">(optional)</span>
                   </label>
                   <textarea
                     id="suggestion-description"
@@ -307,7 +307,7 @@ export function SuggestMarketModal({ isOpen, onClose }: Props) {
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Any extra context that might help the admins understand your suggestion…"
-                    className="w-full rounded-xl border border-[#e8e4df] bg-[#faf9f7] px-4 py-3 text-sm text-[#1a1a2e] placeholder:text-[#c0bbb5] focus:outline-none focus:ring-2 focus:ring-[#c8a45c]/40 focus:border-[#c8a45c] transition-colors resize-none"
+                    className="w-full rounded-xl border border-[rgba(184,134,11,0.12)] bg-[#faf9f7] px-4 py-3 text-sm text-charcoal placeholder:text-[#c0bbb5] focus:outline-none focus:ring-2 focus:ring-[#c8a45c]/40 focus:border-[#c8a45c] transition-colors resize-none"
                   />
                 </div>
 

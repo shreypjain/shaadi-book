@@ -37,7 +37,7 @@ const STATUS_COLORS: Record<string, string> = {
   ACTIVE:   "bg-green-100  text-green-800",
   PAUSED:   "bg-orange-100 text-orange-800",
   RESOLVED: "bg-blue-100   text-blue-800",
-  VOIDED:   "bg-gray-100   text-gray-600",
+  VOIDED:   "bg-gold-light   text-warmGray",
 };
 
 export default function MarketRow({ market, onChanged }: Props) {
@@ -82,14 +82,14 @@ export default function MarketRow({ market, onChanged }: Props) {
       : "—";
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
+    <div className="rounded-lg border border-[rgba(184,134,11,0.12)] bg-white p-4 space-y-2">
       {/* Header row */}
       <div className="flex items-start justify-between gap-2 flex-wrap">
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-800 break-words">
+          <p className="text-sm font-medium text-charcoal break-words">
             {market.question}
           </p>
-          <p className="text-xs text-gray-400 mt-0.5">
+          <p className="text-xs text-warmGray mt-0.5">
             {new Date(market.createdAt).toLocaleString()} ·{" "}
             vol ${market.totalVolume.toFixed(2)} ·{" "}
             b={market.currentB.toFixed(1)} ·{" "}
@@ -110,7 +110,7 @@ export default function MarketRow({ market, onChanged }: Props) {
         {market.outcomes.map((o) => (
           <span
             key={o.id}
-            className="rounded bg-gray-50 border border-gray-200 px-2 py-0.5 text-xs text-gray-600"
+            className="rounded bg-cream-100 border border-[rgba(184,134,11,0.12)] px-2 py-0.5 text-xs text-warmGray"
           >
             {o.label}: {Math.round(o.price * 100)}¢
           </span>
@@ -151,7 +151,7 @@ export default function MarketRow({ market, onChanged }: Props) {
                   </button>
                   <button
                     onClick={() => setConfirming(null)}
-                    className="text-xs text-gray-500 hover:text-gray-700 min-h-0 min-w-0 h-auto"
+                    className="text-xs text-warmGray hover:text-charcoal min-h-0 min-w-0 h-auto"
                   >
                     Cancel
                   </button>
@@ -168,7 +168,7 @@ export default function MarketRow({ market, onChanged }: Props) {
               {/* Pause */}
               {confirming === "pause" ? (
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-gray-600">Pause this market?</span>
+                  <span className="text-xs text-warmGray">Pause this market?</span>
                   <button
                     onClick={() => handleAction("pause")}
                     disabled={loading}
@@ -178,7 +178,7 @@ export default function MarketRow({ market, onChanged }: Props) {
                   </button>
                   <button
                     onClick={() => setConfirming(null)}
-                    className="text-xs text-gray-500 hover:text-gray-700 min-h-0 min-w-0 h-auto"
+                    className="text-xs text-warmGray hover:text-charcoal min-h-0 min-w-0 h-auto"
                   >
                     Cancel
                   </button>
@@ -209,7 +209,7 @@ export default function MarketRow({ market, onChanged }: Props) {
               </button>
               <button
                 onClick={() => setConfirming(null)}
-                className="text-xs text-gray-500 hover:text-gray-700 min-h-0 min-w-0 h-auto"
+                className="text-xs text-warmGray hover:text-charcoal min-h-0 min-w-0 h-auto"
               >
                 Cancel
               </button>

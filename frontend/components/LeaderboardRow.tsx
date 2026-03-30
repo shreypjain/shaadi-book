@@ -19,7 +19,7 @@ const TOP3_STYLE: Record<number, { bg: string; border: string; text: string; ran
   2: {
     bg: "bg-[#f4f4f6]",
     border: "border-[#c8c8d0]/40",
-    text: "text-[#4a4a5a]",
+    text: "text-warmGray",
     rankBg: "bg-[#9ca3af]",
     rankText: "text-white",
   },
@@ -49,7 +49,7 @@ export function LeaderboardRow({
   return (
     <div
       className={`flex items-center gap-3 px-3 py-3 rounded-xl border transition-all
-        ${isTop3 ? `${style.bg} ${style.border}` : "bg-white border-[#e8e4df]"}
+        ${isTop3 ? `${style.bg} ${style.border}` : "bg-white border-[rgba(184,134,11,0.12)]"}
         ${isCurrentUser ? "ring-2 ring-[#1e3a5f]/20 ring-offset-1" : ""}
       `}
     >
@@ -63,7 +63,7 @@ export function LeaderboardRow({
             {entry.rank}
           </span>
         ) : (
-          <span className="text-sm font-bold text-[#8a8a9a]">
+          <span className="text-sm font-bold text-warmGray">
             {entry.rank}
           </span>
         )}
@@ -73,7 +73,7 @@ export function LeaderboardRow({
       <div className="flex-1 min-w-0">
         <p
           className={`font-semibold truncate text-sm
-            ${isTop3 ? style.text : "text-[#1a1a2e]"}
+            ${isTop3 ? style.text : "text-charcoal"}
             ${isCurrentUser ? "text-[#1e3a5f]" : ""}
           `}
         >
@@ -96,7 +96,7 @@ export function LeaderboardRow({
           {isPositive ? "+" : ""}
           {formatDollars(entry.realizedPnlCents)}
         </p>
-        <p className="text-[10px] text-[#8a8a9a]">P&amp;L</p>
+        <p className="text-[10px] text-warmGray">P&amp;L</p>
       </div>
     </div>
   );

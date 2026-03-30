@@ -122,10 +122,10 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
             ---------------------------------------------------------------- */}
             {step === "select-amount" && (
               <>
-                <h2 className="text-lg font-bold text-[#1a1a2e] mb-1">
+                <h2 className="text-lg font-bold text-charcoal mb-1">
                   Add Credits
                 </h2>
-                <p className="text-xs text-[#8a8a9a] mb-5">
+                <p className="text-xs text-warmGray mb-5">
                   Charged in USD via Stripe (Apple Pay / card)
                 </p>
 
@@ -142,7 +142,7 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
                         ${
                           !customDollars && selectedCents === p.cents
                             ? "border-[#1e3a5f] bg-brand-50 text-brand-700"
-                            : "border-[#e8e4df] text-[#1a1a2e] hover:border-brand-300"
+                            : "border-[rgba(184,134,11,0.12)] text-charcoal hover:border-brand-300"
                         }`}
                     >
                       {p.label}
@@ -152,7 +152,7 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
 
                 {/* Custom amount */}
                 <div className="relative mb-4">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a8a9a] font-medium">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-warmGray font-medium">
                     $
                   </span>
                   <input
@@ -166,12 +166,12 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
                       setCustomDollars(e.target.value);
                       setSelectedCents(null);
                     }}
-                    className="w-full pl-7 pr-4 py-3 border border-[#e8e4df] rounded-xl text-sm
-                               focus:outline-none focus:border-[#1e3a5f] transition text-[#1a1a2e]"
+                    className="w-full pl-7 pr-4 py-3 border border-[rgba(184,134,11,0.12)] rounded-xl text-sm
+                               focus:outline-none focus:border-[#1e3a5f] transition text-charcoal"
                   />
                 </div>
 
-                <p className="text-xs text-[#8a8a9a] mb-4">Min $5 · Max $500</p>
+                <p className="text-xs text-warmGray mb-4">Min $5 · Max $500</p>
 
                 {error && (
                   <p className="text-xs text-[#dc2626] mb-3 bg-red-50 rounded-lg px-3 py-2">
@@ -196,7 +196,7 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
 
                 <button
                   onClick={handleClose}
-                  className="w-full mt-3 py-2 text-sm text-[#8a8a9a] hover:text-[#4a4a5a] transition"
+                  className="w-full mt-3 py-2 text-sm text-warmGray hover:text-warmGray transition"
                 >
                   Cancel
                 </button>
@@ -208,10 +208,10 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
             ---------------------------------------------------------------- */}
             {step === "payment" && clientSecret && stripePromise && (
               <>
-                <h2 className="text-lg font-bold text-[#1a1a2e] mb-1">
+                <h2 className="text-lg font-bold text-charcoal mb-1">
                   Payment
                 </h2>
-                <p className="text-xs text-[#8a8a9a] mb-5">
+                <p className="text-xs text-warmGray mb-5">
                   {isValidAmount && effectiveCents
                     ? `$${(effectiveCents / 100).toFixed(2)}`
                     : ""}{" "}
@@ -251,10 +251,10 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
-                <h2 className="text-lg font-bold text-[#1a1a2e] mb-2">
+                <h2 className="text-lg font-bold text-charcoal mb-2">
                   Payment Successful!
                 </h2>
-                <p className="text-sm text-[#8a8a9a]">
+                <p className="text-sm text-warmGray">
                   Your credits will appear in your wallet shortly.
                 </p>
               </div>

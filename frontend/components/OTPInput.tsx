@@ -147,8 +147,8 @@ export function OTPInput({
                   : isFilled
                   ? "border-[#1e3a5f] text-[#1e3a5f] bg-[#eef4f9]"
                   : isActive
-                  ? "border-[#e8e4df] text-[#1a1a2e] focus:border-[#1e3a5f] focus:ring-2 focus:ring-[#d4e3f0]"
-                  : "border-[#e8e4df] text-[#1a1a2e]"
+                  ? "border-[rgba(184,134,11,0.12)] text-charcoal focus:border-[#1e3a5f] focus:ring-2 focus:ring-[#d4e3f0]"
+                  : "border-[rgba(184,134,11,0.12)] text-charcoal"
                 }
               `}
             />

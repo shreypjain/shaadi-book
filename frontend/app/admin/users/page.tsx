@@ -52,8 +52,8 @@ export default function AdminUsersPage() {
     <div className="max-w-4xl space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">User Manager</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-xl font-bold text-charcoal">User Manager</h1>
+          <p className="text-sm text-warmGray mt-0.5">
             {users.length} registered ·{" "}
             {suspiciousCount > 0 && (
               <span className="text-red-600 font-medium">
@@ -65,7 +65,7 @@ export default function AdminUsersPage() {
         <button
           onClick={() => void load()}
           disabled={loading}
-          className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50 min-h-0 min-w-0 h-auto"
+          className="text-sm text-warmGray hover:text-charcoal disabled:opacity-50 min-h-0 min-w-0 h-auto"
         >
           {loading ? "Refreshing…" : "↻ Refresh"}
         </button>
@@ -87,27 +87,27 @@ export default function AdminUsersPage() {
       )}
 
       {!loading && filtered.length === 0 && (
-        <p className="text-sm text-gray-400">No users found.</p>
+        <p className="text-sm text-warmGray">No users found.</p>
       )}
 
       {filtered.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+        <div className="overflow-x-auto rounded-lg border border-[rgba(184,134,11,0.12)] bg-white">
           <table className="min-w-full text-sm">
-            <thead className="border-b border-gray-100 bg-gray-50">
+            <thead className="border-b border-[rgba(184,134,11,0.12)] bg-cream-100">
               <tr>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">
+                <th className="px-4 py-2 text-left text-xs font-medium text-warmGray">
                   Name
                 </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">
+                <th className="px-4 py-2 text-left text-xs font-medium text-warmGray">
                   Country
                 </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">
+                <th className="px-4 py-2 text-left text-xs font-medium text-warmGray">
                   Balance
                 </th>
-                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">
+                <th className="px-4 py-2 text-right text-xs font-medium text-warmGray">
                   Total Bets
                 </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">
+                <th className="px-4 py-2 text-left text-xs font-medium text-warmGray">
                   Joined
                 </th>
               </tr>
