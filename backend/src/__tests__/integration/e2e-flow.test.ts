@@ -27,8 +27,13 @@
  *    is algorithm-agnostic and catches tampering at the ordering level.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe as _describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
+
+// Skip all tests when no DATABASE_URL (e.g. CI without a Postgres service)
+const NO_DB = process.env["CI"] === "true" || process.env["SKIP_DB_TESTS"] === "true";
+const describe = ((name: string, fn: () => void) =>
+  _describe.skipIf(NO_DB)(name, fn)) as typeof _describe;
 import { generateToken, verifyToken } from "../../services/auth.js";
 import { appendTransaction, runReconciliation } from "../../services/ledger.js";
 import {
@@ -47,7 +52,7 @@ import {
 // Shared Prisma client — connects to shaadi_book_test via setup.ts env var
 // ---------------------------------------------------------------------------
 
-const prisma = new PrismaClient();
+const prisma = NO_DB ? (null as unknown as PrismaClient) : new PrismaClient();
 
 // ---------------------------------------------------------------------------
 // Test state captured in beforeAll

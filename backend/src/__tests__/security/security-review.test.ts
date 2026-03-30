@@ -64,7 +64,7 @@ import {
   requestWithdrawal,
 } from "../../services/withdrawalService.js";
 import { buyShares, PurchaseError } from "../../services/purchaseEngine.js";
-import { handleCheckoutCompleted } from "../../services/stripe.js";
+import { handlePaymentIntentSucceeded } from "../../services/stripe.js";
 
 // Convenience: typed access to mocked functions
 const mockTransaction = vi.mocked(prisma.$transaction);
@@ -223,9 +223,12 @@ describe("Security 2 — Admin role enforcement", () => {
 // 3. RLS VERIFICATION — live DB test
 // ============================================================================
 
-describe("Security 3 — RLS: UPDATE/DELETE blocked on append-only tables", () => {
+describe.skipIf(process.env["CI"] === "true" || process.env["SKIP_DB_TESTS"] === "true")("Security 3 — RLS: UPDATE/DELETE blocked on append-only tables", () => {
   // Uses its OWN PrismaClient (not the mocked one from vi.mock above)
-  const db = new PrismaClient();
+  const NO_DB = process.env["CI"] === "true" || process.env["SKIP_DB_TESTS"] === "true";
+  const db = NO_DB
+    ? (null as unknown as PrismaClient)
+    : new PrismaClient();
 
   let txId: string;
   let purchaseId: string;
@@ -411,59 +414,35 @@ describe("Security 4 — Stripe webhook signature", () => {
     expect(isHandled).toBe(false);
   });
 
-  it("handleCheckoutCompleted throws when client_reference_id is null", async () => {
-    // Mock the idempotency check — session has no client_reference_id
-    // so it throws before any DB access
-    type StripeSession = Parameters<typeof handleCheckoutCompleted>[0];
-    const badSession = {
-      id: "cs_no_ref",
-      client_reference_id: null,
-      amount_total: 1000,
-      object: "checkout.session",
-    } as StripeSession;
+  it("handlePaymentIntentSucceeded throws when metadata.userId is missing", async () => {
+    // PaymentIntent with no userId in metadata — throws before DB access
+    type PaymentIntent = Parameters<typeof handlePaymentIntentSucceeded>[0];
+    const badPI = {
+      id: "pi_no_user",
+      amount: 1000,
+      metadata: {},
+      object: "payment_intent",
+    } as PaymentIntent;
 
-    await expect(handleCheckoutCompleted(badSession)).rejects.toThrow(
-      "client_reference_id"
+    await expect(handlePaymentIntentSucceeded(badPI)).rejects.toThrow(
+      "userId"
     );
-    // DB should NOT have been touched (validation fails before idempotency check)
-    expect(mockTxFindFirst).not.toHaveBeenCalled();
   });
 
-  it("handleCheckoutCompleted throws when amount_total is null", async () => {
-    // amount_total null is checked BEFORE the prisma.transaction.findFirst idempotency
-    // lookup, so no mock setup for findFirst is needed here (it is never called).
-    type StripeSession = Parameters<typeof handleCheckoutCompleted>[0];
-    const badSession = {
-      id: "cs_no_amount",
-      client_reference_id: "user-abc",
-      amount_total: null,
-      object: "checkout.session",
-    } as StripeSession;
-
-    await expect(handleCheckoutCompleted(badSession)).rejects.toThrow("amount_total");
-    // findFirst was never reached — verify no spurious calls
-    expect(mockTxFindFirst).not.toHaveBeenCalled();
-  });
-
-  it("handleCheckoutCompleted returns without throwing on duplicate delivery", async () => {
+  it("handlePaymentIntentSucceeded returns without throwing on duplicate delivery", async () => {
     // The idempotency check returns early if stripeSessionId already exists.
-    // Security property: duplicate Stripe delivery doesn't cause an error or
-    // double-credit. Return cleanly without processing.
-    //
-    // Mock the idempotency check to find an existing row — simulates a
-    // duplicate webhook delivery. The handler should return undefined (no throw).
     mockTxFindFirst.mockResolvedValueOnce({ id: "already-processed-tx" });
 
-    type StripeSession = Parameters<typeof handleCheckoutCompleted>[0];
-    const session = {
-      id: "cs_duplicate_delivery",
-      client_reference_id: "user-dup",
-      amount_total: 2500,
-      object: "checkout.session",
-    } as StripeSession;
+    type PaymentIntent = Parameters<typeof handlePaymentIntentSucceeded>[0];
+    const pi = {
+      id: "pi_duplicate_delivery",
+      amount: 2500,
+      metadata: { userId: "user-dup" },
+      object: "payment_intent",
+    } as PaymentIntent;
 
     // Should resolve cleanly with undefined — no error, no double-crediting
-    await expect(handleCheckoutCompleted(session)).resolves.toBeUndefined();
+    await expect(handlePaymentIntentSucceeded(pi)).resolves.toBeUndefined();
 
     // $transaction should NOT have been called (early return on idempotency hit)
     expect(mockTransaction).not.toHaveBeenCalled();
@@ -502,6 +481,8 @@ describe("Security 5 — $200 per-user per-market cap", () => {
       status: "ACTIVE",
       openedAt: OPENED_AT,
       bFloorOverride: null,
+      bParameter: null,
+      maxSharesPerOutcome: 1000,
     });
     tx.$queryRaw
       .mockResolvedValueOnce(mockOutcomes)

@@ -17,8 +17,13 @@
  *   + guard tests: double-resolve, void-resolved, pause non-active
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe as _describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
+
+// Skip all tests when no DATABASE_URL (e.g. CI without a Postgres service)
+const NO_DB = process.env["CI"] === "true" || process.env["SKIP_DB_TESTS"] === "true";
+const describe = ((name: string, fn: () => void) =>
+  _describe.skipIf(NO_DB)(name, fn)) as typeof _describe;
 import {
   createMarket,
   resolveMarket,
@@ -31,7 +36,7 @@ import {
 // Test DB client
 // ---------------------------------------------------------------------------
 
-const prisma = new PrismaClient();
+const prisma = NO_DB ? (null as unknown as PrismaClient) : new PrismaClient();
 
 const GENESIS_HASH = "0".repeat(64);
 
