@@ -333,8 +333,8 @@ export default function MarketDetailPage() {
           ) && (
             <div className="rounded-xl bg-amber-50 border border-amber-200/50 px-4 py-3">
               <p className="text-sm text-amber-800 leading-snug">
-                The pool is still growing — invite more guests to bet and watch
-                the payouts climb. Share the market with the group chat!
+                The pool is thin — more bets means bigger payouts for everyone.
+                Share the market!
               </p>
             </div>
           )}
