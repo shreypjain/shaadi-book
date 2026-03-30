@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type PositionItem } from "@/lib/api";
 import { PositionCard } from "@/components/PositionCard";
 
@@ -21,10 +21,15 @@ const STATUS_HEADING: Record<PositionItem["marketStatus"], string> = {
 };
 
 export default function BetsPage() {
+  const queryClient = useQueryClient();
   const { data: positions, isLoading, error } = useQuery({
     queryKey: ["bets.myPositions"],
     queryFn: () => api.bets.myPositions(),
   });
+
+  function handleSellSuccess() {
+    void queryClient.invalidateQueries({ queryKey: ["bets.myPositions"] });
+  }
 
   const groups: Partial<Record<PositionItem["marketStatus"], PositionItem[]>> = {};
   if (positions) {
@@ -101,7 +106,11 @@ export default function BetsPage() {
               </h2>
               <div className="space-y-3">
                 {group.map((pos) => (
-                  <PositionCard key={pos.id} position={pos} />
+                  <PositionCard
+                    key={pos.id}
+                    position={pos}
+                    onSellSuccess={handleSellSuccess}
+                  />
                 ))}
               </div>
             </section>

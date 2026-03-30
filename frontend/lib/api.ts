@@ -68,6 +68,24 @@ export interface PositionItem {
   currentPriceCents: number;
   currentValueCents: number;
   potentialPayoutCents: number;
+  /** ISO timestamp of the user's most recent purchase of this outcome (for 30-min sell cooldown). */
+  lastPurchaseAt: string | null;
+}
+
+export interface SellResult {
+  transactionId: string;
+  sharesSold: number;
+  /** Gross revenue before fee, in cents. */
+  grossRevenueCents: number;
+  /** 10% fee, in cents. */
+  feeCents: number;
+  /** Net revenue after fee, in cents. */
+  netRevenueCents: number;
+  priceBeforeCents: number;
+  priceAfterCents: number;
+  allNewPrices: number[];
+  outcomeIds: string[];
+  outcomeLabel: string;
 }
 
 export interface LeaderboardEntry {
@@ -207,6 +225,10 @@ export const api = {
     buy: (input: { marketId: string; outcomeId: string; dollarAmountCents: number }): Promise<any> =>
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       (_client as any).market.buy.mutate(input) as Promise<any>,
+
+    sell: (input: { marketId: string; outcomeId: string; shares: number }): Promise<SellResult> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).market.sell.mutate(input) as Promise<SellResult>,
 
     priceHistory: (input: {
       marketId: string;
