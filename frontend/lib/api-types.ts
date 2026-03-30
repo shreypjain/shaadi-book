@@ -88,6 +88,8 @@ export interface RecentPurchase {
   id: string;
   outcomeId: string;
   outcomeLabel: string;
+  /** Display name of the bettor, or null if unavailable. */
+  userName: string | null;
   shares: number;
   cost: number;
   avgPrice: number;
@@ -116,6 +118,8 @@ export interface WsPurchasePayload {
   outcomeLabel: string;
   dollarAmount: number;
   priceAfterCents: number;
+  /** Display name of the bettor, or null if unavailable. */
+  userName: string | null;
   timestamp: number;
 }
 

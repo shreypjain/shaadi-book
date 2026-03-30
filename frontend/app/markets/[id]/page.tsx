@@ -81,6 +81,8 @@ interface ActivityItem {
   dollarAmount?: number;
   priceAfterCents: number;
   timestamp: number;
+  /** Display name of the bettor, or null if unavailable. */
+  userName: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +148,7 @@ export default function MarketDetailPage() {
           outcomeLabel: p.outcomeLabel,
           priceAfterCents: Math.round(p.priceAfter * 100),
           timestamp: new Date(p.createdAt).getTime(),
+          userName: p.userName ?? null,
         }))
       );
     }
@@ -204,6 +207,7 @@ export default function MarketDetailPage() {
           dollarAmount: payload.dollarAmount,
           priceAfterCents: payload.priceAfterCents,
           timestamp: payload.timestamp,
+          userName: payload.userName ?? null,
         };
         setActivityFeed((prev) => [item, ...prev].slice(0, 20));
       },
@@ -532,19 +536,28 @@ export default function MarketDetailPage() {
                     key={item.id}
                     className="flex items-center justify-between text-sm"
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                      {item.userName && (
+                        <span className="text-xs font-semibold text-[#5a3e1b] truncate max-w-[100px]">
+                          {item.userName}
+                        </span>
+                      )}
+                      <span className="text-xs text-warmGray shrink-0">
+                        {item.userName && item.dollarAmount != null
+                          ? `bet $${item.dollarAmount.toFixed(0)} on`
+                          : item.userName
+                          ? "bet on"
+                          : item.dollarAmount != null
+                          ? `$${item.dollarAmount.toFixed(0)} on`
+                          : ""}
+                      </span>
                       <span
-                        className={`text-xs font-semibold rounded-full px-2 py-0.5 ${colors.light} ${colors.text}`}
+                        className={`text-xs font-semibold rounded-full px-2 py-0.5 ${colors.light} ${colors.text} shrink-0`}
                       >
                         {item.outcomeLabel}
                       </span>
-                      <span className="text-warmGray text-xs">
-                        {item.dollarAmount != null
-                          ? `$${item.dollarAmount.toFixed(0)}`
-                          : ""}
-                      </span>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-warmGray">
+                    <div className="flex items-center gap-2 text-xs text-warmGray shrink-0">
                       <span className="font-medium text-warmGray">
                         → {item.priceAfterCents}¢
                       </span>
