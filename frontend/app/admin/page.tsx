@@ -63,11 +63,11 @@ export default function AdminDashboardPage() {
   return (
     <div className="max-w-4xl space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
+        <h1 className="text-xl font-bold text-charcoal">Dashboard</h1>
         <button
           onClick={() => void load()}
           disabled={loading}
-          className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50 min-h-0 min-w-0 h-auto"
+          className="text-sm text-warmGray hover:text-charcoal disabled:opacity-50 min-h-0 min-w-0 h-auto"
         >
           {loading ? "Refreshing…" : "↻ Refresh"}
         </button>
@@ -85,13 +85,13 @@ export default function AdminDashboardPage() {
           label="Total Volume"
           value={data ? formatUSD(data.totalVolume) : "—"}
           subtext="all-time purchases"
-          accent="text-gray-900"
+          accent="text-charcoal"
         />
         <DashboardStat
           label="Total Users"
           value={data ? String(data.totalUsers) : "—"}
           subtext={`${data?.activeMarketCount ?? 0} active markets`}
-          accent="text-gray-900"
+          accent="text-charcoal"
         />
         <DashboardStat
           label="Active Pool"
@@ -103,26 +103,26 @@ export default function AdminDashboardPage() {
 
       {/* Per-market pool table */}
       <section>
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">
+        <h2 className="text-sm font-semibold text-charcoal mb-3">
           Active Market Pools
         </h2>
         {!data || data.marketPools.length === 0 ? (
-          <p className="text-sm text-gray-400">No active markets.</p>
+          <p className="text-sm text-warmGray">No active markets.</p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+          <div className="overflow-x-auto rounded-lg border border-[rgba(184,134,11,0.12)] bg-white">
             <table className="min-w-full text-sm">
-              <thead className="border-b border-gray-100 bg-gray-50">
+              <thead className="border-b border-[rgba(184,134,11,0.12)] bg-cream-100">
                 <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">
+                  <th className="px-4 py-2 text-left text-xs font-medium text-warmGray">
                     Market
                   </th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">
+                  <th className="px-4 py-2 text-right text-xs font-medium text-warmGray">
                     b
                   </th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">
+                  <th className="px-4 py-2 text-right text-xs font-medium text-warmGray">
                     Volume
                   </th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">
+                  <th className="px-4 py-2 text-right text-xs font-medium text-warmGray">
                     Pool Size
                   </th>
                 </tr>
@@ -131,15 +131,15 @@ export default function AdminDashboardPage() {
                 {data.marketPools.map((m) => (
                   <tr
                     key={m.marketId}
-                    className="border-b border-gray-100 last:border-0 hover:bg-gray-50"
+                    className="border-b border-[rgba(184,134,11,0.12)] last:border-0 hover:bg-cream-100"
                   >
-                    <td className="px-4 py-2 text-gray-800 max-w-xs truncate">
+                    <td className="px-4 py-2 text-charcoal max-w-xs truncate">
                       {m.question}
                     </td>
-                    <td className="px-4 py-2 text-right text-gray-600 tabular-nums">
+                    <td className="px-4 py-2 text-right text-warmGray tabular-nums">
                       {parseFloat(m.b).toFixed(1)}
                     </td>
-                    <td className="px-4 py-2 text-right text-gray-600">
+                    <td className="px-4 py-2 text-right text-warmGray">
                       {formatUSD(m.volume)}
                     </td>
                     <td className="px-4 py-2 text-right font-semibold text-emerald-700 tabular-nums">
@@ -155,7 +155,7 @@ export default function AdminDashboardPage() {
 
       {/* Quick links */}
       <section>
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">
+        <h2 className="text-sm font-semibold text-charcoal mb-3">
           Quick Links
         </h2>
         <div className="flex flex-wrap gap-3">
@@ -168,7 +168,7 @@ export default function AdminDashboardPage() {
             <Link
               key={link.href}
               href={link.href}
-              className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-sm"
+              className="rounded-md border border-[rgba(184,134,11,0.12)] bg-white px-4 py-2 text-sm text-charcoal hover:bg-cream-100 hover:border-gray-300 transition-colors shadow-sm"
             >
               {link.label} →
             </Link>

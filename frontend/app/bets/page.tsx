@@ -37,10 +37,10 @@ export default function BetsPage() {
   return (
     <div className="min-h-screen pb-24">
       {/* Header */}
-      <div className="bg-white border-b border-[#e8e4df] px-4 pt-12 pb-2">
-        <h1 className="text-2xl font-bold text-[#1a1a2e] tracking-tight">My Bets</h1>
+      <div className="bg-white border-b border-[rgba(184,134,11,0.12)] px-4 pt-12 pb-2">
+        <h1 className="text-2xl font-bold text-charcoal tracking-tight">My Bets</h1>
         {positions && (
-          <p className="text-sm text-[#8a8a9a] mt-0.5">
+          <p className="text-sm text-warmGray mt-0.5">
             {positions.length} position{positions.length !== 1 ? "s" : ""}
           </p>
         )}
@@ -52,7 +52,7 @@ export default function BetsPage() {
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="rounded-xl border border-[#e8e4df] bg-white p-4 animate-pulse"
+                className="rounded-xl border border-[rgba(184,134,11,0.12)] bg-white p-4 animate-pulse"
               >
                 <div className="h-4 w-3/4 bg-[#e8e4df] rounded mb-3" />
                 <div className="h-3 w-1/3 bg-[#f0ece7] rounded mb-4" />
@@ -80,8 +80,8 @@ export default function BetsPage() {
                   d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <p className="font-semibold text-[#1a1a2e]">No bets yet</p>
-            <p className="text-sm text-[#8a8a9a] mt-1">
+            <p className="font-semibold text-charcoal">No bets yet</p>
+            <p className="text-sm text-warmGray mt-1">
               Head to the Markets tab to place your first bet!
             </p>
           </div>
@@ -93,7 +93,7 @@ export default function BetsPage() {
           if (!group || group.length === 0) return null;
           return (
             <section key={status}>
-              <h2 className="text-xs font-bold text-[#8a8a9a] uppercase tracking-widest mb-2 px-1">
+              <h2 className="text-xs font-bold text-warmGray uppercase tracking-widest mb-2 px-1">
                 {STATUS_HEADING[status]}{" "}
                 <span className="font-normal">({group.length})</span>
               </h2>

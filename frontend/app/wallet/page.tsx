@@ -26,14 +26,14 @@ const TX_ICON_COLORS: Record<string, string> = {
   DEPOSIT:    "bg-emerald-50 text-emerald-600",
   PURCHASE:   "bg-brand-50 text-brand-600",
   PAYOUT:     "bg-emerald-50 text-emerald-600",
-  WITHDRAWAL: "bg-[#f0ece7] text-[#4a4a5a]",
+  WITHDRAWAL: "bg-[#f0ece7] text-warmGray",
 
-  REFUND:     "bg-[#f0ece7] text-[#4a4a5a]",
+  REFUND:     "bg-[#f0ece7] text-warmGray",
 };
 
 function TxRow({ tx }: { tx: TransactionItem }) {
   const meta = TX_LABELS[tx.type] ?? { label: tx.type, icon: "·" };
-  const iconColor = TX_ICON_COLORS[tx.type] ?? "bg-[#f0ece7] text-[#4a4a5a]";
+  const iconColor = TX_ICON_COLORS[tx.type] ?? "bg-[#f0ece7] text-warmGray";
   const isPositive = tx.amountCents >= 0;
 
   return (
@@ -70,7 +70,7 @@ function TxRow({ tx }: { tx: TransactionItem }) {
 
 export default function WalletPageWrapper() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-gray-400">Loading wallet...</div>}>
+    <Suspense fallback={<div className="p-8 text-center text-warmGray">Loading wallet...</div>}>
       <WalletPage />
     </Suspense>
   );
@@ -197,7 +197,7 @@ function WalletPage() {
               ))}
             </div>
           ) : !txData || txData.length === 0 ? (
-            <p className="text-sm text-[#8a8a9a] text-center py-6">
+            <p className="text-sm text-warmGray text-center py-6">
               No transactions yet.
             </p>
           ) : (

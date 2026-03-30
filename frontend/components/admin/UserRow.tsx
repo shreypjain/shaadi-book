@@ -24,12 +24,12 @@ function formatUSD(cents: number) {
 
 export default function UserRow({ user }: Props) {
   return (
-    <tr className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+    <tr className="border-b border-[rgba(184,134,11,0.12)] last:border-0 hover:bg-cream-100">
       <td className="px-4 py-3 text-sm">
         <div className="flex items-center gap-2">
           <div>
-            <p className="font-medium text-gray-800">{user.name}</p>
-            <p className="text-xs text-gray-400">{user.phone}</p>
+            <p className="font-medium text-charcoal">{user.name}</p>
+            <p className="text-xs text-warmGray">{user.phone}</p>
           </div>
           {user.suspicious && (
             <span className="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700">
@@ -43,14 +43,14 @@ export default function UserRow({ user }: Props) {
           )}
         </div>
       </td>
-      <td className="px-4 py-3 text-sm text-gray-600">{user.country}</td>
-      <td className="px-4 py-3 text-sm font-semibold text-gray-800">
+      <td className="px-4 py-3 text-sm text-warmGray">{user.country}</td>
+      <td className="px-4 py-3 text-sm font-semibold text-charcoal">
         {formatUSD(user.balanceCents)}
       </td>
-      <td className="px-4 py-3 text-sm text-gray-600 text-right">
+      <td className="px-4 py-3 text-sm text-warmGray text-right">
         {user.totalBets}
       </td>
-      <td className="px-4 py-3 text-xs text-gray-400">
+      <td className="px-4 py-3 text-xs text-warmGray">
         {new Date(user.createdAt).toLocaleDateString()}
       </td>
     </tr>

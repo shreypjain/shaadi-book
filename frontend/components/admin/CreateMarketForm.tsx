@@ -100,15 +100,15 @@ export default function CreateMarketForm({ onCreated }: Props) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm space-y-4"
+      className="rounded-lg border border-[rgba(184,134,11,0.12)] bg-white p-6 shadow-sm space-y-4"
     >
-      <h2 className="text-base font-semibold text-gray-800">
+      <h2 className="text-base font-semibold text-charcoal">
         Create New Market
       </h2>
 
       {/* Question */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-charcoal mb-1">
           Question
         </label>
         <input
@@ -124,7 +124,7 @@ export default function CreateMarketForm({ onCreated }: Props) {
 
       {/* Outcomes */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-charcoal mb-1">
           Outcomes ({outcomes.length}/{MAX_OUTCOMES})
         </label>
         <div className="space-y-2">
@@ -155,7 +155,7 @@ export default function CreateMarketForm({ onCreated }: Props) {
           <button
             type="button"
             onClick={addOutcome}
-            className="mt-2 text-sm text-gray-500 hover:text-gray-700 underline min-h-0 min-w-0 h-auto"
+            className="mt-2 text-sm text-warmGray hover:text-charcoal underline min-h-0 min-w-0 h-auto"
           >
             + Add outcome
           </button>
@@ -164,9 +164,9 @@ export default function CreateMarketForm({ onCreated }: Props) {
 
       {/* Event tag */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-charcoal mb-1">
           Wedding Event{" "}
-          <span className="text-gray-400 font-normal">(optional)</span>
+          <span className="text-warmGray font-normal">(optional)</span>
         </label>
         <select
           value={eventTag}
@@ -184,9 +184,9 @@ export default function CreateMarketForm({ onCreated }: Props) {
 
       {/* Family side */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-charcoal mb-2">
           Family Side{" "}
-          <span className="text-gray-400 font-normal">(optional)</span>
+          <span className="text-warmGray font-normal">(optional)</span>
         </label>
         <div className="flex items-center gap-2 flex-wrap">
           {(["", ...FAMILY_SIDES] as const).map((side) => (
@@ -203,7 +203,7 @@ export default function CreateMarketForm({ onCreated }: Props) {
                     : side === "Both"
                     ? "bg-amber-500 text-white border-amber-500"
                     : "bg-gray-700 text-white border-gray-700"
-                  : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
+                  : "bg-white text-warmGray border-gray-300 hover:border-gray-400"
               }`}
             >
               {side === "" ? "None" : side}
@@ -214,9 +214,9 @@ export default function CreateMarketForm({ onCreated }: Props) {
 
       {/* Custom tags */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-charcoal mb-1">
           Custom Tags{" "}
-          <span className="text-gray-400 font-normal">
+          <span className="text-warmGray font-normal">
             (optional, comma-separated)
           </span>
         </label>
@@ -231,9 +231,9 @@ export default function CreateMarketForm({ onCreated }: Props) {
 
       {/* b_floor override */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-charcoal mb-1">
           b_floor override{" "}
-          <span className="text-gray-400 font-normal">(optional, default 20)</span>
+          <span className="text-warmGray font-normal">(optional, default 20)</span>
         </label>
         <input
           type="number"
@@ -248,7 +248,7 @@ export default function CreateMarketForm({ onCreated }: Props) {
 
       {/* Open time */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-charcoal mb-1">
           Open Time
         </label>
         <div className="flex items-center gap-4">

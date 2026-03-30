@@ -14,15 +14,15 @@ export default function RulesPage() {
 
         {/* ── Hero ────────────────────────────────────────────────────── */}
         <div className="text-center animate-fade-in">
-          <h1 className="text-3xl font-bold text-[#1a1a2e] tracking-tight">
+          <h1 className="text-3xl font-bold text-charcoal tracking-tight">
             How to Play
           </h1>
           {/* Gold accent underline */}
           <div className="mt-2.5 h-px w-14 mx-auto bg-[#c8a45c]" />
-          <p className="mt-3 text-sm text-[#4a4a5a] font-medium">
+          <p className="mt-3 text-sm text-warmGray font-medium">
             A quick rundown in wedding prediction markets
           </p>
-          <p className="mt-1.5 text-xs text-[#8a8a9a]">
+          <p className="mt-1.5 text-xs text-warmGray">
             A background in degeneracy required 
           </p>
         </div>
@@ -77,20 +77,20 @@ export default function RulesPage() {
           title="How Prices Work"
           subtitle="The spicy quant stuff — don't skip this"
         >
-          <div className="flex flex-col gap-3 mt-1 text-sm text-[#4a4a5a]">
+          <div className="flex flex-col gap-3 mt-1 text-sm text-warmGray">
             <p>
               Prices are set by a{" "}
-              <span className="font-semibold text-[#1a1a2e]">
+              <span className="font-semibold text-charcoal">
                 Logarithmic Market Scoring Rule (LMSR)
               </span>{" "}
               — inspired by previous attempts to build prediction markets
               optimized for low volume and small numbers of traders. Shrey
               is the bookie, but{" "}
-              <span className="font-semibold text-[#1a1a2e]">
+              <span className="font-semibold text-charcoal">
                 not the house or market maker
               </span>
               . This is a{" "}
-              <span className="font-semibold text-[#1a1a2e]">
+              <span className="font-semibold text-charcoal">
                 parimutuel system
               </span>{" "}
               — you&apos;re betting against other guests, not against
@@ -98,31 +98,31 @@ export default function RulesPage() {
             </p>
 
             {/* LMSR mechanics block */}
-            <div className="rounded-lg bg-[#f5f1eb] border border-[#e8e4df] p-4 flex flex-col gap-2.5">
-              <p className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider">
+            <div className="rounded-lg bg-[#f5f1eb] border border-[rgba(184,134,11,0.12)] p-4 flex flex-col gap-2.5">
+              <p className="text-xs font-semibold text-warmGray uppercase tracking-wider">
                 LMSR mechanics
               </p>
-              <p className="text-sm text-[#1a1a2e]">
+              <p className="text-sm text-charcoal">
                 The market maintains a{" "}
                 <span className="font-semibold">cost function</span>:
               </p>
-              <p className="text-sm font-mono text-[#1a1a2e] bg-white border border-[#e8e4df] rounded px-3 py-2 text-center tracking-tight">
+              <p className="text-sm font-mono text-charcoal bg-white border border-[rgba(184,134,11,0.12)] rounded px-3 py-2 text-center tracking-tight">
                 C(q) = b · ln( Σ exp(q<sub>i</sub> / b) )
               </p>
-              <p className="text-sm text-[#4a4a5a]">
+              <p className="text-sm text-warmGray">
                 where <span className="font-mono font-semibold">q<sub>i</sub></span> is the
                 total shares outstanding for outcome <em>i</em> and{" "}
                 <span className="font-mono font-semibold">b</span> is the
                 liquidity parameter. You pay the{" "}
-                <span className="font-semibold text-[#1a1a2e]">
+                <span className="font-semibold text-charcoal">
                   change in cost to acquire a stake in that outcome
                 </span>{" "}
                 — C(q_after) − C(q_before) — not a fixed price per share.
               </p>
-              <p className="text-sm text-[#4a4a5a]">
+              <p className="text-sm text-warmGray">
                 The exponential in the sum guarantees that the implied
                 probability of each outcome is{" "}
-                <span className="font-semibold text-[#1a1a2e]">
+                <span className="font-semibold text-charcoal">
                   exp(q<sub>i</sub>/b) / Σ exp(q<sub>j</sub>/b)
                 </span>
                 , which always sums to exactly 1 across all outcomes.
@@ -130,9 +130,9 @@ export default function RulesPage() {
                 &quot;No&quot; falls proportionally — the market
                 reprices continuously, with no manual intervention.
               </p>
-              <p className="text-sm text-[#4a4a5a]">
+              <p className="text-sm text-warmGray">
                 When you enter a dollar amount, the engine runs a{" "}
-                <span className="font-semibold text-[#1a1a2e]">
+                <span className="font-semibold text-charcoal">
                   binary search
                 </span>{" "}
                 over share counts to find the exact quantity that costs
@@ -143,11 +143,11 @@ export default function RulesPage() {
             </div>
 
             {/* Example block */}
-            <div className="rounded-lg bg-[#f5f1eb] border border-[#e8e4df] p-4 flex flex-col gap-1.5">
-              <p className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider">
+            <div className="rounded-lg bg-[#f5f1eb] border border-[rgba(184,134,11,0.12)] p-4 flex flex-col gap-1.5">
+              <p className="text-xs font-semibold text-warmGray uppercase tracking-wider">
                 Example
               </p>
-              <p className="text-sm text-[#1a1a2e]">
+              <p className="text-sm text-charcoal">
                 &quot;Will Parsh cry during the pheras?&quot; opens at{" "}
                 <Highlight>50¢ / 50¢</Highlight>. Guest A slams $20 on
                 Yes → price jumps to <Highlight>88¢</Highlight>. Guest B
@@ -161,15 +161,15 @@ export default function RulesPage() {
 
             <p>
               Liquidity adjusts dynamically via the{" "}
-              <span className="font-semibold text-[#1a1a2e]">
+              <span className="font-semibold text-charcoal">
                 adaptive b parameter
               </span>
               . The two dominant factors are{" "}
-              <span className="font-semibold text-[#1a1a2e]">
+              <span className="font-semibold text-charcoal">
                 time since market open
               </span>{" "}
               and{" "}
-              <span className="font-semibold text-[#1a1a2e]">
+              <span className="font-semibold text-charcoal">
                 total market volume
               </span>{" "}
               — both cause b to grow over time, meaning the market hardens
@@ -182,19 +182,19 @@ export default function RulesPage() {
             <div className="overflow-x-auto -mx-1">
               <table className="w-full text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-[#e8e4df]">
-                    <th className="text-left py-1.5 px-2 text-[#8a8a9a] font-medium">
+                  <tr className="border-b border-[rgba(184,134,11,0.12)]">
+                    <th className="text-left py-1.5 px-2 text-warmGray font-medium">
                       Market age
                     </th>
-                    <th className="text-left py-1.5 px-2 text-[#8a8a9a] font-medium">
+                    <th className="text-left py-1.5 px-2 text-warmGray font-medium">
                       Volume
                     </th>
-                    <th className="text-left py-1.5 px-2 text-[#8a8a9a] font-medium">
+                    <th className="text-left py-1.5 px-2 text-warmGray font-medium">
                       $50 bet moves 50¢ to…
                     </th>
                   </tr>
                 </thead>
-                <tbody className="text-[#4a4a5a]">
+                <tbody className="text-warmGray">
                   <tr className="border-b border-[#f0ece7]">
                     <td className="py-1.5 px-2">0 sec</td>
                     <td className="py-1.5 px-2">$0</td>
@@ -205,21 +205,21 @@ export default function RulesPage() {
                   <tr className="border-b border-[#f0ece7]">
                     <td className="py-1.5 px-2">30 sec</td>
                     <td className="py-1.5 px-2">$100</td>
-                    <td className="py-1.5 px-2 font-semibold text-[#1a1a2e]">
+                    <td className="py-1.5 px-2 font-semibold text-charcoal">
                       77¢
                     </td>
                   </tr>
                   <tr className="border-b border-[#f0ece7]">
                     <td className="py-1.5 px-2">5 min</td>
                     <td className="py-1.5 px-2">$500</td>
-                    <td className="py-1.5 px-2 font-semibold text-[#1a1a2e]">
+                    <td className="py-1.5 px-2 font-semibold text-charcoal">
                       61¢
                     </td>
                   </tr>
                   <tr>
                     <td className="py-1.5 px-2">30 min</td>
                     <td className="py-1.5 px-2">$2,000</td>
-                    <td className="py-1.5 px-2 font-semibold text-[#1a1a2e]">
+                    <td className="py-1.5 px-2 font-semibold text-charcoal">
                       54¢ (hardened)
                     </td>
                   </tr>
@@ -227,7 +227,7 @@ export default function RulesPage() {
               </table>
             </div>
 
-            <p className="text-xs text-[#8a8a9a]">
+            <p className="text-xs text-warmGray">
               tl;dr — be early and be right (in this case) to win big.
             </p>
 
@@ -254,7 +254,7 @@ export default function RulesPage() {
           title="Payouts"
           subtitle="The part everyone actually cares about"
         >
-          <div className="flex flex-col gap-3 mt-1 text-sm text-[#4a4a5a]">
+          <div className="flex flex-col gap-3 mt-1 text-sm text-warmGray">
             <ul className="flex flex-col gap-3">
               <RuleItem
                 text={
@@ -283,11 +283,11 @@ export default function RulesPage() {
             </ul>
 
             {/* Worked example */}
-            <div className="rounded-lg bg-[#f5f1eb] border border-[#e8e4df] p-4 flex flex-col gap-2">
-              <p className="text-xs font-semibold text-[#8a8a9a] uppercase tracking-wider">
+            <div className="rounded-lg bg-[#f5f1eb] border border-[rgba(184,134,11,0.12)] p-4 flex flex-col gap-2">
+              <p className="text-xs font-semibold text-warmGray uppercase tracking-wider">
                 Worked example
               </p>
-              <div className="flex flex-col gap-1 text-sm text-[#1a1a2e]">
+              <div className="flex flex-col gap-1 text-sm text-charcoal">
                 <ExampleRow label="You buy: 10 shares at 40¢" value="$4.00" />
                 <ExampleRow label="Outcome wins, pool pays $0.90/share" value="$9.00" />
                 <ExampleRow label="Profit" value="$5.00" />
@@ -296,7 +296,7 @@ export default function RulesPage() {
                   value="− $0.50"
                   accent
                 />
-                <div className="border-t border-[#e8e4df] mt-1 pt-2">
+                <div className="border-t border-[rgba(184,134,11,0.12)] mt-1 pt-2">
                   <ExampleRow
                     label="You take home"
                     value="$8.50"
@@ -324,7 +324,7 @@ export default function RulesPage() {
               text={
                 <>
                   Shrey is the bookie — but he&apos;s not the house.{" "}
-                  <span className="text-[#8a8a9a]">
+                  <span className="text-warmGray">
                     You&apos;re betting against each other in a parimutuel
                     pool.
                   </span>
@@ -345,7 +345,7 @@ export default function RulesPage() {
 
         {/* ── Disclaimer ───────────────────────────────────────────── */}
         <div className="px-2 pb-2">
-          <p className="text-[10px] text-[#8a8a9a] text-center leading-relaxed">
+          <p className="text-[10px] text-warmGray text-center leading-relaxed">
             This is a private entertainment experience for the wedding of
             Parsh &amp; Spoorthi. Partial proceeds benefit charity (we're slightly selfish). Play
             responsibly.
@@ -385,13 +385,13 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl bg-white border border-[#e8e4df] shadow-card overflow-hidden animate-slide-up">
+    <div className="rounded-xl bg-white border border-[rgba(184,134,11,0.12)] shadow-card overflow-hidden animate-slide-up">
       {/* Card header */}
-      <div className="px-5 py-4 border-b border-[#e8e4df] bg-cream-100 flex items-center gap-3">
+      <div className="px-5 py-4 border-b border-[rgba(184,134,11,0.12)] bg-cream-100 flex items-center gap-3">
         <span className="text-xs font-mono font-bold text-[#c8a45c] leading-none mt-0.5">{label}</span>
         <div>
-          <h2 className="text-sm font-semibold text-[#1a1a2e]">{title}</h2>
-          <p className="text-xs text-[#8a8a9a] mt-0.5">{subtitle}</p>
+          <h2 className="text-sm font-semibold text-charcoal">{title}</h2>
+          <p className="text-xs text-warmGray mt-0.5">{subtitle}</p>
         </div>
       </div>
       <div className="px-5 py-5">{children}</div>
@@ -407,14 +407,14 @@ function RuleItem({
   return (
     <li className="flex gap-3 items-start list-none">
       <span className="text-[#c8a45c] leading-none mt-1 shrink-0">—</span>
-      <p className="text-sm text-[#4a4a5a] leading-relaxed">{text}</p>
+      <p className="text-sm text-warmGray leading-relaxed">{text}</p>
     </li>
   );
 }
 
 function Highlight({ children }: { children: React.ReactNode }) {
   return (
-    <span className="font-semibold text-[#1a1a2e]">{children}</span>
+    <span className="font-semibold text-charcoal">{children}</span>
   );
 }
 
@@ -432,17 +432,17 @@ function ExampleRow({
   return (
     <div className="flex justify-between items-baseline">
       <span
-        className={`text-xs ${bold ? "font-semibold text-[#1a1a2e]" : "text-[#8a8a9a]"}`}
+        className={`text-xs ${bold ? "font-semibold text-charcoal" : "text-warmGray"}`}
       >
         {label}
       </span>
       <span
         className={`text-sm tabular-nums ${
           bold
-            ? "font-bold text-[#1a1a2e]"
+            ? "font-bold text-charcoal"
             : accent
             ? "font-medium text-[#c8a45c]"
-            : "font-medium text-[#1a1a2e]"
+            : "font-medium text-charcoal"
         }`}
       >
         {value}

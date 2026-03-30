@@ -17,13 +17,13 @@ const STATUS_CONFIG = {
   pending: {
     badge: "UPCOMING",
     badgeClass: "bg-[#f5efd9] text-[#8a6d30]",
-    border: "border-[#e8e4df]",
+    border: "border-[rgba(184,134,11,0.12)]",
     dot: "bg-[#c8a45c]",
   },
   paused: {
     badge: "PAUSED",
-    badgeClass: "bg-[#f5f5f5] text-[#8a8a9a]",
-    border: "border-[#e8e4df]",
+    badgeClass: "bg-[#f5f5f5] text-warmGray",
+    border: "border-[rgba(184,134,11,0.12)]",
     dot: "bg-[#c8c8d0]",
   },
   resolved: {
@@ -34,14 +34,14 @@ const STATUS_CONFIG = {
   },
   voided: {
     badge: "VOID",
-    badgeClass: "bg-[#f5f5f5] text-[#8a8a9a]",
-    border: "border-[#e8e4df]",
+    badgeClass: "bg-[#f5f5f5] text-warmGray",
+    border: "border-[rgba(184,134,11,0.12)]",
     dot: "bg-[#c8c8d0]",
   },
 } as const;
 
 function outcomeTextColor(position: PositionItem): string {
-  if (position.marketStatus === "voided") return "text-[#8a8a9a]";
+  if (position.marketStatus === "voided") return "text-warmGray";
   if (position.marketStatus === "resolved") {
     if (position.isWinner === true) return "text-emerald-600 font-semibold";
     if (position.isWinner === false) return "text-[#dc2626]";
@@ -51,13 +51,13 @@ function outcomeTextColor(position: PositionItem): string {
 
 function cardBg(position: PositionItem): string {
   if (position.marketStatus === "voided")
-    return "opacity-60 bg-[#f5f5f5] border-[#e8e4df]";
+    return "opacity-60 bg-[#f5f5f5] border-[rgba(184,134,11,0.12)]";
   if (position.marketStatus === "resolved") {
     if (position.isWinner === true)
       return "bg-emerald-50 border-emerald-200";
     if (position.isWinner === false) return "bg-red-50 border-red-100";
   }
-  return "bg-white border-[#e8e4df]";
+  return "bg-white border-[rgba(184,134,11,0.12)]";
 }
 
 /**
@@ -85,7 +85,7 @@ export function PositionCard({ position }: PositionCardProps) {
       >
         {/* Header */}
         <div className="flex items-start justify-between gap-2 mb-3">
-          <p className="text-sm font-semibold text-[#1a1a2e] leading-snug flex-1">
+          <p className="text-sm font-semibold text-charcoal leading-snug flex-1">
             {position.marketQuestion}
           </p>
           <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -105,25 +105,25 @@ export function PositionCard({ position }: PositionCardProps) {
         {/* Stats grid */}
         <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
           <div>
-            <p className="text-[#8a8a9a]">Shares</p>
-            <p className="font-semibold text-[#1a1a2e]">
+            <p className="text-warmGray">Shares</p>
+            <p className="font-semibold text-charcoal">
               {position.shares.toFixed(2)}
             </p>
           </div>
           <div>
-            <p className="text-[#8a8a9a]">Avg price</p>
-            <p className="font-semibold text-[#1a1a2e]">
+            <p className="text-warmGray">Avg price</p>
+            <p className="font-semibold text-charcoal">
               {(position.avgPriceCents / 100).toFixed(2)}¢
             </p>
           </div>
           <div>
-            <p className="text-[#8a8a9a]">Total cost</p>
-            <p className="font-semibold text-[#1a1a2e]">
+            <p className="text-warmGray">Total cost</p>
+            <p className="font-semibold text-charcoal">
               {formatDollars(position.totalCostCents)}
             </p>
           </div>
           <div>
-            <p className="text-[#8a8a9a]">
+            <p className="text-warmGray">
               {position.marketStatus === "resolved"
                 ? position.isWinner
                   ? "Payout"
@@ -136,7 +136,7 @@ export function PositionCard({ position }: PositionCardProps) {
                   ? position.isWinner
                     ? "text-emerald-600"
                     : "text-[#dc2626]"
-                  : "text-[#1a1a2e]"
+                  : "text-charcoal"
               }`}
             >
               {position.marketStatus === "resolved"
