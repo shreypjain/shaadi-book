@@ -24,27 +24,27 @@ const TX_LABELS: Record<string, { label: string; icon: string }> = {
 
 const TX_ICON_COLORS: Record<string, string> = {
   DEPOSIT:    "bg-emerald-50 text-emerald-600",
-  PURCHASE:   "bg-brand-50 text-brand-600",
+  PURCHASE:   "bg-gold-pale text-gold",
   PAYOUT:     "bg-emerald-50 text-emerald-600",
-  WITHDRAWAL: "bg-[#f0ece7] text-warmGray",
+  WITHDRAWAL: "bg-gold-light text-warmGray",
 
-  REFUND:     "bg-[#f0ece7] text-warmGray",
+  REFUND:     "bg-gold-light text-warmGray",
 };
 
 function TxRow({ tx }: { tx: TransactionItem }) {
   const meta = TX_LABELS[tx.type] ?? { label: tx.type, icon: "·" };
-  const iconColor = TX_ICON_COLORS[tx.type] ?? "bg-[#f0ece7] text-warmGray";
+  const iconColor = TX_ICON_COLORS[tx.type] ?? "bg-gold-light text-warmGray";
   const isPositive = tx.amountCents >= 0;
 
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-[#EDE8E0] last:border-0">
+    <div className="flex items-center gap-3 py-3 border-b border-[rgba(184,134,11,0.08)] last:border-0">
       {/* Icon */}
       <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${iconColor}`}>
         {meta.icon}
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-sans text-sm font-medium text-charcoal">{meta.label}</p>
-        <p className="font-sans text-xs text-[#8B7355]/60">
+        <p className="font-sans text-xs text-warmGray">
           {new Date(tx.createdAt).toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",
@@ -129,15 +129,17 @@ function WalletPage() {
     <div className="min-h-screen pb-24">
       {/* Toast */}
       {toastMsg && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[#1a1a2e] text-white
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-charcoal text-white
                         text-sm px-4 py-2.5 rounded-full shadow-lg whitespace-nowrap">
           {toastMsg}
         </div>
       )}
 
       {/* Header */}
-      <div className="bg-ivory/95 backdrop-blur border-b border-[rgba(184,134,11,0.12)] px-4 pt-12 pb-2">
-        <h1 className="font-serif text-2xl font-semibold text-charcoal tracking-tight">My Wallet</h1>
+      <div className="sticky top-0 z-10 bg-ivory/95 backdrop-blur border-b border-[rgba(184,134,11,0.12)] px-4 py-3">
+        <div className="max-w-lg mx-auto">
+          <h1 className="font-serif text-xl font-semibold text-charcoal tracking-[0.05em] uppercase">My Wallet</h1>
+        </div>
       </div>
 
       <div className="max-w-lg mx-auto px-4 pt-2">
@@ -155,7 +157,7 @@ function WalletPage() {
             <button
               onClick={() => setShowWithdrawal((v) => !v)}
               className="flex-1 rounded-xl border border-[rgba(184,134,11,0.20)] px-5 py-3
-                         text-charcoal font-sans font-medium text-sm hover:bg-[#EDE8E0]/40
+                         text-charcoal font-sans font-medium text-sm hover:bg-gold-light/40
                          active:scale-95 transition-all"
             >
               Withdraw
@@ -166,7 +168,7 @@ function WalletPage() {
         {/* Withdrawal form */}
         {showWithdrawal && (
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-[0_2px_16px_rgba(139,109,71,0.06)] border border-[rgba(184,134,11,0.08)] mt-4 p-6">
-            <h2 className="font-serif text-base font-semibold text-charcoal mb-4">
+            <h2 className="font-serif text-xs font-medium text-[#B8860B]/70 uppercase tracking-[0.2em] mb-4">
               Request Withdrawal
             </h2>
             <WithdrawalForm
@@ -179,7 +181,7 @@ function WalletPage() {
 
         {/* Transaction history */}
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-[0_2px_16px_rgba(139,109,71,0.06)] border border-[rgba(184,134,11,0.08)] mt-4 p-6">
-          <h2 className="font-serif text-base font-semibold text-charcoal mb-3">
+          <h2 className="font-serif text-xs font-medium text-[#B8860B]/70 uppercase tracking-[0.2em] mb-3">
             Transaction History
           </h2>
 
@@ -187,12 +189,12 @@ function WalletPage() {
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="flex items-center gap-3 animate-pulse">
-                  <div className="w-8 h-8 bg-[#f0ece7] rounded-full" />
+                  <div className="w-8 h-8 bg-gold-light rounded-full" />
                   <div className="flex-1">
-                    <div className="h-3 w-32 bg-[#f0ece7] rounded mb-1" />
-                    <div className="h-2 w-20 bg-[#f5f2ed] rounded" />
+                    <div className="h-3 w-32 bg-gold-light rounded mb-1" />
+                    <div className="h-2 w-20 bg-gold-light rounded" />
                   </div>
-                  <div className="h-3 w-14 bg-[#f0ece7] rounded" />
+                  <div className="h-3 w-14 bg-gold-light rounded" />
                 </div>
               ))}
             </div>
