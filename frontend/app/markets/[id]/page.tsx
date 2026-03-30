@@ -12,6 +12,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ProbabilityBar } from "@/components/ProbabilityBar";
 import { BuyForm } from "@/components/BuyForm";
+import { PriceChart } from "@/components/PriceChart";
+import type { PricePoint } from "@/components/PriceChart";
 import { api } from "@/lib/api";
 import {
   ensureConnected,
@@ -94,6 +96,9 @@ export default function MarketDetailPage() {
   const [activityFeed, setActivityFeed] = useState<ActivityItem[]>([]);
   const [priceHistory, setPriceHistory] = useState<Record<string, number[]>>({});
 
+  const [chartHours, setChartHours] = useState<1 | 2 | 4>(1);
+  const [chartData, setChartData] = useState<Record<string, PricePoint[]>>({});
+
   const [market, setMarket] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -135,6 +140,17 @@ export default function MarketDetailPage() {
     }
   }, [market]);
 
+  // Fetch full price history from the API (re-fetches when marketId or chartHours changes)
+  useEffect(() => {
+    if (!marketId) return;
+    api.market
+      .priceHistory({ marketId, hours: chartHours })
+      .then((data) => setChartData(data))
+      .catch(() => {
+        // Non-fatal — chart will show empty state
+      });
+  }, [marketId, chartHours]);
+
   // -------------------------------------------------------------------------
   // WebSocket subscriptions
   // -------------------------------------------------------------------------
@@ -156,6 +172,15 @@ export default function MarketDetailPage() {
           payload.prices.forEach(({ outcomeId, priceCents }) => {
             const hist = [...(prev[outcomeId] ?? []), priceCents];
             next[outcomeId] = hist.slice(-20);
+          });
+          return next;
+        });
+        // Append live price updates to the full chart data
+        const now = new Date().toISOString();
+        setChartData((prev) => {
+          const next = { ...prev };
+          payload.prices.forEach(({ outcomeId, priceCents }) => {
+            next[outcomeId] = [...(prev[outcomeId] ?? []), { priceCents, time: now }];
           });
           return next;
         });
@@ -334,6 +359,22 @@ export default function MarketDetailPage() {
               );
             })}
           </div>
+        </div>
+
+        {/* Price history chart */}
+        <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-[rgba(184,134,11,0.08)] px-6 py-5 shadow-[0_2px_16px_rgba(139,109,71,0.06)]">
+          <h2 className="font-serif text-xs font-medium text-[#B8860B]/70 uppercase tracking-[0.2em] mb-4">
+            Price History
+          </h2>
+          <PriceChart
+            data={chartData}
+            outcomes={market.outcomes.map((o: { id: string; label: string }) => ({
+              id: o.id,
+              label: o.label,
+            }))}
+            hours={chartHours}
+            onHoursChange={setChartHours}
+          />
         </div>
 
         {/* Buy form */}
