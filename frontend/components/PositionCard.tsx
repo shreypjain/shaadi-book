@@ -208,7 +208,7 @@ export function PositionCard({
 
           {/* Estimated payout details for active/pending */}
           {(position.marketStatus === "active" || position.marketStatus === "pending") && (
-            <div className="mt-3 pt-3 border-t border-[#f0ece7] space-y-2">
+            <div className="mt-3 pt-3 border-t border-[#f0ece7] space-y-1.5">
               {/* Per-share payout + P&L grid */}
               <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                 <div>
@@ -222,7 +222,7 @@ export function PositionCard({
                 <div>
                   <p className="text-warmGray">Avg cost/share</p>
                   <p className="font-semibold text-charcoal tabular-nums">
-                    {position.avgPriceCents.toFixed(0)}¢
+                    {position.avgPriceCents}¢
                   </p>
                 </div>
                 <div>
@@ -243,21 +243,25 @@ export function PositionCard({
                   </p>
                 </div>
               </div>
-
-              {/* Thin-pool nudge — shown when you'd lose money even if you win */}
-              {isThinPool && (
-                <p className="text-xs bg-amber-50 border border-amber-200/60 text-amber-800 rounded-lg px-2.5 py-1.5 leading-snug">
-                  The pool is thin — more bets means bigger payouts for everyone.
-                  Share the market with the group chat!
-                </p>
-              )}
-
               <p className="text-[10px] text-[#a08050] opacity-70">
                 Pool-based estimate — grows as more bets come in
               </p>
             </div>
           )}
         </Link>
+
+        {/* Thin-pool nudge — outside Link so it doesn't navigate; shown when
+            estimated payout/share < what the user paid/share */}
+        {isThinPool &&
+          (position.marketStatus === "active" ||
+            position.marketStatus === "pending") && (
+            <div className="mt-2 pt-2 border-t border-[#f0ece7]">
+              <p className="text-xs bg-amber-50 border border-amber-200/60 text-amber-800 rounded-lg px-2.5 py-1.5 leading-snug">
+                This market needs more believers (and their wallets) — rally the
+                group chat!
+              </p>
+            </div>
+          )}
 
         {/* Sell button — outside Link so it doesn't navigate */}
         {canSell && (
