@@ -102,6 +102,10 @@ const _client = createTRPCProxyClient<any>({
 // Auth response types
 // ---------------------------------------------------------------------------
 
+export interface CheckPhoneResult {
+  exists: boolean;
+}
+
 export interface SendOTPResult {
   status: "pending";
 }
@@ -137,10 +141,17 @@ export interface MarketSuggestionItem {
 
 export const api = {
   auth: {
+    checkPhone: (input: {
+      phone: string;
+      country: "US" | "IN";
+    }): Promise<CheckPhoneResult> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).auth.checkPhone.mutate(input) as Promise<CheckPhoneResult>,
+
     sendOTP: (input: {
       phone: string;
       country: "US" | "IN";
-      name: string;
+      name?: string;
     }): Promise<SendOTPResult> =>
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       (_client as any).auth.sendOTP.mutate(input) as Promise<SendOTPResult>,

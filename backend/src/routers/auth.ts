@@ -55,16 +55,38 @@ function deletePending(phone: string): void {
 
 export const authRouter = router({
   /**
+   * auth.checkPhone
+   * Checks whether a phone number already has a registered account.
+   * Used by the login UI to skip the name field for returning users.
+   */
+  checkPhone: publicProcedure
+    .input(
+      z.object({
+        phone: z.string().min(1),
+        country: z.enum(["US", "IN"]),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const normalizedPhone = normalizePhone(input.phone, input.country);
+      const existing = await prisma.user.findUnique({
+        where: { phone: normalizedPhone },
+        select: { id: true },
+      });
+      return { exists: Boolean(existing) };
+    }),
+
+  /**
    * auth.sendOTP
    * Normalizes phone, dispatches OTP via Twilio Verify.
    * Stores name/country in pending map for user creation on verify.
+   * `name` is required only for new users; omit it for returning users.
    */
   sendOTP: publicProcedure
     .input(
       z.object({
         phone: z.string().min(1),
         country: z.enum(["US", "IN"]),
-        name: z.string().min(1).max(100),
+        name: z.string().min(1).max(100).optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -76,8 +98,14 @@ export const authRouter = router({
         select: { id: true },
       });
 
-      // Only store pending data for new users
+      // New users must provide a name
       if (!existingUser) {
+        if (!input.name) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Name is required for new accounts.",
+          });
+        }
         setPending(normalizedPhone, input.name, input.country);
       }
 
