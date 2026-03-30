@@ -312,13 +312,16 @@ export default function MarketDetailPage() {
             {market.question}
           </h1>
           <MarketTags market={market} className="mb-4" />
-          <div className="flex items-center gap-4 text-xs text-[#8B7355]/60 font-sans">
+          <div className="flex items-center gap-4 text-xs text-[#8B7355]/60 font-sans flex-wrap">
             {openedAt && <span>Opened {timeSince(openedAt)}</span>}
             <span>{formatVolume(market.totalVolume)} volume</span>
             <span className="font-medium text-[#8B7355]">
               Pool: ${(market.totalPool ?? market.totalVolume).toFixed(2)}
             </span>
             <span>{market.outcomes.length} outcomes</span>
+            <span>
+              {market.uniqueBettorCount} bettor{market.uniqueBettorCount !== 1 ? "s" : ""}
+            </span>
           </div>
         </div>
 

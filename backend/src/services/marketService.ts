@@ -25,6 +25,9 @@ import { allPrices, adaptiveB } from "./lmsr.js";
 const GENESIS_HASH = "0".repeat(64);
 const B_FLOOR_DEFAULT = 20;
 
+/** Minimum number of unique (non-house) bettors required to resolve a market. */
+export const MIN_BETTORS = 5;
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -77,6 +80,11 @@ export interface MarketWithPrices {
   familySide: string | null;
   /** Freeform custom tags. */
   customTags: string[];
+  /**
+   * Number of unique non-house bettors in this market.
+   * Used to enforce MIN_BETTORS before resolution.
+   */
+  uniqueBettorCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,6 +136,12 @@ interface RawOutcome {
   isWinner: boolean | null;
 }
 
+interface RawPurchase {
+  cost: { toNumber(): number } | number;
+  userId: string;
+  user?: { isHouse: boolean } | null;
+}
+
 interface RawMarket {
   id: string;
   question: string;
@@ -139,7 +153,7 @@ interface RawMarket {
   resolvedAt: Date | null;
   winningOutcomeId: string | null;
   outcomes: RawOutcome[];
-  purchases: Array<{ cost: { toNumber(): number } | number }>;
+  purchases: RawPurchase[];
   eventTag: string | null;
   familySide: string | null;
   customTags: string[];
@@ -159,10 +173,16 @@ function buildMarketWithPrices(market: RawMarket): MarketWithPrices {
     : B_FLOOR_DEFAULT;
 
   const totalVolume = market.purchases.reduce(
-    (sum: number, p: { cost: { toNumber(): number } | number }) =>
-      sum + toNum(p.cost),
+    (sum: number, p: RawPurchase) => sum + toNum(p.cost),
     0
   );
+
+  // Unique bettor count excludes the house liquidity account.
+  const uniqueBettorCount = new Set(
+    market.purchases
+      .filter((p: RawPurchase) => !p.user?.isHouse)
+      .map((p: RawPurchase) => p.userId)
+  ).size;
 
   const dtMs = market.openedAt
     ? Math.max(0, Date.now() - market.openedAt.getTime())
@@ -203,6 +223,7 @@ function buildMarketWithPrices(market: RawMarket): MarketWithPrices {
     eventTag: market.eventTag ?? null,
     familySide: market.familySide ?? null,
     customTags: market.customTags ?? [],
+    uniqueBettorCount,
   };
 }
 
@@ -370,6 +391,27 @@ export async function resolveMarket(
       if (!winningOutcome) {
         throw new Error(
           `Outcome ${winningOutcomeId} does not belong to market ${marketId}`
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // MIN_BETTORS guard — require at least 5 unique non-house bettors
+      // -----------------------------------------------------------------------
+      const uniqueBettors = await tx.purchase.findMany({
+        where: {
+          marketId,
+          user: { isHouse: false },
+        },
+        select: { userId: true },
+        distinct: ["userId"],
+      });
+      const uniqueBettorCount = uniqueBettors.length;
+
+      if (uniqueBettorCount < MIN_BETTORS) {
+        throw new Error(
+          `Market needs at least ${MIN_BETTORS} unique bettors to resolve ` +
+          `(currently ${uniqueBettorCount}). ` +
+          `Void this market to issue refunds instead.`
         );
       }
 
@@ -717,7 +759,13 @@ export async function getMarketWithPrices(
     where: { id: marketId },
     include: {
       outcomes: { orderBy: { position: "asc" } },
-      purchases: { select: { cost: true } },
+      purchases: {
+        select: {
+          cost: true,
+          userId: true,
+          user: { select: { isHouse: true } },
+        },
+      },
     },
   });
   if (!market) return null;
@@ -760,7 +808,13 @@ export async function listMarkets(
     where: Object.keys(where).length ? where : undefined,
     include: {
       outcomes: { orderBy: { position: "asc" } },
-      purchases: { select: { cost: true } },
+      purchases: {
+        select: {
+          cost: true,
+          userId: true,
+          user: { select: { isHouse: true } },
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
   });
