@@ -1,7 +1,7 @@
 /**
  * LMSR Pricing Engine — Unit Tests
  *
- * Fixed 100-share supply model with buying and selling.
+ * Fixed 1000-share supply model with buying and selling.
  *
  * Coverage:
  *   1.  Prices sum to 1.0 for arbitrary (q, b)
@@ -322,28 +322,28 @@ describe("computeSharesForDollarAmount — closed-form matches binary-search ref
 // ---------------------------------------------------------------------------
 
 describe("computeSharesForDollarAmount — SHARE_CAP_EXCEEDED", () => {
-  it("throws SHARE_CAP_EXCEEDED when shares would exceed maxShares=100", () => {
-    // Buying $200 at b=20 from q=[0,0] yields ~214 shares — well over 100
+  it("throws SHARE_CAP_EXCEEDED when shares would exceed maxShares=1000", () => {
+    // Buying $5000 at b=20 from q=[0,0] yields far more than 1000 shares
     expect(() =>
-      computeSharesForDollarAmount([0, 0], 20, 0, 200)
+      computeSharesForDollarAmount([0, 0], 20, 0, 5000)
     ).toThrowError(/SHARE_CAP_EXCEEDED/);
   });
 
   it("throws when outcome already at cap and any purchase attempted", () => {
-    // qi is already at 100; the smallest purchase exceeds maxShares
+    // qi is already at 1000; the smallest purchase exceeds maxShares
     expect(() =>
-      computeSharesForDollarAmount([100, 0], 27, 0, 0.01)
+      computeSharesForDollarAmount([1000, 0], 272, 0, 0.01)
     ).toThrowError(/SHARE_CAP_EXCEEDED/);
   });
 
   it("succeeds when purchase lands exactly at maxShares boundary", () => {
-    // Find a dollar amount that purchases exactly up to ~99.9 shares from q=0
-    const b = 27;
-    // At b=27, buying from q=[0,0], Δ = 27*ln(2*e^(X/27)-1)
-    // We want Δ ≈ 99 so it's just under the cap
-    const X = b * Math.log(Math.exp(99 / b) + 1) - b * Math.log(2); // ≈ cost of 99 shares
-    const delta = computeSharesForDollarAmount([0, 0], b, 0, X); // default maxShares=100
-    expect(delta).toBeLessThanOrEqual(100);
+    // Find a dollar amount that purchases exactly up to ~999 shares from q=0
+    const b = 272;
+    // At b=272, buying from q=[0,0], Δ = 272*ln(2*e^(X/272)-1)
+    // We want Δ ≈ 999 so it's just under the cap
+    const X = b * Math.log(Math.exp(999 / b) + 1) - b * Math.log(2); // ≈ cost of 999 shares
+    const delta = computeSharesForDollarAmount([0, 0], b, 0, X); // default maxShares=1000
+    expect(delta).toBeLessThanOrEqual(1000);
   });
 
   it("custom maxShares parameter is respected", () => {
@@ -489,6 +489,11 @@ describe("round-trip: buy then sell", () => {
 // ---------------------------------------------------------------------------
 
 describe("defaultB — calibration targets", () => {
+  it("binary market (n=2, M=1000) → b ≈ 271.7", () => {
+    const b = defaultB(2, 1000);
+    expect(b).toBeCloseTo(271.7, 0);
+  });
+
   it("binary market (n=2, M=100) → b ≈ 27.2", () => {
     const b = defaultB(2, 100);
     expect(b).toBeCloseTo(27.17, 1);
@@ -500,21 +505,21 @@ describe("defaultB — calibration targets", () => {
     expect(p).toBeCloseTo(0.5, 4);
   });
 
-  it("binary market: p at q=(50,0) ≈ 0.86", () => {
+  it("binary market: p at q=(500,0) ≈ 0.86", () => {
     const b = defaultB(2);
-    const p = allPrices([50, 0], b)[0]!;
+    const p = allPrices([500, 0], b)[0]!;
     expect(p).toBeCloseTo(0.86, 1);
   });
 
-  it("binary market: p at q=(80,0) ≈ 0.95 (design target)", () => {
+  it("binary market: p at q=(800,0) ≈ 0.95 (design target)", () => {
     const b = defaultB(2);
-    const p = allPrices([80, 0], b)[0]!;
+    const p = allPrices([800, 0], b)[0]!;
     expect(p).toBeCloseTo(0.95, 1);
   });
 
-  it("binary market: p at q=(100,0) ≈ 0.98", () => {
+  it("binary market: p at q=(1000,0) ≈ 0.98", () => {
     const b = defaultB(2);
-    const p = allPrices([100, 0], b)[0]!;
+    const p = allPrices([1000, 0], b)[0]!;
     expect(p).toBeCloseTo(0.98, 1);
   });
 
@@ -524,14 +529,14 @@ describe("defaultB — calibration targets", () => {
     expect(b3).toBeLessThan(b2);
   });
 
-  it("3-outcome market: p at q=(80,0,0) ≈ 0.95", () => {
+  it("3-outcome market: p at q=(800,0,0) ≈ 0.95", () => {
     const b = defaultB(3);
-    const p = allPrices([80, 0, 0], b)[0]!;
+    const p = allPrices([800, 0, 0], b)[0]!;
     expect(p).toBeCloseTo(0.95, 1);
   });
 
-  it("default maxShares=100 is used when omitted", () => {
-    expect(defaultB(2)).toBeCloseTo(defaultB(2, 100), 10);
+  it("default maxShares=1000 is used when omitted", () => {
+    expect(defaultB(2)).toBeCloseTo(defaultB(2, 1000), 10);
   });
 
   it("scales proportionally with maxShares", () => {
