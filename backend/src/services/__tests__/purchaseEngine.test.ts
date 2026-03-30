@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { buyShares, sellShares, PurchaseError, toNumber } from "../purchaseEngine.js";
+import { buyShares, sellShares, PurchaseError, toNumber, SELL_FEE_RATE } from "../purchaseEngine.js";
 import {
   allPrices,
   computeSharesForDollarAmount,
@@ -610,17 +610,20 @@ function wireSellHappyPath(
     sharesSold?: number[];
     positionShares?: number;
     positionCost?: number;
+    /** Override last-buy timestamp. Defaults to 35 min ago (passes cooldown). */
+    lastBuyAt?: Date | null;
   } = {}
 ): void {
   const {
     sharesSold = [5, 5],
     positionShares = 5,
     positionCost = 20,
+    lastBuyAt = new Date(Date.now() - 35 * 60_000), // 35 min ago → passes 30-min cooldown
   } = opts;
 
   tx.market.findUnique.mockResolvedValue(mockMarket);
 
-  // FOR UPDATE lock on outcomes
+  // 1st $queryRaw: FOR UPDATE lock on outcomes
   tx.$queryRaw.mockResolvedValueOnce(
     mockOutcomes.map((o, i) => ({
       ...o,
@@ -628,11 +631,14 @@ function wireSellHappyPath(
     }))
   );
 
-  // Position lookup
+  // Position lookup (regular Prisma, not $queryRaw)
   tx.position.findUnique.mockResolvedValue({
     shares: String(positionShares),
     totalCost: String(positionCost),
   });
+
+  // 2nd $queryRaw: cooldown check — MAX(created_at) of buy rows
+  tx.$queryRaw.mockResolvedValueOnce([{ last_buy_at: lastBuyAt }]);
 
   // outcome.update (decrement sharesSold)
   tx.outcome.update.mockResolvedValue({});
@@ -649,8 +655,7 @@ function wireSellHappyPath(
   // purchase.create (negative record)
   tx.purchase.create.mockResolvedValue({ id: PURCHASE_ID });
 
-  // Reconciliation query — balanced:
-  // deposits=$50, user balance=$30 (got revenue back), house_amm=$20
+  // 3rd $queryRaw: reconciliation — balanced values
   tx.$queryRaw.mockResolvedValueOnce([
     {
       user_balances: 30,
@@ -760,7 +765,7 @@ describe("sellShares — revenue matches LMSR formula", () => {
     mockTransaction(tx);
   });
 
-  it("revenue matches computeDollarAmountForShares(q, b, i, shares)", async () => {
+  it("revenue matches computeDollarAmountForShares × (1 − SELL_FEE_RATE)", async () => {
     const sharesSold = [8, 4]; // q = [8, 4]
     const sharesToSell = 3;
 
@@ -769,8 +774,11 @@ describe("sellShares — revenue matches LMSR formula", () => {
     const result = await sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, sharesToSell);
 
     const b = (0.8 * 100) / Math.log(19 * 1); // defaultB(2)
-    const expectedRevenue = computeDollarAmountForShares(sharesSold, b, 0, sharesToSell);
-    const expectedCents = Math.round(expectedRevenue * 100);
+    const grossRevenue = computeDollarAmountForShares(sharesSold, b, 0, sharesToSell);
+    // Apply same rounding the engine uses: round to 4 d.p. first, then cents
+    const netRevenue =
+      Math.round(grossRevenue * (1 - SELL_FEE_RATE) * 10_000) / 10_000;
+    const expectedCents = Math.round(netRevenue * 100);
 
     expect(result.revenueCents).toBe(expectedCents);
   });
@@ -844,6 +852,131 @@ describe("sellShares — INSUFFICIENT_SHARES error", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// sellShares — SELL_COOLDOWN error
+// ---------------------------------------------------------------------------
+
+describe("sellShares — SELL_COOLDOWN anti-scalping", () => {
+  let tx: ReturnType<typeof makeTx>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tx = makeTx();
+    mockTransaction(tx);
+  });
+
+  it("throws SELL_COOLDOWN when last buy was < 30 minutes ago", async () => {
+    tx.market.findUnique.mockResolvedValue(mockMarket);
+    tx.$queryRaw.mockResolvedValueOnce(mockOutcomes); // FOR UPDATE lock
+    tx.position.findUnique.mockResolvedValue({ shares: "5", totalCost: "20" });
+    // Last buy was only 5 minutes ago — inside cooldown window
+    tx.$queryRaw.mockResolvedValueOnce([
+      { last_buy_at: new Date(Date.now() - 5 * 60_000) },
+    ]);
+
+    await expect(
+      sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 2)
+    ).rejects.toMatchObject({ code: "SELL_COOLDOWN" });
+  });
+
+  it("SELL_COOLDOWN message includes wait time in minutes", async () => {
+    tx.market.findUnique.mockResolvedValue(mockMarket);
+    tx.$queryRaw.mockResolvedValueOnce(mockOutcomes);
+    tx.position.findUnique.mockResolvedValue({ shares: "5", totalCost: "20" });
+    // 10 min elapsed → must wait 20 more minutes
+    tx.$queryRaw.mockResolvedValueOnce([
+      { last_buy_at: new Date(Date.now() - 10 * 60_000) },
+    ]);
+
+    await expect(
+      sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 2)
+    ).rejects.toMatchObject({
+      code: "SELL_COOLDOWN",
+      message: expect.stringContaining("20"),
+    });
+  });
+
+  it("allows sell when last buy was exactly 30 minutes ago (boundary)", async () => {
+    // 30 min 1 sec ago — just outside the cooldown window → should pass
+    wireSellHappyPath(tx, {
+      lastBuyAt: new Date(Date.now() - 30 * 60_000 - 1_000),
+    });
+
+    const result = await sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 2);
+    expect(result.shares).toBe(2);
+  });
+
+  it("allows sell when user has never bought (null last_buy_at — house seed only)", async () => {
+    // null means no buy rows at all (or only house seed rows filtered out)
+    wireSellHappyPath(tx, { lastBuyAt: null });
+
+    const result = await sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 2);
+    expect(result.shares).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sellShares — sell fee (10%)
+// ---------------------------------------------------------------------------
+
+describe("sellShares — 10% sell fee applied to gross revenue", () => {
+  let tx: ReturnType<typeof makeTx>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tx = makeTx();
+    mockTransaction(tx);
+  });
+
+  it("revenueCents is 90% of gross LMSR revenue (rounded)", async () => {
+    const sharesSold = [5, 5];
+    const sharesToSell = 2;
+    wireSellHappyPath(tx, { sharesSold, positionShares: 5 });
+
+    const result = await sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, sharesToSell);
+
+    const b = (0.8 * 100) / Math.log(19 * 1);
+    const gross = computeDollarAmountForShares(sharesSold, b, 0, sharesToSell);
+    const net = Math.round(gross * (1 - SELL_FEE_RATE) * 10_000) / 10_000;
+    const expectedCents = Math.round(net * 100);
+
+    expect(result.revenueCents).toBe(expectedCents);
+    // Sanity: net < gross
+    expect(result.revenueCents).toBeLessThan(Math.round(gross * 100));
+  });
+
+  it("SALE transaction is created with netRevenue (not gross)", async () => {
+    wireSellHappyPath(tx, { sharesSold: [5, 5], positionShares: 5 });
+
+    await sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 2);
+
+    const b = (0.8 * 100) / Math.log(19 * 1);
+    const gross = computeDollarAmountForShares([5, 5], b, 0, 2);
+    const net = Math.round(gross * (1 - SELL_FEE_RATE) * 10_000) / 10_000;
+
+    const txData = tx.transaction.create.mock.calls[0]?.[0]?.data;
+    // Amount stored in transaction should equal net revenue
+    expect(parseFloat(txData?.amount.toString())).toBeCloseTo(net, 4);
+    // Amount must be strictly less than gross
+    expect(parseFloat(txData?.amount.toString())).toBeLessThan(gross);
+  });
+
+  it("purchase.create negative cost equals -netRevenue (not -gross)", async () => {
+    wireSellHappyPath(tx, { sharesSold: [5, 5], positionShares: 5 });
+
+    await sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 2);
+
+    const b = (0.8 * 100) / Math.log(19 * 1);
+    const gross = computeDollarAmountForShares([5, 5], b, 0, 2);
+    const net = Math.round(gross * (1 - SELL_FEE_RATE) * 10_000) / 10_000;
+
+    const purchaseData = tx.purchase.create.mock.calls[0]?.[0]?.data;
+    expect(purchaseData?.cost.toNumber()).toBeCloseTo(-net, 4);
+    // Must be less negative than -gross (fee stays in house)
+    expect(purchaseData?.cost.toNumber()).toBeGreaterThan(-gross);
+  });
+});
+
 describe("sellShares — market status validation", () => {
   let tx: ReturnType<typeof makeTx>;
 
@@ -901,17 +1034,22 @@ describe("sellShares — reconciliation", () => {
 
   it("throws RECONCILIATION_FAILED when conservation is violated after sale", async () => {
     tx.market.findUnique.mockResolvedValue(mockMarket);
+    // 1st $queryRaw: FOR UPDATE lock
     tx.$queryRaw.mockResolvedValueOnce(
       mockOutcomes.map((o, i) => ({ ...o, shares_sold: String([5, 5][i] ?? 0) }))
     );
     tx.position.findUnique.mockResolvedValue({ shares: "5", totalCost: "20" });
+    // 2nd $queryRaw: cooldown — last buy 35 min ago → passes
+    tx.$queryRaw.mockResolvedValueOnce([
+      { last_buy_at: new Date(Date.now() - 35 * 60_000) },
+    ]);
     tx.outcome.update.mockResolvedValue({});
     tx.transaction.findFirst.mockResolvedValue(null);
     tx.transaction.create.mockResolvedValue({ id: SALE_TRANSACTION_ID });
     tx.position.update.mockResolvedValue({});
     tx.purchase.create.mockResolvedValue({ id: PURCHASE_ID });
 
-    // Broken reconciliation: lhs ≠ rhs
+    // 3rd $queryRaw: broken reconciliation: lhs ≠ rhs
     tx.$queryRaw.mockResolvedValueOnce([
       {
         user_balances: 999,

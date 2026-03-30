@@ -28,6 +28,25 @@ import { computeHash } from "./hashChain.js";
 import { recordPurchaseSnapshots } from "./priceSnapshot.js";
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/**
+ * Sell fee rate — 10% of gross LMSR revenue stays in house_amm.
+ * Applied before crediting the user so the house never loses money on scalping.
+ * The fee is implicit: only netRevenue appears in the SALE transaction; no
+ * separate fee row is created.
+ */
+export const SELL_FEE_RATE = 0.1;
+
+/**
+ * Minimum elapsed time between a purchase and a sell of the same outcome.
+ * Anti-scalping measure: prevents users from buying and immediately selling
+ * to extract value from the AMM spread.
+ */
+const SELL_COOLDOWN_MS = 30 * 60 * 1_000; // 30 minutes
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -61,7 +80,8 @@ export class PurchaseError extends Error {
       | "CAP_EXCEEDED"
       | "RECONCILIATION_FAILED"
       | "NO_POSITION"
-      | "INSUFFICIENT_SHARES",
+      | "INSUFFICIENT_SHARES"
+      | "SELL_COOLDOWN",
     message: string
   ) {
     super(message);
@@ -529,21 +549,30 @@ export async function buyShares(
  *  - a Purchase row with NEGATIVE shares/cost is inserted so that
  *    SUM(purchases.cost) over a market gives the true net pool
  *
+ * Anti-scalping protections applied inside the transaction:
+ *  - Sell cooldown: rejects if the user bought this outcome < 30 min ago
+ *    (query MAX(created_at) WHERE shares > 0 on the purchases table)
+ *  - Sell fee (SELL_FEE_RATE = 10%): gross LMSR revenue is reduced by 10%.
+ *    The fee stays in house_amm implicitly — only netRevenue is credited to
+ *    the user and recorded in the SALE transaction.
+ *
  * Steps:
  *  1. Input validation
  *  2. BEGIN TRANSACTION (Serializable isolation)
  *  3. Validate market is ACTIVE
  *  4. SELECT outcomes FOR UPDATE (row-level lock)
  *  5. Fetch Position — validate user holds >= sharesToSell
+ *  5a. Sell cooldown check — query last buy timestamp; reject if < 30 min ago
  *  6. Compute b (same as buyShares)
  *  7. Read state vector q[]
  *  8. Get spot price BEFORE sale
- *  9. Compute revenue via computeDollarAmountForShares
+ *  9. Compute gross revenue via computeDollarAmountForShares;
+ *     apply SELL_FEE_RATE → netRevenue = gross × (1 − 0.10)
  * 10. UPDATE outcomes[i].sharesSold -= sharesToSell
  * 11. Compute new prices for all outcomes
- * 12. Get prevHash, compute txHash, INSERT SALE Transaction
+ * 12. Get prevHash, compute txHash, INSERT SALE Transaction (amount = netRevenue)
  * 13. UPDATE Position (decrement shares + proportional totalCost)
- * 14. INSERT Purchase row with negative shares/cost
+ * 14. INSERT Purchase row with negative shares/cost (cost = −netRevenue)
  * 15. Run reconciliation invariant check
  * 16. COMMIT → return SellResult
  *
@@ -670,6 +699,31 @@ export async function sellShares(
       }
 
       // -----------------------------------------------------------------------
+      // 5a. Sell cooldown check — anti-scalping
+      //     Query the timestamp of the user's most recent BUY (shares > 0) for
+      //     this outcome.  If it was less than SELL_COOLDOWN_MS ago, reject.
+      // -----------------------------------------------------------------------
+      const cooldownRows = (await tx.$queryRaw`
+        SELECT MAX(created_at) AS last_buy_at
+        FROM purchases
+        WHERE user_id   = ${userId}
+          AND outcome_id = ${outcomeId}
+          AND shares > 0
+      `) as Array<{ last_buy_at: Date | null }>;
+
+      const lastBuyAt = cooldownRows[0]?.last_buy_at ?? null;
+      if (lastBuyAt !== null) {
+        const elapsedMs = Date.now() - lastBuyAt.getTime();
+        if (elapsedMs < SELL_COOLDOWN_MS) {
+          const waitMinutes = Math.ceil((SELL_COOLDOWN_MS - elapsedMs) / 60_000);
+          throw new PurchaseError(
+            "SELL_COOLDOWN",
+            `You must wait ${waitMinutes} more minute${waitMinutes === 1 ? "" : "s"} before selling this outcome (anti-scalping cooldown)`
+          );
+        }
+      }
+
+      // -----------------------------------------------------------------------
       // 6. Compute b — fixed per market shape, admin-overridable via bFloorOverride
       // -----------------------------------------------------------------------
       const bOverride =
@@ -691,15 +745,20 @@ export async function sellShares(
       const priceBeforeFraction = price(q, b, outcomeIndex);
 
       // -----------------------------------------------------------------------
-      // 9. Compute revenue: C(q_before) − C(q_after)
+      // 9. Compute gross revenue: C(q_before) − C(q_after)
+      //    Apply SELL_FEE_RATE: netRevenue = gross × (1 − SELL_FEE_RATE)
+      //    The fee (10%) stays in house_amm implicitly — only netRevenue is
+      //    credited to the user; no separate fee transaction is created.
       // -----------------------------------------------------------------------
-      const revenueDollars = computeDollarAmountForShares(
+      const grossRevenueDollars = computeDollarAmountForShares(
         q,
         b,
         outcomeIndex,
         sharesToSell
       );
-      const revenueCents = Math.round(revenueDollars * 100);
+      const netRevenueDollars =
+        Math.round(grossRevenueDollars * (1 - SELL_FEE_RATE) * 10_000) / 10_000;
+      const revenueCents = Math.round(netRevenueDollars * 100);
 
       // -----------------------------------------------------------------------
       // 10. UPDATE outcomes[i].sharesSold -= sharesToSell
@@ -718,8 +777,9 @@ export async function sellShares(
       qNew[outcomeIndex] = (q[outcomeIndex] ?? 0) - sharesToSell;
       const newPrices = allPrices(qNew, b);
       const priceAfterFraction = newPrices[outcomeIndex] as number;
+      // avgPrice reflects net revenue per share (after fee) — what the user actually received.
       const avgPrice =
-        sharesToSell > 0 ? revenueDollars / sharesToSell : priceBeforeFraction;
+        sharesToSell > 0 ? netRevenueDollars / sharesToSell : priceBeforeFraction;
 
       // -----------------------------------------------------------------------
       // 12. Hash chain: get prevHash, compute txHash, INSERT SALE Transaction
@@ -735,7 +795,7 @@ export async function sellShares(
       const txHash = computeHash(
         prevHash,
         "SALE",
-        revenueDollars.toFixed(6),
+        netRevenueDollars.toFixed(6),
         userId,
         now.toISOString()
       );
@@ -746,7 +806,7 @@ export async function sellShares(
           debitAccount: "house_amm",
           creditAccount: `user:${userId}`,
           type: "SALE",
-          amount: new Decimal(revenueDollars),
+          amount: new Decimal(netRevenueDollars),
           prevHash,
           txHash,
           createdAt: now,
@@ -786,7 +846,7 @@ export async function sellShares(
           marketId,
           outcomeId,
           shares: new Decimal(-sharesToSell),
-          cost: new Decimal(-revenueDollars),
+          cost: new Decimal(-netRevenueDollars),
           avgPrice: new Decimal(avgPrice),
           priceBefore: new Decimal(priceBeforeFraction),
           priceAfter: new Decimal(priceAfterFraction),
