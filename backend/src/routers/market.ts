@@ -404,14 +404,10 @@ export const marketRouter = router({
           io
         );
       } else {
-        // Seed immediately-active markets (fire after creation, non-blocking)
+        // Seed immediately-active markets before notifying
         if (input.seedAmountCents > 0) {
           const outcomeIds = market.outcomes.map((o: { id: string }) => o.id);
-          seedMarket(marketId, outcomeIds, input.seedAmountCents).catch(
-            (err: unknown) => {
-              console.error("[market.create] Immediate seed failed:", err);
-            }
-          );
+          await seedMarket(marketId, outcomeIds, input.seedAmountCents);
         }
         await notifyNewMarket(market, io);
       }

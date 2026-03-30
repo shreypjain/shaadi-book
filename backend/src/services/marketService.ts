@@ -433,9 +433,7 @@ export async function resolveMarket(
       `;
       const uniqueBettors = Number(bettorCountResult[0]?.count ?? 0);
       if (uniqueBettors < MIN_BETTORS) {
-        throw new Error(
-          `Cannot resolve: need at least ${MIN_BETTORS} unique bettors (currently ${uniqueBettors})`
-        );
+        throw new Error(`Cannot resolve: need at least ${MIN_BETTORS} unique bettors`);
       }
 
       // -----------------------------------------------------------------------
