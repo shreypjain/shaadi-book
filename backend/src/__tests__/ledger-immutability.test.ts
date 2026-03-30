@@ -14,14 +14,20 @@
  * number of rows to the test DB (which is reset between CI runs anyway).
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe as _describe, expect, it } from "vitest";
+
+// Skip all tests when no DATABASE_URL (e.g. CI without a Postgres service)
+const NO_DB = process.env["CI"] === "true" || process.env["SKIP_DB_TESTS"] === "true";
+const describe = ((name: string, fn: () => void) =>
+  _describe.skipIf(NO_DB)(name, fn)) as typeof _describe;
+
 import { PrismaClient } from "@prisma/client";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-const prisma = new PrismaClient();
+const prisma = NO_DB ? (null as unknown as PrismaClient) : new PrismaClient();
 
 /** Zero-filled SHA-256 placeholder used as genesis hash. */
 const GENESIS_HASH = "0".repeat(64);

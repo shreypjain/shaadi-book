@@ -26,8 +26,13 @@
  *    fire on TRUNCATE in PostgreSQL).
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe as _describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
+
+// Skip all tests when no DATABASE_URL (e.g. CI without a Postgres service)
+const NO_DB = process.env["CI"] === "true" || process.env["SKIP_DB_TESTS"] === "true";
+const describe = ((name: string, fn: () => void) =>
+  _describe.skipIf(NO_DB)(name, fn)) as typeof _describe;
 import { appendTransaction, runReconciliation } from "../../services/ledger.js";
 import {
   createMarket,
@@ -36,7 +41,7 @@ import {
 import { buyShares } from "../../services/purchaseEngine.js";
 import { getUserBalance } from "../../services/balance.js";
 
-const prisma = new PrismaClient();
+const prisma = NO_DB ? (null as unknown as PrismaClient) : new PrismaClient();
 
 // ---------------------------------------------------------------------------
 // Test state
