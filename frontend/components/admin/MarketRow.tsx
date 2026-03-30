@@ -25,6 +25,7 @@ export interface MarketRowData {
   outcomes: Array<{ id: string; label: string; price: number }>;
   createdAt: Date | string;
   resolvedAt: Date | string | null;
+  uniqueBettorCount?: number;
 }
 
 interface Props {
@@ -81,6 +82,9 @@ export default function MarketRow({ market, onChanged }: Props) {
       ? (market.currentB * Math.log(market.outcomes.length)).toFixed(2)
       : "—";
 
+  const bettorCount = market.uniqueBettorCount ?? 0;
+  const MIN_BETTORS = 5;
+
   return (
     <div className="rounded-lg border border-[rgba(184,134,11,0.12)] bg-white p-4 space-y-2">
       {/* Header row */}
@@ -93,7 +97,11 @@ export default function MarketRow({ market, onChanged }: Props) {
             {new Date(market.createdAt).toLocaleString()} ·{" "}
             vol ${market.totalVolume.toFixed(2)} ·{" "}
             b={market.currentB.toFixed(1)} ·{" "}
-            exposure ${houseExposure}
+            exposure ${houseExposure} ·{" "}
+            <span className={bettorCount < MIN_BETTORS && status === "ACTIVE" ? "text-amber-600 font-medium" : ""}>
+              {bettorCount}/{MIN_BETTORS} bettors
+              {bettorCount < MIN_BETTORS && status === "ACTIVE" ? " ⚠ (min needed to resolve)" : ""}
+            </span>
           </p>
         </div>
         <span

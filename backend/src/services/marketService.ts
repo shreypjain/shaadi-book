@@ -17,12 +17,16 @@ import { Decimal } from "decimal.js";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "../db.js";
 import { allPrices, defaultB } from "./lmsr.js";
+import { HOUSE_PHONE } from "./houseSeeding.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const GENESIS_HASH = "0".repeat(64);
+
+/** Minimum number of unique non-house bettors required to resolve a market. */
+export const MIN_BETTORS = 5;
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -84,6 +88,8 @@ export interface MarketWithPrices {
   familySide: string | null;
   /** Freeform custom tags. */
   customTags: string[];
+  /** Number of unique non-house bettors in this market. */
+  uniqueBettorCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -153,7 +159,11 @@ interface RawMarket {
   resolvedAt: Date | null;
   winningOutcomeId: string | null;
   outcomes: RawOutcome[];
-  purchases: Array<{ cost: { toNumber(): number } | number }>;
+  purchases: Array<{
+    cost: { toNumber(): number } | number;
+    userId: string;
+    user: { phone: string };
+  }>;
   eventTag: string | null;
   familySide: string | null;
   customTags: string[];
@@ -179,10 +189,18 @@ function buildMarketWithPrices(market: RawMarket): MarketWithPrices {
   const q = market.outcomes.map((o: RawOutcome) => toNum(o.sharesSold));
 
   const totalVolume = market.purchases.reduce(
-    (sum: number, p: { cost: { toNumber(): number } | number }) =>
+    (sum: number, p: { cost: { toNumber(): number } | number; userId: string; user: { phone: string } }) =>
       sum + toNum(p.cost),
     0
   );
+
+  // Count unique non-house bettors (positive purchases only)
+  const uniqueBettorCount = new Set(
+    market.purchases
+      .filter((p) => p.user.phone !== HOUSE_PHONE && toNum(p.cost) > 0)
+      .map((p) => p.userId)
+  ).size;
+
   const prices = q.length >= 2 ? allPrices(q, b) : q.map(() => 0);
 
   return {
@@ -221,6 +239,7 @@ function buildMarketWithPrices(market: RawMarket): MarketWithPrices {
     eventTag: market.eventTag ?? null,
     familySide: market.familySide ?? null,
     customTags: market.customTags ?? [],
+    uniqueBettorCount,
   };
 }
 
@@ -398,6 +417,24 @@ export async function resolveMarket(
       if (!winningOutcome) {
         throw new Error(
           `Outcome ${winningOutcomeId} does not belong to market ${marketId}`
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // Minimum unique bettors check (PRD CLAUDE.md)
+      // -----------------------------------------------------------------------
+      const bettorCountResult = await tx.$queryRaw<Array<{ count: bigint }>>`
+        SELECT COUNT(DISTINCT p.user_id) AS count
+        FROM purchases p
+        JOIN users u ON u.id = p.user_id
+        WHERE p.market_id = ${marketId}
+          AND p.cost > 0
+          AND u.phone != ${HOUSE_PHONE}
+      `;
+      const uniqueBettors = Number(bettorCountResult[0]?.count ?? 0);
+      if (uniqueBettors < MIN_BETTORS) {
+        throw new Error(
+          `Cannot resolve: need at least ${MIN_BETTORS} unique bettors (currently ${uniqueBettors})`
         );
       }
 
@@ -755,9 +792,14 @@ export async function getMarketWithPrices(
           isWinner: true,
         },
       },
-      purchases: { select: { cost: true } },
+      purchases: {
+        select: {
+          cost: true,
+          userId: true,
+          user: { select: { phone: true } },
+        },
+      },
     },
-    // Select market-level fields explicitly to include new schema fields
   });
   if (!market) return null;
 
@@ -809,7 +851,13 @@ export async function listMarkets(
           isWinner: true,
         },
       },
-      purchases: { select: { cost: true } },
+      purchases: {
+        select: {
+          cost: true,
+          userId: true,
+          user: { select: { phone: true } },
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
   });
