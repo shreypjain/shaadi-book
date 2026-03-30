@@ -1,10 +1,21 @@
 "use client";
 
+import { useState, useCallback } from "react";
 import Link from "next/link";
 import { type PositionItem, formatDollars } from "@/lib/api";
+import { SellDialog } from "@/components/SellDialog";
 
 interface PositionCardProps {
   position: PositionItem;
+  /** Called after a successful sell so the parent can refetch positions. */
+  onSellSuccess?: () => void;
+  /**
+   * LMSR state for the sell dialog preview. Passed down from the bets page
+   * if available; if not provided, the sell dialog won't show a revenue preview.
+   */
+  marketOutcomesSold?: number[];
+  outcomeIndex?: number;
+  currentB?: number;
 }
 
 const STATUS_CONFIG = {
@@ -63,11 +74,18 @@ function cardBg(position: PositionItem): string {
 /**
  * A single position card for the My Bets page.
  * Color-coded: active=blue, won=emerald, lost=muted.
- * Tapping navigates to the market detail.
+ * Tapping the card body navigates to the market detail.
+ * Active positions with shares show a Sell button (30-min cooldown enforced).
  *
  * PRD §5.1 — My Bets screen
  */
-export function PositionCard({ position }: PositionCardProps) {
+export function PositionCard({
+  position,
+  onSellSuccess,
+  marketOutcomesSold,
+  outcomeIndex = 0,
+  currentB = 27,
+}: PositionCardProps) {
   const cfg = STATUS_CONFIG[position.marketStatus] ?? STATUS_CONFIG.active;
   const wonLost =
     position.marketStatus === "resolved"
@@ -78,95 +96,140 @@ export function PositionCard({ position }: PositionCardProps) {
           : null
       : null;
 
+  const [sellOpen, setSellOpen] = useState(false);
+
+  const canSell =
+    position.marketStatus === "active" && position.shares > 0;
+
+  const handleSellSuccess = useCallback(
+    (result: { sharesSold: number; netRevenueCents: number }) => {
+      setSellOpen(false);
+      onSellSuccess?.();
+    },
+    [onSellSuccess]
+  );
+
   return (
-    <Link href={`/markets/${position.marketId}`} className="block">
+    <>
+      {/* Sell dialog — rendered outside the Link */}
+      {canSell && (
+        <SellDialog
+          isOpen={sellOpen}
+          onClose={() => setSellOpen(false)}
+          onSuccess={handleSellSuccess}
+          marketId={position.marketId}
+          outcomeId={position.outcomeId}
+          outcomeLabel={position.outcomeLabel}
+          sharesOwned={position.shares}
+          lastPurchaseAt={position.lastPurchaseAt}
+          outcomeSharesSold={marketOutcomesSold ?? [position.shares]}
+          outcomeIndex={outcomeIndex}
+          currentB={currentB}
+        />
+      )}
+
       <div
-        className={`rounded-xl border p-4 transition-all active:scale-[0.98] ${cardBg(position)}`}
+        className={`rounded-xl border p-4 transition-all ${cardBg(position)}`}
       >
-        {/* Header */}
-        <div className="flex items-start justify-between gap-2 mb-3">
-          <p className="text-sm font-semibold text-charcoal leading-snug flex-1">
-            {position.marketQuestion}
+        {/* Clickable card body → market detail */}
+        <Link href={`/markets/${position.marketId}`} className="block active:scale-[0.98]">
+          {/* Header */}
+          <div className="flex items-start justify-between gap-2 mb-3">
+            <p className="text-sm font-semibold text-charcoal leading-snug flex-1">
+              {position.marketQuestion}
+            </p>
+            <div className="flex flex-col items-end gap-1 flex-shrink-0">
+              <span
+                className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${cfg.badgeClass}`}
+              >
+                {wonLost ?? cfg.badge}
+              </span>
+            </div>
+          </div>
+
+          {/* Outcome */}
+          <p className={`text-sm font-medium mb-3 ${outcomeTextColor(position)}`}>
+            {position.outcomeLabel}
           </p>
-          <div className="flex flex-col items-end gap-1 flex-shrink-0">
-            <span
-              className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${cfg.badgeClass}`}
-            >
-              {wonLost ?? cfg.badge}
-            </span>
-          </div>
-        </div>
 
-        {/* Outcome */}
-        <p className={`text-sm font-medium mb-3 ${outcomeTextColor(position)}`}>
-          {position.outcomeLabel}
-        </p>
-
-        {/* Stats grid */}
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-          <div>
-            <p className="text-warmGray">Shares</p>
-            <p className="font-semibold text-charcoal">
-              {position.shares.toFixed(2)}
-            </p>
-          </div>
-          <div>
-            <p className="text-warmGray">Avg price</p>
-            <p className="font-semibold text-charcoal">
-              {(position.avgPriceCents / 100).toFixed(2)}¢
-            </p>
-          </div>
-          <div>
-            <p className="text-warmGray">Total cost</p>
-            <p className="font-semibold text-charcoal">
-              {formatDollars(position.totalCostCents)}
-            </p>
-          </div>
-          <div>
-            <p className="text-warmGray">
-              {position.marketStatus === "resolved"
-                ? position.isWinner
-                  ? "Payout"
-                  : "Lost"
-                : "Current value"}
-            </p>
-            <p
-              className={`font-semibold ${
-                position.marketStatus === "resolved"
+          {/* Stats grid */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+            <div>
+              <p className="text-warmGray">Shares</p>
+              <p className="font-semibold text-charcoal">
+                {position.shares.toFixed(2)}
+              </p>
+            </div>
+            <div>
+              <p className="text-warmGray">Avg price</p>
+              <p className="font-semibold text-charcoal">
+                {(position.avgPriceCents / 100).toFixed(2)}¢
+              </p>
+            </div>
+            <div>
+              <p className="text-warmGray">Total cost</p>
+              <p className="font-semibold text-charcoal">
+                {formatDollars(position.totalCostCents)}
+              </p>
+            </div>
+            <div>
+              <p className="text-warmGray">
+                {position.marketStatus === "resolved"
                   ? position.isWinner
-                    ? "text-emerald-600"
-                    : "text-[#dc2626]"
-                  : "text-charcoal"
-              }`}
-            >
-              {position.marketStatus === "resolved"
-                ? position.isWinner
-                  ? formatDollars(position.potentialPayoutCents)
-                  : formatDollars(0)
-                : formatDollars(position.currentValueCents)}
-            </p>
+                    ? "Payout"
+                    : "Lost"
+                  : "Current value"}
+              </p>
+              <p
+                className={`font-semibold ${
+                  position.marketStatus === "resolved"
+                    ? position.isWinner
+                      ? "text-emerald-600"
+                      : "text-[#dc2626]"
+                    : "text-charcoal"
+                }`}
+              >
+                {position.marketStatus === "resolved"
+                  ? position.isWinner
+                    ? formatDollars(position.potentialPayoutCents)
+                    : formatDollars(0)
+                  : formatDollars(position.currentValueCents)}
+              </p>
+            </div>
           </div>
-        </div>
 
-        {/* Parimutuel estimated payout for active/pending */}
-        {(position.marketStatus === "active" || position.marketStatus === "pending") && (
+          {/* Parimutuel estimated payout for active/pending */}
+          {(position.marketStatus === "active" || position.marketStatus === "pending") && (
+            <div className="mt-3 pt-3 border-t border-[#f0ece7]">
+              <p className="text-xs bg-[#f5efd9] text-[#8a6d30] rounded-lg px-2.5 py-1.5">
+                Est. payout if wins:{" "}
+                <span className="font-bold">
+                  {formatDollars(position.potentialPayoutCents)}
+                </span>
+                {" · "}Est. profit:{" "}
+                <span className="font-bold">
+                  {formatDollars(position.potentialPayoutCents - position.totalCostCents)}
+                </span>
+                <span className="block text-[#a08050] mt-0.5 opacity-75">
+                  Pool-based estimate — grows as more bets come in
+                </span>
+              </p>
+            </div>
+          )}
+        </Link>
+
+        {/* Sell button — outside Link so it doesn't navigate */}
+        {canSell && (
           <div className="mt-3 pt-3 border-t border-[#f0ece7]">
-            <p className="text-xs bg-[#f5efd9] text-[#8a6d30] rounded-lg px-2.5 py-1.5">
-              Est. payout if wins:{" "}
-              <span className="font-bold">
-                {formatDollars(position.potentialPayoutCents)}
-              </span>
-              {" · "}Est. profit:{" "}
-              <span className="font-bold">
-                {formatDollars(position.potentialPayoutCents - position.totalCostCents)}
-              </span>
-              <span className="block text-[#a08050] mt-0.5 opacity-75">
-                Pool-based estimate — grows as more bets come in
-              </span>
-            </p>
+            <button
+              onClick={() => setSellOpen(true)}
+              className="w-full py-2.5 rounded-xl text-sm font-semibold border border-[#c8a45c]/40 text-[#8a6d30] bg-[#faf7f0] hover:bg-[#f5efd9] hover:border-[#c8a45c] transition-all duration-150 active:scale-[0.98]"
+            >
+              Sell shares
+            </button>
           </div>
         )}
       </div>
-    </Link>
+    </>
   );
 }
