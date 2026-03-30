@@ -375,20 +375,15 @@ export const marketRouter = router({
         }
       );
 
-      // Seed the market with house funds (fire-and-forget on failure so market
-      // creation still succeeds; admin can see error in logs)
-      if (input.seedAmountCents > 0) {
-        seedMarket(marketId, input.seedAmountCents).catch((err: unknown) => {
-          console.error("[market.create] House seeding failed (non-fatal):", err);
-        });
-      }
-
       const market = await getMarketWithPrices(marketId);
       if (!market) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
       const io = getIOSafe();
+      const { seedAmountCents } = input;
 
       if (input.scheduledOpenAt) {
+        // Scheduled market: seed AFTER the market becomes ACTIVE (buyShares
+        // requires ACTIVE status — seeding a PENDING market would fail).
         scheduleMarketOpen(
           {
             id: marketId,
@@ -397,12 +392,24 @@ export const marketRouter = router({
           },
           async () => {
             await openMarket(marketId);
+            if (seedAmountCents > 0) {
+              seedMarket(marketId, seedAmountCents).catch((err: unknown) => {
+                console.error("[market.create] House seeding failed (non-fatal):", err);
+              });
+            }
             const opened = await getMarketWithPrices(marketId);
             if (opened) await notifyNewMarket(opened, io);
           },
           io
         );
       } else {
+        // Immediate market (ACTIVE): seed now, fire-and-forget so admin UI
+        // isn't blocked by sequential per-outcome purchases.
+        if (seedAmountCents > 0) {
+          seedMarket(marketId, seedAmountCents).catch((err: unknown) => {
+            console.error("[market.create] House seeding failed (non-fatal):", err);
+          });
+        }
         await notifyNewMarket(market, io);
       }
 

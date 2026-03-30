@@ -241,14 +241,7 @@ export async function buyShares(
   userId: string,
   marketId: string,
   outcomeId: string,
-  dollarAmountCents: number,
-  opts?: {
-    /**
-     * When true, skip the $200 per-user per-market cap check.
-     * INTERNAL USE ONLY — set exclusively by houseSeeding.seedMarket().
-     */
-    skipCapCheck?: boolean;
-  }
+  dollarAmountCents: number
 ): Promise<PurchaseResult> {
   // -------------------------------------------------------------------------
   // 1. Pre-flight input validation (before any DB round-trip)
@@ -361,9 +354,20 @@ export async function buyShares(
       }
 
       // -----------------------------------------------------------------------
-      // 6. Check $200 per-user per-market cap (bypassed for house seeding)
+      // 6. Check $200 per-user per-market cap.
+      //    The House user (phone === HOUSE_PHONE in houseSeeding.ts) bypasses
+      //    this cap so it can seed all outcomes without hitting the limit.
       // -----------------------------------------------------------------------
-      if (!opts?.skipCapCheck) {
+      const userPhoneRow = (await tx.user.findUnique({
+        where: { id: userId },
+        select: { phone: true },
+      })) as { phone: string } | null;
+
+      // "+0000000000" is HOUSE_PHONE from houseSeeding.ts — kept as literal
+      // here to avoid a circular module dependency.
+      const isHouseUser = userPhoneRow?.phone === "+0000000000";
+
+      if (!isHouseUser) {
         const spendResult = (await tx.$queryRaw`
           SELECT COALESCE(SUM(cost), 0) AS total_spend
           FROM purchases
