@@ -79,8 +79,8 @@ export function StripePaymentForm({
       <button
         type="submit"
         disabled={!stripe || !elements || loading}
-        className="w-full rounded-xl bg-brand-600 py-3.5 text-white font-semibold
-                   disabled:opacity-50 hover:bg-brand-700 active:scale-95 transition-all"
+        className="w-full rounded-xl bg-gold py-3.5 text-white font-semibold
+                   disabled:opacity-50 hover:bg-gold-600 active:scale-95 transition-all"
       >
         {loading ? "Processing…" : `Pay ${formattedAmount}`}
       </button>
