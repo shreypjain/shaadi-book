@@ -195,7 +195,7 @@ export function BuyForm({
               value={dollarAmountStr}
               onChange={(e) => setDollarAmountStr(e.target.value)}
               className={cn(
-                "w-full pl-8 pr-4 py-3 rounded-xl border-2 bg-white text-xl font-bold",
+                "w-full pl-8 pr-4 py-3 rounded-xl border-2 bg-white text-lg sm:text-xl font-bold",
                 "focus:outline-none focus:ring-0",
                 amountError
                   ? "border-[#dc2626] text-[#dc2626]"
@@ -209,13 +209,13 @@ export function BuyForm({
           )}
 
           {/* Preset pills */}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-1.5 sm:gap-2">
             {PRESET_AMOUNTS.filter((a) => a <= maxDollars).map((amt) => (
               <button
                 key={amt}
                 onClick={() => setDollarAmountStr(String(amt))}
                 className={cn(
-                  "flex-1 py-2 rounded-full text-sm font-semibold transition-all duration-150",
+                  "flex-1 min-w-[calc(33%-6px)] py-2 rounded-full text-sm font-semibold transition-all duration-150",
                   dollarAmountStr === String(amt)
                     ? "border border-[#c8a45c] bg-[#c8a45c] text-white shadow-sm"
                     : "bg-white border border-[#2C2C2C]/20 text-warmGray hover:border-[#c8a45c]/50 hover:text-[#c8a45c]"

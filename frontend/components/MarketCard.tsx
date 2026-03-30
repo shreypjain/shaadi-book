@@ -55,7 +55,7 @@ export function MarketCard({ market, livePrices, lastPurchaseAt }: MarketCardPro
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-3">
-        <h3 className="font-serif text-xl font-semibold text-[#2C2C2C] leading-snug flex-1">
+        <h3 className="font-serif text-xl font-semibold text-charcoal leading-snug flex-1 line-clamp-2">
           {market.question}
         </h3>
         <div className="flex flex-col items-end gap-1 shrink-0">

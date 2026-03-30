@@ -130,7 +130,7 @@ function WalletPage() {
       {/* Toast */}
       {toastMsg && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-charcoal text-white
-                        text-sm px-4 py-2.5 rounded-full shadow-lg whitespace-nowrap">
+                        text-sm px-4 py-2.5 rounded-full shadow-lg whitespace-nowrap max-w-[90vw]">
           {toastMsg}
         </div>
       )}

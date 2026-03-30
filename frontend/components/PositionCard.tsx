@@ -135,7 +135,7 @@ export function PositionCard({
         <Link href={`/markets/${position.marketId}`} className="block active:scale-[0.98]">
           {/* Header */}
           <div className="flex items-start justify-between gap-2 mb-3">
-            <p className="text-sm font-semibold text-charcoal leading-snug flex-1">
+            <p className="text-sm font-semibold text-charcoal leading-snug flex-1 line-clamp-2">
               {position.marketQuestion}
             </p>
             <div className="flex flex-col items-end gap-1 flex-shrink-0">
