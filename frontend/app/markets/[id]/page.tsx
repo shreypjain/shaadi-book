@@ -325,6 +325,20 @@ export default function MarketDetailPage() {
           </div>
         </div>
 
+        {/* Thin-pool nudge banner — shown when any outcome est. payout < 90¢/share */}
+        {(isActive || market.status === "PENDING") &&
+          market.outcomes.some(
+            (o: { estimatedPayoutPerShare: number }) =>
+              o.estimatedPayoutPerShare > 0 && o.estimatedPayoutPerShare < 0.9
+          ) && (
+            <div className="rounded-xl bg-amber-50 border border-amber-200/50 px-4 py-3">
+              <p className="text-sm text-amber-800 leading-snug">
+                The pool is still growing — invite more guests to bet and watch
+                the payouts climb. Share the market with the group chat!
+              </p>
+            </div>
+          )}
+
         {/* Outcomes with live prices */}
         <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-[rgba(184,134,11,0.08)] px-6 py-5 shadow-[0_2px_16px_rgba(139,109,71,0.06)]">
           <h2 className="font-serif text-xs font-medium text-[#B8860B]/70 uppercase tracking-[0.2em] mb-4">
@@ -352,6 +366,18 @@ export default function MarketDetailPage() {
                     isWinner={isWinner}
                     size="md"
                   />
+                  {/* Price + estimated payout per share */}
+                  <p className="text-[11px] text-warmGray pl-0.5 tabular-nums">
+                    <span className="font-semibold text-charcoal">{displayPriceCents}¢</span>
+                    {outcome.estimatedPayoutPerShare > 0 && (
+                      <>
+                        {" | "}est. payout:{" "}
+                        <span className="font-semibold text-charcoal">
+                          {Math.round(outcome.estimatedPayoutPerShare * 100)}¢/share
+                        </span>
+                      </>
+                    )}
+                  </p>
                   {/* Shares availability */}
                   <p className="text-[11px] text-warmGray pl-0.5">
                     <span className="font-semibold text-charcoal tabular-nums">
