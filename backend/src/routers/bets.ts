@@ -96,7 +96,8 @@ export const betsRouter = router({
       const bOverride = market.bFloorOverride != null
         ? toNum(market.bFloorOverride as unknown as number)
         : 0;
-      const b = bOverride > 0 ? bOverride : defaultB(market.outcomes.length);
+      const maxShares = Number((market as Record<string, unknown>).maxSharesPerOutcome ?? 1000);
+      const b = bOverride > 0 ? bOverride : defaultB(market.outcomes.length, maxShares);
       const q = market.outcomes.map((o: { sharesSold: unknown }) => toNum(o.sharesSold as unknown as number));
       const prices = q.length >= 2 ? allPrices(q, b) : q.map(() => 0.5);
 
