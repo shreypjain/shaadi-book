@@ -4,10 +4,13 @@
  * Login / Register — app/login/page.tsx
  *
  * Flow:
- *   1. Guest enters name + phone (country US/IN) → "Continue"
- *      → calls auth.sendOTP (tRPC mutation)
- *   2. Returned to OTP screen → enters 6-digit code
- *      → auto-submits on last digit (or manual "Verify")
+ *   1. User enters phone number → "Continue"
+ *      → calls auth.checkPhone to detect returning vs. new user
+ *      → Returning user: OTP sent immediately, skip to step 3
+ *      → New user: go to step 2 (name collection)
+ *   2. (New users only) User enters their name → "Continue"
+ *      → calls auth.sendOTP with name
+ *   3. User enters 6-digit OTP → auto-submits
  *      → calls auth.verifyOTP → stores JWT + user profile → redirects to /
  */
 
@@ -18,7 +21,7 @@ import { OTPInput } from "@/components/OTPInput";
 import { api } from "@/lib/api";
 import { setToken, storeUser, getToken } from "@/lib/auth";
 
-type Step = "phone" | "otp";
+type Step = "phone" | "name" | "otp";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -28,6 +31,7 @@ export default function LoginPage() {
   }, [router]);
 
   const [step, setStep] = useState<Step>("phone");
+  const [isNewUser, setIsNewUser] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [country, setCountry] = useState<"US" | "IN">("US");
@@ -39,28 +43,58 @@ export default function LoginPage() {
   const [globalError, setGlobalError] = useState("");
 
   // ---------------------------------------------------------------------------
-  // Step 1: send OTP
+  // Step 1: check phone → dispatch OTP (returning) or go to name step (new)
   // ---------------------------------------------------------------------------
 
-  const handleSendOTP = useCallback(async () => {
+  const handleCheckPhone = useCallback(async () => {
     setGlobalError("");
-    setNameError("");
     setPhoneError("");
-    let hasError = false;
 
-    if (!name.trim()) {
-      setNameError("Please enter your name.");
-      hasError = true;
-    }
     if (!isValidPhone(phone, country)) {
       setPhoneError(
         country === "US"
           ? "Enter a valid 10-digit US number."
           : "Enter a valid 10-digit Indian mobile number (starts with 6–9)."
       );
-      hasError = true;
+      return;
     }
-    if (hasError) return;
+
+    setIsLoading(true);
+    try {
+      const { exists } = await api.auth.checkPhone({ phone, country });
+      setIsNewUser(!exists);
+
+      if (exists) {
+        // Returning user — send OTP straight away, no name needed
+        await api.auth.sendOTP({ phone, country });
+        setOtp("");
+        setOtpError("");
+        setStep("otp");
+      } else {
+        // New user — collect name first
+        setStep("name");
+      }
+    } catch (err: unknown) {
+      setGlobalError(
+        err instanceof Error ? err.message : "Something went wrong. Try again."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, [phone, country]);
+
+  // ---------------------------------------------------------------------------
+  // Step 2 (new users): send OTP with name
+  // ---------------------------------------------------------------------------
+
+  const handleSendOTP = useCallback(async () => {
+    setGlobalError("");
+    setNameError("");
+
+    if (!name.trim()) {
+      setNameError("Please enter your name.");
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -78,7 +112,7 @@ export default function LoginPage() {
   }, [name, phone, country]);
 
   // ---------------------------------------------------------------------------
-  // Step 2: verify OTP
+  // Step 3: verify OTP
   // ---------------------------------------------------------------------------
 
   const handleVerifyOTP = useCallback(
@@ -122,6 +156,23 @@ export default function LoginPage() {
   );
 
   // ---------------------------------------------------------------------------
+  // Card header copy — varies by step and user type
+  // ---------------------------------------------------------------------------
+
+  function cardTitle(): string {
+    if (step === "phone") return "Sign in to your account";
+    if (step === "name") return "Create your account";
+    // otp step
+    return isNewUser ? "Verify your number" : "Welcome back!";
+  }
+
+  function cardSubtitle(): string {
+    if (step === "phone") return "New guests are registered automatically.";
+    if (step === "name") return "Just one more thing — what should we call you?";
+    return `We sent a 6-digit code to ${country === "US" ? "+1" : "+91"} ${phone}.`;
+  }
+
+  // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
 
@@ -151,22 +202,63 @@ export default function LoginPage() {
           {/* Card header */}
           <div className="px-6 py-4 border-b border-[rgba(184,134,11,0.08)] bg-[#FAF7F2]/50">
             <h2 className="font-sans text-sm font-semibold text-charcoal">
-              {step === "phone" ? "Sign in to your account" : "Enter verification code"}
+              {cardTitle()}
             </h2>
             <p className="font-sans text-xs text-warmGray mt-0.5">
-              {step === "phone"
-                ? "New guests will be registered automatically."
-                : `We sent a 6-digit code to ${
-                    country === "US" ? "+1" : "+91"
-                  } ${phone}.`}
+              {cardSubtitle()}
             </p>
           </div>
 
           <div className="px-6 py-6 flex flex-col gap-5">
-            {/* ---- Step 1: Phone + name ---- */}
+            {/* ---- Step 1: Phone ---- */}
             {step === "phone" && (
               <>
-                {/* Name input */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-warmGray uppercase tracking-wider">
+                    Mobile number
+                  </label>
+                  <PhoneInput
+                    value={phone}
+                    country={country}
+                    onChange={handlePhoneChange}
+                    disabled={isLoading}
+                    error={phoneError}
+                  />
+                  {country === "IN" && (
+                    <p className="text-[11px] text-warmGray/70 px-1">
+                      All bets are placed in USD
+                    </p>
+                  )}
+                </div>
+
+                {globalError && (
+                  <p className="text-xs text-[#dc2626] text-center" role="alert">
+                    {globalError}
+                  </p>
+                )}
+
+                <button
+                  onClick={() => void handleCheckPhone()}
+                  disabled={isLoading}
+                  className="w-full py-3.5 rounded-full bg-gold hover:bg-gold-600 active:scale-95
+                             text-white font-sans font-medium text-sm tracking-wide transition-all
+                             disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
+                >
+                  {isLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <SpinnerIcon />
+                      Checking…
+                    </span>
+                  ) : (
+                    "Continue"
+                  )}
+                </button>
+              </>
+            )}
+
+            {/* ---- Step 2: Name (new users only) ---- */}
+            {step === "name" && (
+              <>
                 <div className="flex flex-col gap-1.5">
                   <label
                     htmlFor="name-input"
@@ -206,51 +298,45 @@ export default function LoginPage() {
                   )}
                 </div>
 
-                {/* Phone input */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-warmGray uppercase tracking-wider">
-                    Mobile number
-                  </label>
-                  <PhoneInput
-                    value={phone}
-                    country={country}
-                    onChange={handlePhoneChange}
-                    disabled={isLoading}
-                    error={phoneError}
-                  />
-                  {country === "IN" && (
-                    <p className="text-[11px] text-warmGray/70 px-1">
-                      All bets are placed in USD
-                    </p>
-                  )}
-                </div>
-
                 {globalError && (
                   <p className="text-xs text-[#dc2626] text-center" role="alert">
                     {globalError}
                   </p>
                 )}
 
-                <button
-                  onClick={() => void handleSendOTP()}
-                  disabled={isLoading}
-                  className="w-full py-3.5 rounded-full bg-gold hover:bg-gold-600 active:scale-95
-                             text-white font-sans font-medium text-sm tracking-wide transition-all
-                             disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
-                >
-                  {isLoading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <SpinnerIcon />
-                      Sending…
-                    </span>
-                  ) : (
-                    "Continue"
-                  )}
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setStep("phone")}
+                    disabled={isLoading}
+                    className="flex-none px-4 py-3.5 rounded-full border border-[rgba(184,134,11,0.30)]
+                               text-warmGray font-sans font-medium text-sm tracking-wide transition-all
+                               hover:border-gold hover:text-charcoal
+                               disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={() => void handleSendOTP()}
+                    disabled={isLoading}
+                    className="flex-1 py-3.5 rounded-full bg-gold hover:bg-gold-600 active:scale-95
+                               text-white font-sans font-medium text-sm tracking-wide transition-all
+                               disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
+                  >
+                    {isLoading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <SpinnerIcon />
+                        Sending…
+                      </span>
+                    ) : (
+                      "Send Code"
+                    )}
+                  </button>
+                </div>
               </>
             )}
 
-            {/* ---- Step 2: OTP ---- */}
+            {/* ---- Step 3: OTP ---- */}
             {step === "otp" && (
               <>
                 <div className="text-center">
@@ -295,7 +381,7 @@ export default function LoginPage() {
                       Verifying…
                     </span>
                   ) : (
-                    "Verify & Join"
+                    "Verify & Continue"
                   )}
                 </button>
               </>
