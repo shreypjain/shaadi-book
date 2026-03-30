@@ -28,6 +28,7 @@ export default function CreateMarketForm({ onCreated }: Props) {
   const [question, setQuestion] = useState("");
   const [outcomes, setOutcomes] = useState<string[]>(["Yes", "No"]);
   const [bFloor, setBFloor] = useState("");
+  const [seedAmountDollars, setSeedAmountDollars] = useState("20");
   const [openMode, setOpenMode] = useState<"now" | "scheduled">("now");
   const [scheduledAt, setScheduledAt] = useState("");
   const [eventTag, setEventTag] = useState<EventTag | "">("");
@@ -68,6 +69,10 @@ export default function CreateMarketForm({ onCreated }: Props) {
 
     setLoading(true);
     try {
+      const seedCents = seedAmountDollars
+        ? Math.round(parseFloat(seedAmountDollars) * 100)
+        : 2000;
+
       await trpc.market.create.mutate({
         question: question.trim(),
         outcomeLabels: trimmedOutcomes,
@@ -79,11 +84,13 @@ export default function CreateMarketForm({ onCreated }: Props) {
         eventTag: eventTag || undefined,
         familySide: familySide || undefined,
         customTags: customTags.length ? customTags : undefined,
+        seedAmountCents: seedCents,
       });
       // Reset form
       setQuestion("");
       setOutcomes(["Yes", "No"]);
       setBFloor("");
+      setSeedAmountDollars("20");
       setOpenMode("now");
       setScheduledAt("");
       setEventTag("");
@@ -226,6 +233,23 @@ export default function CreateMarketForm({ onCreated }: Props) {
           onChange={(e) => setCustomTagsRaw(e.target.value)}
           placeholder="dance, emotional, food"
           className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+        />
+      </div>
+
+      {/* House seed amount */}
+      <div>
+        <label className="block text-sm font-medium text-charcoal mb-1">
+          House seed per outcome ($){" "}
+          <span className="text-warmGray font-normal">(default $20, set 0 to skip)</span>
+        </label>
+        <input
+          type="number"
+          min="0"
+          step="1"
+          value={seedAmountDollars}
+          onChange={(e) => setSeedAmountDollars(e.target.value)}
+          placeholder="20"
+          className="w-32 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
         />
       </div>
 

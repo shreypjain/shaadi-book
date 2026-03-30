@@ -17,12 +17,16 @@ import { Decimal } from "decimal.js";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "../db.js";
 import { allPrices, defaultB } from "./lmsr.js";
+import { HOUSE_PHONE, getOrCreateHouseUser } from "./houseSeeding.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const GENESIS_HASH = "0".repeat(64);
+
+/** Minimum number of unique non-house bettors required to resolve a market. */
+export const MIN_BETTORS = 5;
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -84,6 +88,8 @@ export interface MarketWithPrices {
   familySide: string | null;
   /** Freeform custom tags. */
   customTags: string[];
+  /** Number of unique non-house bettors who have placed at least one buy. */
+  bettorCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -153,7 +159,7 @@ interface RawMarket {
   resolvedAt: Date | null;
   winningOutcomeId: string | null;
   outcomes: RawOutcome[];
-  purchases: Array<{ cost: { toNumber(): number } | number }>;
+  purchases: Array<{ cost: { toNumber(): number } | number; userId: string; shares: { toNumber(): number } | number }>;
   eventTag: string | null;
   familySide: string | null;
   customTags: string[];
@@ -167,7 +173,7 @@ function toNum(v: { toNumber(): number } | number): number {
 // Internal: build output from raw Prisma market
 // ---------------------------------------------------------------------------
 
-function buildMarketWithPrices(market: RawMarket): MarketWithPrices {
+function buildMarketWithPrices(market: RawMarket, houseUserId?: string): MarketWithPrices {
   const numOutcomes = market.outcomes.length;
   const maxSharesPerOutcome = market.maxSharesPerOutcome ?? 100;
 
@@ -179,11 +185,21 @@ function buildMarketWithPrices(market: RawMarket): MarketWithPrices {
   const q = market.outcomes.map((o: RawOutcome) => toNum(o.sharesSold));
 
   const totalVolume = market.purchases.reduce(
-    (sum: number, p: { cost: { toNumber(): number } | number }) =>
+    (sum: number, p: { cost: { toNumber(): number } | number; userId: string; shares: { toNumber(): number } | number }) =>
       sum + toNum(p.cost),
     0
   );
   const prices = q.length >= 2 ? allPrices(q, b) : q.map(() => 0);
+
+  // Count unique non-house bettors (users with at least one positive purchase)
+  const bettorUserIds = new Set<string>();
+  for (const p of market.purchases) {
+    const shares = toNum(p.shares);
+    if (shares > 0 && p.userId !== houseUserId) {
+      bettorUserIds.add(p.userId);
+    }
+  }
+  const bettorCount = bettorUserIds.size;
 
   return {
     id: market.id,
@@ -221,6 +237,7 @@ function buildMarketWithPrices(market: RawMarket): MarketWithPrices {
     eventTag: market.eventTag ?? null,
     familySide: market.familySide ?? null,
     customTags: market.customTags ?? [],
+    bettorCount,
   };
 }
 
@@ -398,6 +415,25 @@ export async function resolveMarket(
       if (!winningOutcome) {
         throw new Error(
           `Outcome ${winningOutcomeId} does not belong to market ${marketId}`
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // MIN_BETTORS check — require 5+ unique non-house bettors before resolution
+      // -----------------------------------------------------------------------
+      const houseUser = await getOrCreateHouseUser();
+      const bettorCountResult = (await tx.$queryRaw`
+        SELECT COUNT(DISTINCT user_id)::int AS bettor_count
+        FROM purchases
+        WHERE market_id = ${marketId}
+          AND user_id   != ${houseUser.id}
+          AND shares    > 0
+      `) as Array<{ bettor_count: number }>;
+
+      const uniqueBettorCount = Number(bettorCountResult[0]?.bettor_count ?? 0);
+      if (uniqueBettorCount < MIN_BETTORS) {
+        throw new Error(
+          `Cannot resolve: market has only ${uniqueBettorCount} unique bettor${uniqueBettorCount === 1 ? "" : "s"} (minimum ${MIN_BETTORS} required). Consider voiding instead.`
         );
       }
 
@@ -741,27 +777,29 @@ export async function getMarketWithPrices(
 ): Promise<MarketWithPrices | null> {
   const db = prismaClient ?? defaultPrisma;
 
-  const market = await db.market.findUnique({
-    where: { id: marketId },
-    include: {
-      outcomes: {
-        orderBy: { position: "asc" },
-        select: {
-          id: true,
-          label: true,
-          position: true,
-          sharesSold: true,
-          maxShares: true,
-          isWinner: true,
+  const [market, houseUser] = await Promise.all([
+    db.market.findUnique({
+      where: { id: marketId },
+      include: {
+        outcomes: {
+          orderBy: { position: "asc" },
+          select: {
+            id: true,
+            label: true,
+            position: true,
+            sharesSold: true,
+            maxShares: true,
+            isWinner: true,
+          },
         },
+        purchases: { select: { cost: true, userId: true, shares: true } },
       },
-      purchases: { select: { cost: true } },
-    },
-    // Select market-level fields explicitly to include new schema fields
-  });
+    }),
+    getOrCreateHouseUser(),
+  ]);
   if (!market) return null;
 
-  return buildMarketWithPrices(market as unknown as RawMarket);
+  return buildMarketWithPrices(market as unknown as RawMarket, houseUser.id);
 }
 
 // ---------------------------------------------------------------------------
@@ -795,24 +833,29 @@ export async function listMarkets(
   if (normalised.eventTag) where["eventTag"] = normalised.eventTag;
   if (normalised.familySide) where["familySide"] = normalised.familySide;
 
-  const markets = await db.market.findMany({
-    where: Object.keys(where).length ? where : undefined,
-    include: {
-      outcomes: {
-        orderBy: { position: "asc" },
-        select: {
-          id: true,
-          label: true,
-          position: true,
-          sharesSold: true,
-          maxShares: true,
-          isWinner: true,
+  const [markets, houseUser] = await Promise.all([
+    db.market.findMany({
+      where: Object.keys(where).length ? where : undefined,
+      include: {
+        outcomes: {
+          orderBy: { position: "asc" },
+          select: {
+            id: true,
+            label: true,
+            position: true,
+            sharesSold: true,
+            maxShares: true,
+            isWinner: true,
+          },
         },
+        purchases: { select: { cost: true, userId: true, shares: true } },
       },
-      purchases: { select: { cost: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+      orderBy: { createdAt: "desc" },
+    }),
+    getOrCreateHouseUser(),
+  ]);
 
-  return (markets as unknown as RawMarket[]).map((m: RawMarket) => buildMarketWithPrices(m));
+  return (markets as unknown as RawMarket[]).map((m: RawMarket) =>
+    buildMarketWithPrices(m, houseUser.id)
+  );
 }

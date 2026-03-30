@@ -112,9 +112,16 @@ export function MarketCard({ market, livePrices, lastPurchaseAt }: MarketCardPro
         })}
       </div>
 
-      {/* Footer: volume + time — receded supporting info */}
+      {/* Footer: volume + bettors + time — receded supporting info */}
       <div className="flex items-center justify-between mt-1">
-        <span className="font-sans text-xs font-normal text-[#8B7355]/60">{formatVolume(market.totalVolume)} volume</span>
+        <div className="flex items-center gap-2">
+          <span className="font-sans text-xs font-normal text-[#8B7355]/60">{formatVolume(market.totalVolume)} volume</span>
+          {market.bettorCount > 0 && (
+            <span className="font-sans text-xs font-normal text-[#8B7355]/60">
+              · {market.bettorCount} {market.bettorCount === 1 ? "bettor" : "bettors"}
+            </span>
+          )}
+        </div>
         {openedAt && (
           <span className="font-sans text-xs font-normal text-[#8B7355]/60">Opened {timeSince(openedAt)}</span>
         )}
