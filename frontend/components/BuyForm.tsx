@@ -15,6 +15,7 @@ import { cn, formatDollars, formatShares, outcomeColor } from "@/lib/utils";
 import { computePreview } from "@/lib/lmsr";
 import { api } from "@/lib/api";
 import type { OutcomeWithPrice } from "@/lib/api-types";
+import { DepositButton } from "@/components/DepositButton";
 
 interface BuyFormProps {
   marketId: string;
@@ -23,6 +24,10 @@ interface BuyFormProps {
   /** Current total parimutuel pool in dollars (= sum of all purchase costs). */
   totalPool: number;
   remainingCapCents: number;
+  /** User's current wallet balance in cents. Used to show inline deposit prompt. */
+  balanceCents?: number;
+  /** Called after a successful deposit so the parent can refresh the balance. */
+  onDepositSuccess?: () => void;
   onSuccess?: (result: { outcomeLabel: string; shares: number; costCents: number }) => void;
 }
 
@@ -39,6 +44,8 @@ export function BuyForm({
   currentB,
   totalPool,
   remainingCapCents,
+  balanceCents,
+  onDepositSuccess,
   onSuccess,
 }: BuyFormProps) {
   const [step, setStep] = useState<FormStep>("select");
@@ -249,8 +256,6 @@ export function BuyForm({
               </div>
             </div>
 
-            {/* Price impact display removed — cleaner UX */}
-
             {/* Bottom: gold payout banner — capped parimutuel estimate */}
             {(() => {
               // Capped parimutuel: payoutPerShare = min($1.00, newPool / newSharesOnOutcome)
@@ -305,14 +310,35 @@ export function BuyForm({
           </div>
         )}
 
+        {/* Inline deposit prompt — shown when wallet balance is insufficient */}
+        {balanceCents !== undefined && dollarAmountCents > balanceCents && dollarAmount > 0 && (
+          <div className="rounded-xl border border-[#c8a45c]/30 bg-[#faf7f0] px-4 py-3 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[#8a6d30]">Insufficient balance</p>
+              <p className="text-xs text-[#b08940] mt-0.5">
+                You need{" "}
+                <span className="font-bold">
+                  {formatDollars((dollarAmountCents - balanceCents) / 100)}
+                </span>{" "}
+                more to place this bet
+              </p>
+            </div>
+            <DepositButton onSuccess={onDepositSuccess} />
+          </div>
+        )}
+
         {/* 4. Confirm button */}
         <button
           onClick={handleConfirm}
-          disabled={!!amountError || dollarAmount <= 0}
+          disabled={
+            !!amountError ||
+            dollarAmount <= 0 ||
+            (balanceCents !== undefined && dollarAmountCents > balanceCents)
+          }
           className={cn(
             "w-full py-4 rounded-xl font-semibold text-sm transition-all duration-200",
             "active:scale-[0.98]",
-            amountError || dollarAmount <= 0
+            amountError || dollarAmount <= 0 || (balanceCents !== undefined && dollarAmountCents > balanceCents)
               ? "bg-[#f0ece7] text-warmGray cursor-not-allowed"
               : [
                   "bg-[#1e3a5f] text-white",
