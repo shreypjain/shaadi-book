@@ -29,6 +29,8 @@ import { buyShares } from "./purchaseEngine.js";
 // Constants
 // ---------------------------------------------------------------------------
 
+/** Canonical phone for the internal house liquidity account. Used to identify
+ *  the house user across all queries (no extra DB column required). */
 export const HOUSE_PHONE = "+0000000000";
 export const HOUSE_NAME = "House";
 export const DEFAULT_SEED_CENTS = 2000; // $20 per outcome
@@ -39,26 +41,22 @@ export const DEFAULT_SEED_CENTS = 2000; // $20 per outcome
 
 /**
  * Find or create the internal house liquidity user.
+ * House user: phone +0000000000, name "House", role ADMIN.
  * Returns the house user's UUID.
  */
 export async function getOrCreateHouseUser(): Promise<string> {
-  const existing = await prisma.user.findUnique({
+  const user = await prisma.user.upsert({
     where: { phone: HOUSE_PHONE },
-    select: { id: true },
-  });
-  if (existing) return existing.id;
-
-  const created = await prisma.user.create({
-    data: {
+    update: {},
+    create: {
       name: HOUSE_NAME,
       phone: HOUSE_PHONE,
       country: "US",
       role: "ADMIN",
-      isHouse: true,
     },
     select: { id: true },
   });
-  return created.id;
+  return user.id;
 }
 
 // ---------------------------------------------------------------------------

@@ -17,6 +17,7 @@ import { Decimal } from "decimal.js";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "../db.js";
 import { allPrices, adaptiveB } from "./lmsr.js";
+import { HOUSE_PHONE } from "./houseSeeding.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -139,7 +140,7 @@ interface RawOutcome {
 interface RawPurchase {
   cost: { toNumber(): number } | number;
   userId: string;
-  user?: { isHouse: boolean } | null;
+  user?: { phone: string } | null;
 }
 
 interface RawMarket {
@@ -177,10 +178,11 @@ function buildMarketWithPrices(market: RawMarket): MarketWithPrices {
     0
   );
 
-  // Unique bettor count excludes the house liquidity account.
+  // Unique bettor count excludes the house liquidity account (identified by
+  // phone +0000000000) so the displayed count reflects real user engagement.
   const uniqueBettorCount = new Set(
     market.purchases
-      .filter((p: RawPurchase) => !p.user?.isHouse)
+      .filter((p: RawPurchase) => p.user?.phone !== HOUSE_PHONE)
       .map((p: RawPurchase) => p.userId)
   ).size;
 
@@ -763,7 +765,7 @@ export async function getMarketWithPrices(
         select: {
           cost: true,
           userId: true,
-          user: { select: { isHouse: true } },
+          user: { select: { phone: true } },
         },
       },
     },
