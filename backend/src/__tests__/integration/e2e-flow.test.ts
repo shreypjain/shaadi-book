@@ -28,6 +28,9 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+// Skip all DB-dependent tests when no DATABASE_URL is configured (e.g. in CI)
+const hasDb = !!process.env["DATABASE_URL"];
 import { PrismaClient } from "@prisma/client";
 import { generateToken, verifyToken } from "../../services/auth.js";
 import { appendTransaction, runReconciliation } from "../../services/ledger.js";
@@ -67,6 +70,7 @@ let noOutcomeId: string;
 // ---------------------------------------------------------------------------
 
 beforeAll(async () => {
+  if (!hasDb) return;
   // JWT_SECRET required by generateToken / verifyToken
   process.env["JWT_SECRET"] =
     "e2e-test-secret-64-chars-long-enough-for-hs256-signing-algorithm";
@@ -128,6 +132,7 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
+  if (!hasDb) return;
   await prisma.$disconnect();
   delete process.env["JWT_SECRET"];
 });
@@ -136,7 +141,7 @@ afterAll(async () => {
 // Step 1: Auth — JWT issued without Twilio
 // ---------------------------------------------------------------------------
 
-describe("Step 1: Auth — JWT issued and verified for each user", () => {
+describe.skipIf(!hasDb)("Step 1: Auth — JWT issued and verified for each user", () => {
   it("admin token decodes to admin role and correct userId", () => {
     const payload = verifyToken(adminToken);
     expect(payload.userId).toBe(adminId);
@@ -160,7 +165,7 @@ describe("Step 1: Auth — JWT issued and verified for each user", () => {
 // Step 2: Deposit — balance = $50 per user
 // ---------------------------------------------------------------------------
 
-describe("Step 2: Deposit → balances reflect $50 credit", () => {
+describe.skipIf(!hasDb)("Step 2: Deposit → balances reflect $50 credit", () => {
   it("guest1 balance is exactly 5000 cents ($50) after DEPOSIT", async () => {
     const cents = await getUserBalance(guest1Id);
     expect(cents).toBe(5000);
@@ -181,7 +186,7 @@ describe("Step 2: Deposit → balances reflect $50 credit", () => {
 // Step 3: Admin creates binary market
 // ---------------------------------------------------------------------------
 
-describe("Step 3: Admin creates binary market → ACTIVE at 50/50", () => {
+describe.skipIf(!hasDb)("Step 3: Admin creates binary market → ACTIVE at 50/50", () => {
   it("createMarket returns a UUID", async () => {
     marketId = await createMarket(
       adminId,
@@ -231,7 +236,7 @@ describe("Step 3: Admin creates binary market → ACTIVE at 50/50", () => {
 // Step 4: Guest 1 buys $20 on Yes
 // ---------------------------------------------------------------------------
 
-describe("Step 4: Guest 1 buys $20 on Yes", () => {
+describe.skipIf(!hasDb)("Step 4: Guest 1 buys $20 on Yes", () => {
   let sharesReceived: number;
 
   it("returns positive shares, priceAfter > priceBefore", async () => {
@@ -293,7 +298,7 @@ describe("Step 4: Guest 1 buys $20 on Yes", () => {
 // Step 5: Guest 2 buys $10 on No
 // ---------------------------------------------------------------------------
 
-describe("Step 5: Guest 2 buys $10 on No", () => {
+describe.skipIf(!hasDb)("Step 5: Guest 2 buys $10 on No", () => {
   it("returns positive shares and adjusts prices toward No", async () => {
     const marketBefore = await getMarketWithPrices(marketId);
     const noBefore = marketBefore!.outcomes.find((o) => o.id === noOutcomeId)!;
@@ -321,7 +326,7 @@ describe("Step 5: Guest 2 buys $10 on No", () => {
 // Step 6: Admin resolves market — Yes wins
 // ---------------------------------------------------------------------------
 
-describe("Step 6: Admin resolves market → Yes wins", () => {
+describe.skipIf(!hasDb)("Step 6: Admin resolves market → Yes wins", () => {
   let guest1SharesBeforeResolution: number;
 
   it("resolveMarket succeeds without throwing", async () => {
@@ -415,7 +420,7 @@ describe("Step 6: Admin resolves market → Yes wins", () => {
 // Step 7: Reconciliation invariant
 // ---------------------------------------------------------------------------
 
-describe("Step 7: Reconciliation invariant holds across all operations", () => {
+describe.skipIf(!hasDb)("Step 7: Reconciliation invariant holds across all operations", () => {
   it("housePool ≥ 0 — system is solvent (ledger.ts runReconciliation)", async () => {
     const result = await runReconciliation();
     expect(result.isBalanced).toBe(true);
@@ -447,7 +452,7 @@ describe("Step 7: Reconciliation invariant holds across all operations", () => {
 // Step 8: Hash chain linkage
 // ---------------------------------------------------------------------------
 
-describe("Step 8: Hash chain linkage integrity", () => {
+describe.skipIf(!hasDb)("Step 8: Hash chain linkage integrity", () => {
   it("first transaction has genesis prevHash (all zeros)", async () => {
     const first = await prisma.transaction.findFirst({
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -490,7 +495,7 @@ describe("Step 8: Hash chain linkage integrity", () => {
 // Step 9: Withdrawal request
 // ---------------------------------------------------------------------------
 
-describe("Step 9: Withdrawal request → admin PENDING queue", () => {
+describe.skipIf(!hasDb)("Step 9: Withdrawal request → admin PENDING queue", () => {
   let withdrawalRequestId: string;
 
   it("requestWithdrawal creates PENDING request for guest1", async () => {
