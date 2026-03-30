@@ -260,7 +260,7 @@ export function PositionCard({
                         />
                       </svg>
                       <p className="text-xs text-amber-700 leading-snug">
-                        The pool&apos;s running thin — rally the group chat for bigger payouts!
+                        The pool&apos;s running thin — rally the group chat for bigger payouts.
                       </p>
                     </div>
                   )}

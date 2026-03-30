@@ -155,7 +155,8 @@ export const adminRouter = router({
         const bFloor = market.bFloorOverride
           ? Number(market.bFloorOverride)
           : 20;
-        const b = bFloor > 0 ? bFloor : defaultB(market.outcomes?.length ?? 2);
+        const maxShares = Number((market as Record<string, unknown>).maxSharesPerOutcome ?? 1000);
+        const b = bFloor > 0 ? bFloor : defaultB(market.outcomes?.length ?? 2, maxShares);
 
         return {
           marketId: market.id,
