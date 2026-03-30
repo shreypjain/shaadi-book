@@ -1,5 +1,5 @@
 /**
- * Market Service Integration Tests — Task 2.2 (Parimutuel)
+ * Market Service Integration Tests — Task 2.2 (Parimutuel, Fixed-Supply)
  *
  * Tests the full market lifecycle against a live PostgreSQL test database.
  * Run with: npm test (from /backend directory)
@@ -13,7 +13,7 @@
  *   5. resolveMarket — edge case: no bets on winning outcome → refund all purchases
  *   6. voidMarket → all purchases refunded, reconciliation holds
  *   7. pauseMarket → status PAUSED
- *   8. getMarketWithPrices — LMSR prices, totalPool, estimatedPayoutPerShare
+ *   8. getMarketWithPrices — LMSR prices, totalPool, estimatedPayoutPerShare, sharesRemaining
  *   + guard tests: double-resolve, void-resolved, pause non-active
  */
 
@@ -217,6 +217,23 @@ describe("createMarket — immediate", () => {
     }
   });
 
+  it("outcomes have maxShares=100 and sharesRemaining=100 (no trades yet)", async () => {
+    const market = await getMarketWithPrices(marketId, prisma);
+    expect(market).not.toBeNull();
+    expect(market!.maxSharesPerOutcome).toBe(100);
+    for (const o of market!.outcomes) {
+      expect(o.maxShares).toBe(100);
+      expect(o.sharesRemaining).toBe(100);
+    }
+  });
+
+  it("uses fixed defaultB (not adaptive) — currentB is deterministic for binary market", async () => {
+    // defaultB(2, 100) = 100 / ln(19^1) = 100 / ln(19) ≈ 33.82
+    const market = await getMarketWithPrices(marketId, prisma);
+    expect(market).not.toBeNull();
+    expect(market!.currentB).toBeCloseTo(100 / Math.log(19), 4);
+  });
+
   it("logs to AdminAuditLog", async () => {
     const audit = await prisma.adminAuditLog.findFirst({
       where: { targetId: marketId, action: "CREATE_MARKET" },
@@ -265,6 +282,23 @@ describe("createMarket — scheduled", () => {
         { prismaClient: prisma }
       )
     ).rejects.toThrow("2–5 outcomes");
+  });
+
+  it("accepts custom maxSharesPerOutcome and bParameter", async () => {
+    const customMarketId = await createMarket(
+      adminId,
+      "Custom supply market",
+      ["Yes", "No"],
+      { prismaClient: prisma, maxSharesPerOutcome: 50, bParameter: 15 }
+    );
+    const market = await getMarketWithPrices(customMarketId, prisma);
+    expect(market).not.toBeNull();
+    expect(market!.maxSharesPerOutcome).toBe(50);
+    expect(market!.currentB).toBeCloseTo(15, 4);
+    for (const o of market!.outcomes) {
+      expect(o.maxShares).toBe(50);
+      expect(o.sharesRemaining).toBe(50);
+    }
   });
 });
 
@@ -869,5 +903,70 @@ describe("getMarketWithPrices", () => {
     // No has 0 shares → estimatedPayoutPerShare = 0
     const noOutcome = market!.outcomes.find((o) => o.id !== yesId);
     expect(noOutcome!.estimatedPayoutPerShare).toBe(0);
+  });
+
+  it("sharesRemaining decreases as sharesSold increases", async () => {
+    const marketId = await createMarket(
+      adminId,
+      "Shares remaining test",
+      ["Yes", "No"],
+      { prismaClient: prisma }
+    );
+
+    const outcomes = await prisma.outcome.findMany({
+      where: { marketId },
+      orderBy: { position: "asc" },
+    });
+    const yesId = outcomes[0]!.id;
+
+    // Seed 10 shares on Yes
+    await seedDepositAndPurchase({
+      userId: guestAId,
+      marketId,
+      outcomeId: yesId,
+      shares: 10,
+      cost: 5,
+    });
+
+    const market = await getMarketWithPrices(marketId, prisma);
+    expect(market).not.toBeNull();
+
+    const yesOutcome = market!.outcomes.find((o) => o.id === yesId);
+    expect(yesOutcome).not.toBeUndefined();
+    expect(yesOutcome!.sharesSold).toBe(10);
+    expect(yesOutcome!.maxShares).toBe(100);
+    expect(yesOutcome!.sharesRemaining).toBe(90);
+
+    // No still has all 100 shares available
+    const noOutcome = market!.outcomes.find((o) => o.id !== yesId);
+    expect(noOutcome!.sharesRemaining).toBe(100);
+  });
+
+  it("currentB uses fixed defaultB for binary market (not adaptive)", async () => {
+    const marketId = await createMarket(
+      adminId,
+      "Fixed b test — binary",
+      ["Yes", "No"],
+      { prismaClient: prisma }
+    );
+
+    const market = await getMarketWithPrices(marketId, prisma);
+    expect(market).not.toBeNull();
+    // defaultB(2, 100) = 100 / ln(19) ≈ 33.82; must NOT change over time
+    const expectedB = 100 / Math.log(19);
+    expect(market!.currentB).toBeCloseTo(expectedB, 4);
+  });
+
+  it("currentB uses explicit bParameter when provided", async () => {
+    const marketId = await createMarket(
+      adminId,
+      "Fixed b test — custom bParameter",
+      ["Yes", "No"],
+      { prismaClient: prisma, bParameter: 25 }
+    );
+
+    const market = await getMarketWithPrices(marketId, prisma);
+    expect(market).not.toBeNull();
+    expect(market!.currentB).toBeCloseTo(25, 4);
   });
 });
