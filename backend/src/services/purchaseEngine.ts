@@ -28,6 +28,16 @@ import { computeHash } from "./hashChain.js";
 import { recordPurchaseSnapshots } from "./priceSnapshot.js";
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** 10% fee on sell revenue. Stays in house_amm (no separate transaction). */
+export const SELL_FEE_RATE = 0.10;
+
+/** 30-minute cooldown: users cannot sell shares within 30 min of buying them. */
+export const SELL_COOLDOWN_MS = 30 * 60 * 1000;
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -61,7 +71,8 @@ export class PurchaseError extends Error {
       | "CAP_EXCEEDED"
       | "RECONCILIATION_FAILED"
       | "NO_POSITION"
-      | "INSUFFICIENT_SHARES",
+      | "INSUFFICIENT_SHARES"
+      | "SELL_COOLDOWN",
     message: string
   ) {
     super(message);
@@ -75,8 +86,12 @@ export interface SellResult {
   transactionId: string;
   /** Number of shares sold. */
   shares: number;
-  /** Revenue received — integer cents. */
+  /** Net revenue received after sell fee — integer cents. */
   revenueCents: number;
+  /** Gross revenue before fee — integer cents. */
+  grossRevenueCents: number;
+  /** Fee deducted — integer cents. */
+  feeCents: number;
   /** Spot price of the sold outcome immediately BEFORE the trade — cents. */
   priceBeforeCents: number;
   /** Spot price of the sold outcome immediately AFTER the trade — cents. */
@@ -670,6 +685,29 @@ export async function sellShares(
       }
 
       // -----------------------------------------------------------------------
+      // 5b. Sell cooldown: cannot sell within 30 min of last buy
+      // -----------------------------------------------------------------------
+      const lastBuyResult = (await tx.$queryRaw`
+        SELECT MAX(created_at) AS last_buy_at
+        FROM purchases
+        WHERE user_id = ${userId}
+          AND outcome_id = ${outcomeId}
+          AND shares > 0
+      `) as Array<{ last_buy_at: Date | null }>;
+
+      const lastBuyAt = lastBuyResult[0]?.last_buy_at;
+      if (lastBuyAt) {
+        const elapsed = Date.now() - new Date(lastBuyAt).getTime();
+        if (elapsed < SELL_COOLDOWN_MS) {
+          const remainingMin = Math.ceil((SELL_COOLDOWN_MS - elapsed) / 60_000);
+          throw new PurchaseError(
+            "SELL_COOLDOWN",
+            `Cannot sell yet — ${remainingMin} minute${remainingMin === 1 ? "" : "s"} remaining. Shares must be held for 30 minutes after purchase.`
+          );
+        }
+      }
+
+      // -----------------------------------------------------------------------
       // 6. Compute b — fixed per market shape, admin-overridable via bFloorOverride
       // -----------------------------------------------------------------------
       const bOverride =
@@ -691,14 +729,18 @@ export async function sellShares(
       const priceBeforeFraction = price(q, b, outcomeIndex);
 
       // -----------------------------------------------------------------------
-      // 9. Compute revenue: C(q_before) − C(q_after)
+      // 9. Compute revenue: C(q_before) − C(q_after), minus 10% sell fee
+      //    Fee stays in house_amm (no separate transaction — we simply credit
+      //    the user less than the gross LMSR revenue).
       // -----------------------------------------------------------------------
-      const revenueDollars = computeDollarAmountForShares(
+      const grossRevenueDollars = computeDollarAmountForShares(
         q,
         b,
         outcomeIndex,
         sharesToSell
       );
+      const feeDollars = grossRevenueDollars * SELL_FEE_RATE;
+      const revenueDollars = Math.round((grossRevenueDollars - feeDollars) * 10_000) / 10_000;
       const revenueCents = Math.round(revenueDollars * 100);
 
       // -----------------------------------------------------------------------
@@ -806,6 +848,8 @@ export async function sellShares(
         transactionId: txRecord.id,
         shares: sharesToSell,
         revenueCents,
+        grossRevenueCents: Math.round(grossRevenueDollars * 100),
+        feeCents: Math.round(feeDollars * 100),
         priceBeforeCents: Math.round(priceBeforeFraction * 100),
         priceAfterCents: Math.round(priceAfterFraction * 100),
         allNewPrices: newPrices,
