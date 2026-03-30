@@ -28,7 +28,7 @@ export function PriceTag({
   return (
     <span
       className={`tabular-nums ${
-        highlight ? "text-brand-700" : "text-gray-800"
+        highlight ? "text-brand-700" : "text-charcoal"
       } ${sizeClasses} ${className}`}
     >
       {formatPriceCents(priceCents)}

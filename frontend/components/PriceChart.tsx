@@ -219,7 +219,7 @@ export function PriceChart({ data, outcomes, hours, onHoursChange }: PriceChartP
             className={`px-3 py-1 text-xs font-semibold rounded-full transition-colors ${
               hours === h
                 ? "bg-[#1e3a5f] text-white"
-                : "bg-white border border-[#e8e4df] text-[#4a4a5a] hover:bg-[#f0ece7]"
+                : "bg-white border border-[rgba(184,134,11,0.12)] text-warmGray hover:bg-[#f0ece7]"
             }`}
           >
             {h}h
@@ -230,7 +230,7 @@ export function PriceChart({ data, outcomes, hours, onHoursChange }: PriceChartP
       {/* ── Chart ── */}
       {!hasData ? (
         <div
-          className="flex items-center justify-center text-xs text-[#8a8a9a]"
+          className="flex items-center justify-center text-xs text-warmGray"
           style={{ height: VB_H }}
         >
           No price data yet
@@ -356,18 +356,18 @@ export function PriceChart({ data, outcomes, hours, onHoursChange }: PriceChartP
           {/* ── Hover tooltip (outside SVG for crisp text rendering) ── */}
           {hover && (
             <div
-              className="absolute top-0 pointer-events-none bg-white border border-[#e8e4df] rounded-lg shadow-lg px-2.5 py-2 text-xs z-10 min-w-[120px]"
+              className="absolute top-0 pointer-events-none bg-white border border-[rgba(184,134,11,0.12)] rounded-lg shadow-lg px-2.5 py-2 text-xs z-10 min-w-[120px]"
               style={{ left: hover.tooltipLeft }}
             >
-              <p className="text-[#8a8a9a] font-medium mb-1.5">{hover.time}</p>
+              <p className="text-warmGray font-medium mb-1.5">{hover.time}</p>
               {hover.prices.map((p) => (
                 <div key={p.label} className="flex items-center gap-1.5 py-0.5">
                   <span
                     className="inline-block w-2 h-2 rounded-full flex-shrink-0"
                     style={{ backgroundColor: p.color }}
                   />
-                  <span className="text-[#4a4a5a] flex-1 truncate">{p.label}</span>
-                  <span className="text-[#1a1a2e] font-bold ml-1 tabular-nums">
+                  <span className="text-warmGray flex-1 truncate">{p.label}</span>
+                  <span className="text-charcoal font-bold ml-1 tabular-nums">
                     {p.priceCents}¢
                   </span>
                 </div>
@@ -395,7 +395,7 @@ export function PriceChart({ data, outcomes, hours, onHoursChange }: PriceChartP
                     strokeLinecap="round"
                   />
                 </svg>
-                <span className="text-[10px] text-[#4a4a5a]">{o.label}</span>
+                <span className="text-[10px] text-warmGray">{o.label}</span>
               </div>
             );
           })}

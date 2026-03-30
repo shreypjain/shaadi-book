@@ -71,11 +71,11 @@ export function WithdrawalForm({
     <form onSubmit={handleSubmit} className="space-y-4">
       {/* Amount */}
       <div>
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+        <label className="block text-xs font-semibold text-warmGray uppercase tracking-wide mb-1.5">
           Amount
         </label>
         <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-warmGray font-medium">
             $
           </span>
           <input
@@ -87,11 +87,11 @@ export function WithdrawalForm({
             value={amountDollars}
             onChange={(e) => setAmountDollars(e.target.value)}
             required
-            className="w-full pl-7 pr-4 py-3 border-2 border-gray-200 rounded-xl text-sm
+            className="w-full pl-7 pr-4 py-3 border-2 border-[rgba(184,134,11,0.12)] rounded-xl text-sm
                        focus:outline-none focus:border-brand-400 transition"
           />
         </div>
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs text-warmGray mt-1">
           Available: {formatDollars(balanceCents)}
         </p>
         {amountCents > balanceCents && amountCents > 0 && (
@@ -103,11 +103,11 @@ export function WithdrawalForm({
 
       {/* Venmo */}
       <div>
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+        <label className="block text-xs font-semibold text-warmGray uppercase tracking-wide mb-1.5">
           Venmo Handle
         </label>
         <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-warmGray">
             @
           </span>
           <input
@@ -115,17 +115,17 @@ export function WithdrawalForm({
             placeholder="your-venmo"
             value={venmoHandle}
             onChange={(e) => setVenmoHandle(e.target.value)}
-            className="w-full pl-7 pr-4 py-3 border-2 border-gray-200 rounded-xl text-sm
+            className="w-full pl-7 pr-4 py-3 border-2 border-[rgba(184,134,11,0.12)] rounded-xl text-sm
                        focus:outline-none focus:border-brand-400 transition"
           />
         </div>
       </div>
 
-      <p className="text-center text-xs text-gray-400 font-medium">— or —</p>
+      <p className="text-center text-xs text-warmGray font-medium">— or —</p>
 
       {/* Zelle */}
       <div>
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+        <label className="block text-xs font-semibold text-warmGray uppercase tracking-wide mb-1.5">
           Zelle Email or Phone
         </label>
         <input
@@ -133,7 +133,7 @@ export function WithdrawalForm({
           placeholder="email@example.com or +1 555 000 0000"
           value={zelleContact}
           onChange={(e) => setZelleContact(e.target.value)}
-          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-sm
+          className="w-full px-4 py-3 border-2 border-[rgba(184,134,11,0.12)] rounded-xl text-sm
                      focus:outline-none focus:border-brand-400 transition"
         />
       </div>
@@ -149,8 +149,8 @@ export function WithdrawalForm({
           <button
             type="button"
             onClick={onCancel}
-            className="flex-1 py-3 rounded-xl border-2 border-gray-200 text-sm
-                       font-semibold text-gray-600 hover:border-gray-300 transition"
+            className="flex-1 py-3 rounded-xl border-2 border-[rgba(184,134,11,0.12)] text-sm
+                       font-semibold text-warmGray hover:border-gray-300 transition"
           >
             Cancel
           </button>
@@ -165,7 +165,7 @@ export function WithdrawalForm({
         </button>
       </div>
 
-      <p className="text-xs text-gray-400 text-center">
+      <p className="text-xs text-warmGray text-center">
         All payouts are processed manually post-event by Shrey.
       </p>
     </form>

@@ -75,16 +75,16 @@ export default function WithdrawalRow({ withdrawal, onChanged }: Props) {
       : "—";
 
   return (
-    <tr className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+    <tr className="border-b border-[rgba(184,134,11,0.12)] last:border-0 hover:bg-cream-100">
       <td className="px-4 py-3 text-sm">
-        <p className="font-medium text-gray-800">{withdrawal.userName}</p>
-        <p className="text-xs text-gray-400">{withdrawal.userPhone}</p>
+        <p className="font-medium text-charcoal">{withdrawal.userName}</p>
+        <p className="text-xs text-warmGray">{withdrawal.userPhone}</p>
       </td>
-      <td className="px-4 py-3 text-sm font-semibold text-gray-800">
+      <td className="px-4 py-3 text-sm font-semibold text-charcoal">
         {formatUSD(withdrawal.amountCents)}
       </td>
-      <td className="px-4 py-3 text-xs text-gray-600">{payoutInfo}</td>
-      <td className="px-4 py-3 text-xs text-gray-500">
+      <td className="px-4 py-3 text-xs text-warmGray">{payoutInfo}</td>
+      <td className="px-4 py-3 text-xs text-warmGray">
         {new Date(withdrawal.createdAt).toLocaleString()}
       </td>
       <td className="px-4 py-3">
@@ -112,7 +112,7 @@ export default function WithdrawalRow({ withdrawal, onChanged }: Props) {
                 </button>
                 <button
                   onClick={() => setConfirming(null)}
-                  className="text-xs text-gray-500 min-h-0 min-w-0 h-auto"
+                  className="text-xs text-warmGray min-h-0 min-w-0 h-auto"
                 >
                   Cancel
                 </button>
@@ -128,7 +128,7 @@ export default function WithdrawalRow({ withdrawal, onChanged }: Props) {
                 </button>
                 <button
                   onClick={() => setConfirming(null)}
-                  className="text-xs text-gray-500 min-h-0 min-w-0 h-auto"
+                  className="text-xs text-warmGray min-h-0 min-w-0 h-auto"
                 >
                   Cancel
                 </button>
@@ -156,7 +156,7 @@ export default function WithdrawalRow({ withdrawal, onChanged }: Props) {
           <>
             {confirming === "complete" ? (
               <div className="flex items-center gap-1.5">
-                <span className="text-xs text-gray-600">
+                <span className="text-xs text-warmGray">
                   Confirm payment sent?
                 </span>
                 <button
@@ -168,7 +168,7 @@ export default function WithdrawalRow({ withdrawal, onChanged }: Props) {
                 </button>
                 <button
                   onClick={() => setConfirming(null)}
-                  className="text-xs text-gray-500 min-h-0 min-w-0 h-auto"
+                  className="text-xs text-warmGray min-h-0 min-w-0 h-auto"
                 >
                   Cancel
                 </button>
@@ -185,7 +185,7 @@ export default function WithdrawalRow({ withdrawal, onChanged }: Props) {
         )}
 
         {(withdrawal.status === "completed" || withdrawal.status === "rejected") && (
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-warmGray">
             {withdrawal.processedAt
               ? new Date(withdrawal.processedAt).toLocaleString()
               : "—"}

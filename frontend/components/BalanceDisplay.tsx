@@ -26,14 +26,14 @@ export function BalanceDisplay({
         </div>
       ) : (
         <>
-          <p className="text-xs font-medium text-[#8a8a9a] uppercase tracking-widest mb-1">
+          <p className="text-xs font-medium text-warmGray uppercase tracking-widest mb-1">
             Available Balance
           </p>
           <p className="text-5xl font-bold text-[#1e3a5f] tabular-nums">
             {formatDollars(balanceCents)}
           </p>
           {country === "IN" && (
-            <p className="text-sm text-[#8a8a9a] mt-1">
+            <p className="text-sm text-warmGray mt-1">
               {formatRupees(balanceCents)}{" "}
               <span className="text-[#c8c8d0]">· ₹93 ≈ $1</span>
             </p>
