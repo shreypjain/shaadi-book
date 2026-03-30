@@ -102,6 +102,16 @@ export default function MarketDetailPage() {
   const [market, setMarket] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [balanceCents, setBalanceCents] = useState<number | undefined>(undefined);
+
+  const refetchBalance = useCallback(async () => {
+    try {
+      const { balanceCents: cents } = await api.wallet.balance();
+      setBalanceCents(cents);
+    } catch {
+      // Non-fatal — balance display is best-effort
+    }
+  }, []);
 
   const refetch = useCallback(async () => {
     if (!marketId) return;
@@ -118,7 +128,8 @@ export default function MarketDetailPage() {
 
   useEffect(() => {
     void refetch();
-  }, [refetch]);
+    void refetchBalance();
+  }, [refetch, refetchBalance]);
 
   useEffect(() => {
     if (!market) return;
@@ -212,7 +223,8 @@ export default function MarketDetailPage() {
 
   const handleBuySuccess = useCallback(() => {
     void refetch();
-  }, [refetch]);
+    void refetchBalance();
+  }, [refetch, refetchBalance]);
 
   // -------------------------------------------------------------------------
   // Loading state
@@ -440,6 +452,8 @@ export default function MarketDetailPage() {
               currentB={market.currentB}
               totalPool={market.totalPool ?? market.totalVolume ?? 0}
               remainingCapCents={20000}
+              balanceCents={balanceCents}
+              onDepositSuccess={refetchBalance}
               onSuccess={handleBuySuccess}
             />
           </div>

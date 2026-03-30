@@ -285,7 +285,7 @@ export async function buyShares(
         openedAt: Date | null;
         bFloorOverride: unknown | null;
         bParameter: unknown | null;
-        maxSharesPerOutcome: number | null;
+        maxSharesPerOutcome: number;
       } | null;
 
       if (!market) {
@@ -399,16 +399,25 @@ export async function buyShares(
       }
 
       // -----------------------------------------------------------------------
-      // 7. Compute b — fixed per market shape, admin-overridable via bFloorOverride
-      //    With fixed 100-share supply, b is constant for the lifetime of the market.
-      //    defaultB(n) targets p≈0.95 when the leading outcome holds 80% of shares.
+      // 7. Compute b — use explicit bParameter if set, then bFloorOverride,
+      //    then defaultB(n, maxSharesPerOutcome).
+      //    maxSharesPerOutcome defaults to 1000 (raised from 100).
       // -----------------------------------------------------------------------
+      const maxSharesPerOutcome = market.maxSharesPerOutcome ?? 1000;
+      const bParam =
+        market.bParameter !== null && market.bParameter !== undefined
+          ? toNumber(market.bParameter)
+          : 0;
       const bOverride =
         market.bFloorOverride !== null && market.bFloorOverride !== undefined
           ? toNumber(market.bFloorOverride)
           : 0;
-      const maxSharesPerOutcome = Number(lockedOutcomes[0]?.max_shares ?? 1000);
-      const b = bOverride > 0 ? bOverride : defaultB(lockedOutcomes.length, maxSharesPerOutcome);
+      const b =
+        bParam > 0
+          ? bParam
+          : bOverride > 0
+          ? bOverride
+          : defaultB(lockedOutcomes.length, maxSharesPerOutcome);
 
       // -----------------------------------------------------------------------
       // 8. Read state vector q[] from locked outcome rows
@@ -637,7 +646,7 @@ export async function sellShares(
         openedAt: Date | null;
         bFloorOverride: unknown | null;
         bParameter: unknown | null;
-        maxSharesPerOutcome: number | null;
+        maxSharesPerOutcome: number;
       } | null;
 
       if (!market) {
@@ -739,14 +748,24 @@ export async function sellShares(
       }
 
       // -----------------------------------------------------------------------
-      // 6. Compute b — fixed per market shape, admin-overridable via bFloorOverride
+      // 6. Compute b — use explicit bParameter if set, then bFloorOverride,
+      //    then defaultB(n, maxSharesPerOutcome).
       // -----------------------------------------------------------------------
+      const maxSharesPerOutcome = market.maxSharesPerOutcome ?? 1000;
+      const bParam =
+        market.bParameter !== null && market.bParameter !== undefined
+          ? toNumber(market.bParameter)
+          : 0;
       const bOverride =
         market.bFloorOverride !== null && market.bFloorOverride !== undefined
           ? toNumber(market.bFloorOverride)
           : 0;
-      const maxSharesPerOutcome = Number(lockedOutcomes[0]?.max_shares ?? 1000);
-      const b = bOverride > 0 ? bOverride : defaultB(lockedOutcomes.length, maxSharesPerOutcome);
+      const b =
+        bParam > 0
+          ? bParam
+          : bOverride > 0
+          ? bOverride
+          : defaultB(lockedOutcomes.length, maxSharesPerOutcome);
 
       // -----------------------------------------------------------------------
       // 7. Read state vector q[] from locked outcome rows
