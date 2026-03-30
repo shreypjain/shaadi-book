@@ -15,12 +15,13 @@
  * Accounting invariant (always holds after seeding):
  *   DEPOSIT minted = seedPerOutcome * numOutcomes
  *   PURCHASE debits = seedPerOutcome * numOutcomes
- *   house user balance after seeding = 0 ✓
+ *   house user balance after seeding ≈ 0 (small residual due to LMSR slippage)
  *   house_amm balance += seedPerOutcome * numOutcomes ✓
  *   SUM(user balances) + house_amm + withdrawals = deposits ✓
  */
 
 import { Decimal } from "decimal.js";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { computeHash, getLastHash } from "./hashChain.js";
 import { buyShares } from "./purchaseEngine.js";
@@ -87,29 +88,38 @@ export async function seedMarket(
   // Mint credits for the house via a direct DEPOSIT ledger entry.
   // debitAccount = "house_seed" — a synthetic external source (not Stripe).
   // creditAccount = "user:{houseId}" — the house's ledger balance.
+  //
+  // getLastHash() and transaction.create() run inside a single Serializable
+  // transaction to prevent hash chain race conditions: two concurrent seedMarket
+  // calls reading the same prevHash would produce duplicate chain links.
   // -------------------------------------------------------------------------
-  const prevHash = await getLastHash();
-  const depositAt = new Date();
-  const depositHash = computeHash(
-    prevHash,
-    "DEPOSIT",
-    totalDollars.toFixed(6),
-    houseUserId,
-    depositAt.toISOString()
-  );
+  await prisma.$transaction(
+    async (tx: Prisma.TransactionClient) => {
+      const prevHash = await getLastHash(tx);
+      const depositAt = new Date();
+      const depositHash = computeHash(
+        prevHash,
+        "DEPOSIT",
+        totalDollars.toFixed(6),
+        houseUserId,
+        depositAt.toISOString()
+      );
 
-  await prisma.transaction.create({
-    data: {
-      userId: houseUserId,
-      debitAccount: "house_seed",
-      creditAccount: `user:${houseUserId}`,
-      type: "DEPOSIT",
-      amount: new Decimal(totalDollars),
-      prevHash,
-      txHash: depositHash,
-      createdAt: depositAt,
+      await tx.transaction.create({
+        data: {
+          userId: houseUserId,
+          debitAccount: "house_seed",
+          creditAccount: `user:${houseUserId}`,
+          type: "DEPOSIT",
+          amount: new Decimal(totalDollars),
+          prevHash,
+          txHash: depositHash,
+          createdAt: depositAt,
+        },
+      });
     },
-  });
+    { isolationLevel: "Serializable" }
+  );
 
   // -------------------------------------------------------------------------
   // Purchase shares for each outcome sequentially.

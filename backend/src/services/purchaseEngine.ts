@@ -26,6 +26,9 @@ import {
 import { computeHash } from "./hashChain.js";
 import { recordPurchaseSnapshots } from "./priceSnapshot.js";
 
+/** Canonical phone for the house liquidity account — mirrors HOUSE_PHONE in houseSeeding.ts. */
+const HOUSE_PHONE = "+0000000000";
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -322,6 +325,21 @@ export async function buyShares(
       // -----------------------------------------------------------------------
       // 6. Check $200 per-user per-market cap (skipped for house account)
       // -----------------------------------------------------------------------
+      // Security guard: bypassCap is only permitted for the house account.
+      // Any other userId attempting to bypass the cap is rejected immediately.
+      if (bypassCap) {
+        const houseUser = (await tx.user.findFirst({
+          where: { phone: HOUSE_PHONE },
+          select: { id: true },
+        })) as { id: string } | null;
+        if (!houseUser || userId !== houseUser.id) {
+          throw new PurchaseError(
+            "CAP_EXCEEDED",
+            "Cap bypass only allowed for the house account"
+          );
+        }
+      }
+
       if (!bypassCap) {
         const spendResult = (await tx.$queryRaw`
           SELECT COALESCE(SUM(cost), 0) AS total_spend
