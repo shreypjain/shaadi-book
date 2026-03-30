@@ -26,6 +26,7 @@ import {
 } from "./lmsr.js";
 import { computeHash } from "./hashChain.js";
 import { recordPurchaseSnapshots } from "./priceSnapshot.js";
+import { HOUSE_PHONE } from "./houseSeeding.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -219,7 +220,7 @@ async function runReconciliation(tx: any): Promise<void> {
  *  3. Validate market is ACTIVE
  *  4. SELECT outcomes FOR UPDATE (row-level lock)
  *  5. Check user balance >= dollarAmount
- *  6. Check user market spend + dollarAmount <= $200
+ *  6. Check user market spend + dollarAmount <= $200 (skipped when bypassCap=true for House)
  *  7. Compute adaptive b (dtMs, totalVolume)
  *  8. Read state vector q[]
  *  9. Compute delta shares via binary search
@@ -235,13 +236,15 @@ async function runReconciliation(tx: any): Promise<void> {
  * @param marketId          - UUID of the target market
  * @param outcomeId         - UUID of the outcome being purchased
  * @param dollarAmountCents - Integer amount in cents (e.g. 1000 = $10.00)
+ * @param options           - Optional flags: bypassCap (House seeding only)
  * @returns PurchaseResult on success; throws PurchaseError on validation failure
  */
 export async function buyShares(
   userId: string,
   marketId: string,
   outcomeId: string,
-  dollarAmountCents: number
+  dollarAmountCents: number,
+  options?: { bypassCap?: boolean }
 ): Promise<PurchaseResult> {
   // -------------------------------------------------------------------------
   // 1. Pre-flight input validation (before any DB round-trip)
@@ -355,22 +358,39 @@ export async function buyShares(
 
       // -----------------------------------------------------------------------
       // 6. Check $200 per-user per-market cap
+      //    bypassCap=true is only allowed for the House user (identified by
+      //    HOUSE_PHONE). Any attempt to bypass the cap as a non-house user is
+      //    rejected with CAP_EXCEEDED.
       // -----------------------------------------------------------------------
-      const spendResult = (await tx.$queryRaw`
-        SELECT COALESCE(SUM(cost), 0) AS total_spend
-        FROM purchases
-        WHERE user_id  = ${userId}
-          AND market_id = ${marketId}
-      `) as Array<{ total_spend: unknown }>;
+      if (options?.bypassCap) {
+        // Security guard: verify this userId is the House account
+        const houseUser = (await tx.$queryRaw`
+          SELECT id FROM users WHERE phone = ${HOUSE_PHONE} LIMIT 1
+        `) as Array<{ id: string }>;
+        if (!houseUser[0] || houseUser[0].id !== userId) {
+          throw new PurchaseError(
+            "CAP_EXCEEDED",
+            "bypassCap is only permitted for the House account"
+          );
+        }
+        // Cap check skipped for House — fall through
+      } else {
+        const spendResult = (await tx.$queryRaw`
+          SELECT COALESCE(SUM(cost), 0) AS total_spend
+          FROM purchases
+          WHERE user_id  = ${userId}
+            AND market_id = ${marketId}
+        `) as Array<{ total_spend: unknown }>;
 
-      const existingSpendDollars = toNumber(spendResult[0]?.total_spend ?? 0);
+        const existingSpendDollars = toNumber(spendResult[0]?.total_spend ?? 0);
 
-      if (existingSpendDollars + dollarAmount > 200) {
-        const remaining = Math.max(0, 200 - existingSpendDollars);
-        throw new PurchaseError(
-          "CAP_EXCEEDED",
-          `Purchase would exceed $200 market cap. Already spent: $${existingSpendDollars.toFixed(2)}, remaining: $${remaining.toFixed(2)}, attempted: $${dollarAmount.toFixed(2)}`
-        );
+        if (existingSpendDollars + dollarAmount > 200) {
+          const remaining = Math.max(0, 200 - existingSpendDollars);
+          throw new PurchaseError(
+            "CAP_EXCEEDED",
+            `Purchase would exceed $200 market cap. Already spent: $${existingSpendDollars.toFixed(2)}, remaining: $${remaining.toFixed(2)}, attempted: $${dollarAmount.toFixed(2)}`
+          );
+        }
       }
 
       // -----------------------------------------------------------------------
