@@ -124,15 +124,13 @@ describe("snapshotMarketPrices", () => {
     expect(prisma.priceSnapshot.createMany).not.toHaveBeenCalled();
   });
 
-  it("uses purchase.aggregate (SUM) instead of loading all rows", async () => {
+  it("does not query volume (fixed-b model uses defaultB, not adaptive b)", async () => {
     await snapshotMarketPrices(MARKET_ID);
 
-    // The aggregate query must be called — no findMany on purchases
-    expect(prisma.purchase.aggregate).toHaveBeenCalledOnce();
-    expect(prisma.purchase.aggregate).toHaveBeenCalledWith({
-      where: { marketId: MARKET_ID },
-      _sum: { cost: true },
-    });
+    // Fixed b is derived from outcome count — no volume aggregate needed.
+    expect(prisma.purchase.aggregate).not.toHaveBeenCalled();
+    // Snapshot rows are still written
+    expect(prisma.priceSnapshot.createMany).toHaveBeenCalledOnce();
   });
 
   it("writes one snapshot row per outcome for an ACTIVE market", async () => {

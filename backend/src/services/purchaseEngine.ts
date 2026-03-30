@@ -18,9 +18,9 @@ import { Decimal } from "decimal.js";
 
 import { prisma } from "../db.js";
 import {
-  adaptiveB,
   allPrices,
   computeSharesForDollarAmount,
+  defaultB,
   price,
 } from "./lmsr.js";
 import { computeHash } from "./hashChain.js";
@@ -336,26 +336,10 @@ export async function buyShares(
       }
 
       // -----------------------------------------------------------------------
-      // 7. Compute adaptive b (PRD §4.3)
-      //    dtMs   = now - market.openedAt
-      //    V      = SUM(purchases.cost) for this market (total volume in $)
-      //    bFloor = market.bFloorOverride ?? B_FLOOR_DEFAULT ?? 20
+      // 7. Compute fixed b from number of outcomes (LMSR §4.2)
+      //    b = defaultB(numOutcomes) — fixed per market, not adaptive
       // -----------------------------------------------------------------------
-      const volumeResult = (await tx.$queryRaw`
-        SELECT COALESCE(SUM(cost), 0) AS total_volume
-        FROM purchases
-        WHERE market_id = ${marketId}
-      `) as Array<{ total_volume: unknown }>;
-
-      const totalVolume = toNumber(volumeResult[0]?.total_volume ?? 0);
-
-      const dtMs = Date.now() - market.openedAt.getTime();
-      const bFloor =
-        market.bFloorOverride !== null && market.bFloorOverride !== undefined
-          ? toNumber(market.bFloorOverride)
-          : parseFloat(process.env["B_FLOOR_DEFAULT"] ?? "20");
-
-      const b = adaptiveB(bFloor, dtMs, totalVolume);
+      const b = defaultB(lockedOutcomes.length);
 
       // -----------------------------------------------------------------------
       // 8. Read state vector q[] from locked outcome rows
