@@ -32,10 +32,13 @@ export default function BetsPage() {
   }
 
   const groups: Partial<Record<PositionItem["marketStatus"], PositionItem[]>> = {};
+  // Total cost per market (across all outcomes the user holds)
+  const marketTotalCost: Record<string, number> = {};
   if (positions) {
     for (const pos of positions) {
       if (!groups[pos.marketStatus]) groups[pos.marketStatus] = [];
       groups[pos.marketStatus]!.push(pos);
+      marketTotalCost[pos.marketId] = (marketTotalCost[pos.marketId] ?? 0) + pos.totalCostCents;
     }
   }
 
@@ -110,6 +113,7 @@ export default function BetsPage() {
                     key={pos.id}
                     position={pos}
                     onSellSuccess={handleSellSuccess}
+                    totalMarketCostCents={marketTotalCost[pos.marketId]}
                   />
                 ))}
               </div>

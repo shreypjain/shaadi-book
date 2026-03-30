@@ -16,6 +16,11 @@ interface PositionCardProps {
   marketOutcomesSold?: number[];
   outcomeIndex?: number;
   currentB?: number;
+  /**
+   * Total cost across ALL positions the user holds in this market.
+   * Used for accurate P&L: if this outcome wins, all other positions are worthless.
+   */
+  totalMarketCostCents?: number;
 }
 
 const STATUS_CONFIG = {
@@ -85,6 +90,7 @@ export function PositionCard({
   marketOutcomesSold,
   outcomeIndex = 0,
   currentB = 27,
+  totalMarketCostCents,
 }: PositionCardProps) {
   const cfg = STATUS_CONFIG[position.marketStatus] ?? STATUS_CONFIG.active;
   const wonLost =
@@ -204,7 +210,10 @@ export function PositionCard({
               // Derive per-share values from existing fields
               const estPayoutPerShareCents = position.potentialPayoutCents / position.shares;
               const avgCostPerShareCents = position.avgPriceCents;
-              const estPnLCents = position.potentialPayoutCents - position.totalCostCents;
+              // If user holds multiple outcomes in this market, P&L must account
+              // for ALL positions becoming worthless except this one.
+              const costBasis = totalMarketCostCents ?? position.totalCostCents;
+              const estPnLCents = position.potentialPayoutCents - costBasis;
               const isThinPool = estPayoutPerShareCents < avgCostPerShareCents;
 
               return (

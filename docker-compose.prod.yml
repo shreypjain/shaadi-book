@@ -46,6 +46,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       ADMIN_PHONE_NUMBERS: ${ADMIN_PHONE_NUMBERS}
       B_FLOOR_DEFAULT: ${B_FLOOR_DEFAULT:-20}
+      ENABLE_SMS_NOTIFICATIONS: ${ENABLE_SMS_NOTIFICATIONS:-false}
       NODE_ENV: production
       CORS_ORIGIN: https://markets.parshandspoorthi.com
     depends_on:

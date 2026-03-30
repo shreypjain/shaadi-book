@@ -665,6 +665,49 @@ export async function pauseMarket(
 }
 
 // ---------------------------------------------------------------------------
+// 4b. resumeMarket
+// ---------------------------------------------------------------------------
+
+/**
+ * Resume a PAUSED market back to ACTIVE (re-enables trading).
+ */
+export async function resumeMarket(
+  adminId: string,
+  marketId: string,
+  opts?: { ipAddress?: string; prismaClient?: PrismaClient }
+): Promise<void> {
+  const db = opts?.prismaClient ?? defaultPrisma;
+
+  await db.$transaction(async (tx: Prisma.TransactionClient) => {
+    const market = await tx.market.findUnique({
+      where: { id: marketId },
+      select: { status: true },
+    });
+    if (!market) throw new Error(`Market ${marketId} not found`);
+    if (market.status !== "PAUSED") {
+      throw new Error(
+        `Only PAUSED markets can be resumed (status=${market.status})`
+      );
+    }
+
+    await tx.market.update({
+      where: { id: marketId },
+      data: { status: "ACTIVE" },
+    });
+
+    await tx.adminAuditLog.create({
+      data: {
+        adminId,
+        action: "PAUSE_MARKET",
+        targetId: marketId,
+        metadata: { previousStatus: market.status, resumedTo: "ACTIVE" },
+        ipAddress: opts?.ipAddress ?? "0.0.0.0",
+      },
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // 5. voidMarket
 // ---------------------------------------------------------------------------
 

@@ -20,6 +20,7 @@ import {
   createMarket,
   resolveMarket,
   pauseMarket,
+  resumeMarket,
   voidMarket,
   getMarketWithPrices,
   listMarkets,
@@ -474,6 +475,25 @@ export const marketRouter = router({
       if (io) {
         const { broadcastMarketEvent } = await import("../ws/broadcaster.js");
         broadcastMarketEvent(io, { type: "paused", marketId: input.marketId });
+      }
+
+      return { success: true, marketId: input.marketId };
+    }),
+
+  /**
+   * market.resume — admin only, re-enables trading on a PAUSED market
+   */
+  resume: adminProcedure
+    .input(z.object({ marketId: z.string().uuid() }))
+    .mutation(async ({ input, ctx }) => {
+      const ipAddress = ctx.req.ip ?? ctx.req.socket.remoteAddress ?? "0.0.0.0";
+
+      await resumeMarket(ctx.userId!, input.marketId, { ipAddress });
+
+      const io = getIOSafe();
+      if (io) {
+        const { broadcastMarketEvent } = await import("../ws/broadcaster.js");
+        broadcastMarketEvent(io, { type: "created", marketId: input.marketId });
       }
 
       return { success: true, marketId: input.marketId };

@@ -5,7 +5,7 @@
  *
  * Shows status badge + action buttons per status:
  *   ACTIVE   → Resolve, Pause, Void
- *   PAUSED   → Void
+ *   PAUSED   → Resume, Void
  *   PENDING  → Void
  *   RESOLVED → (read-only)
  *   VOIDED   → (read-only)
@@ -44,12 +44,12 @@ const STATUS_COLORS: Record<string, string> = {
 export default function MarketRow({ market, onChanged }: Props) {
   const status = market.status as MarketStatus;
   const [resolveOutcomeId, setResolveOutcomeId] = useState<string>("");
-  const [confirming, setConfirming] = useState<null | "resolve" | "pause" | "void">(null);
+  const [confirming, setConfirming] = useState<null | "resolve" | "pause" | "resume" | "void">(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleAction(
-    action: "resolve" | "pause" | "void"
+    action: "resolve" | "pause" | "resume" | "void"
   ) {
     if (action === "resolve" && !resolveOutcomeId) {
       setError("Select a winning outcome first.");
@@ -65,6 +65,8 @@ export default function MarketRow({ market, onChanged }: Props) {
         });
       } else if (action === "pause") {
         await trpc.market.pause.mutate({ marketId: market.id });
+      } else if (action === "resume") {
+        await trpc.market.resume.mutate({ marketId: market.id });
       } else {
         await trpc.market.void.mutate({ marketId: market.id });
       }
@@ -197,6 +199,37 @@ export default function MarketRow({ market, onChanged }: Props) {
                   className="rounded border border-orange-300 px-3 py-1 text-xs font-medium text-orange-700 hover:bg-orange-50 min-h-0 min-w-0 h-auto"
                 >
                   Pause
+                </button>
+              )}
+            </>
+          )}
+
+          {/* Resume — only for PAUSED markets */}
+          {status === "PAUSED" && (
+            <>
+              {confirming === "resume" ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-warmGray">Resume trading?</span>
+                  <button
+                    onClick={() => handleAction("resume")}
+                    disabled={loading}
+                    className="rounded bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50 min-h-0 min-w-0 h-auto"
+                  >
+                    {loading ? "…" : "Yes, resume"}
+                  </button>
+                  <button
+                    onClick={() => setConfirming(null)}
+                    className="text-xs text-warmGray hover:text-charcoal min-h-0 min-w-0 h-auto"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirming("resume")}
+                  className="rounded border border-green-300 px-3 py-1 text-xs font-medium text-green-700 hover:bg-green-50 min-h-0 min-w-0 h-auto"
+                >
+                  Resume
                 </button>
               )}
             </>
