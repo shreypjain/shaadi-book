@@ -31,6 +31,7 @@ import {
   notifyMarketResolved,
   scheduleMarketOpen,
 } from "../services/notificationService.js";
+import { seedMarket, DEFAULT_SEED_CENTS } from "../services/houseSeeding.js";
 import { prisma } from "../db.js";
 
 // ---------------------------------------------------------------------------
@@ -353,6 +354,8 @@ export const marketRouter = router({
         eventTag: EventTagSchema.optional(),
         familySide: FamilySideSchema.optional(),
         customTags: z.array(z.string().min(1).max(50)).max(10).optional(),
+        /** Seed amount per outcome in cents. 0 = disable seeding. Default = $20. */
+        seedAmountCents: z.number().int().min(0).max(100000).default(DEFAULT_SEED_CENTS),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -386,12 +389,30 @@ export const marketRouter = router({
           },
           async () => {
             await openMarket(marketId);
+            // Seed after opening if seedAmountCents > 0
+            if (input.seedAmountCents > 0) {
+              const outcomeIds = market.outcomes.map((o: { id: string }) => o.id);
+              await seedMarket(marketId, outcomeIds, input.seedAmountCents).catch(
+                (err: unknown) => {
+                  console.error("[market.create] Scheduled seed failed:", err);
+                }
+              );
+            }
             const opened = await getMarketWithPrices(marketId);
             if (opened) await notifyNewMarket(opened, io);
           },
           io
         );
       } else {
+        // Seed immediately-active markets (fire after creation, non-blocking)
+        if (input.seedAmountCents > 0) {
+          const outcomeIds = market.outcomes.map((o: { id: string }) => o.id);
+          seedMarket(marketId, outcomeIds, input.seedAmountCents).catch(
+            (err: unknown) => {
+              console.error("[market.create] Immediate seed failed:", err);
+            }
+          );
+        }
         await notifyNewMarket(market, io);
       }
 
