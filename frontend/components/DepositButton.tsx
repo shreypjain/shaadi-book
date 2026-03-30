@@ -26,8 +26,6 @@ interface DepositButtonProps {
  *  2. On confirmation, calls payment.createDeposit → receives clientSecret.
  *  3. Renders the Stripe Payment Element inside an <Elements> provider.
  *  4. On success: shows a confirmation state, then calls onSuccess().
- *
- * PRD §7.2 — Deposit flow
  */
 export function DepositButton({ onSuccess }: DepositButtonProps) {
   const [open, setOpen] = useState(false);
@@ -100,8 +98,8 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="flex-1 rounded-xl bg-[#1e3a5f] px-5 py-3 text-white font-medium
-                   text-sm hover:bg-[#152f52] active:scale-95 transition-all"
+        className="flex-1 rounded-xl bg-gold px-5 py-3 text-white font-sans font-medium
+                   text-sm hover:bg-gold-600 active:scale-95 transition-all"
       >
         + Add Credits
       </button>
@@ -111,22 +109,24 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
           {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-black/40"
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={step !== "payment" ? handleClose : undefined}
           />
 
-          {/* Sheet */}
-          <div className="relative w-full sm:max-w-sm bg-white rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl">
+          {/* Sheet — scrollable with max height */}
+          <div className="relative w-full sm:max-w-md max-h-[90vh] overflow-y-auto
+                          bg-ivory rounded-t-2xl sm:rounded-2xl p-6
+                          shadow-[0_-4px_40px_rgba(0,0,0,0.15)] sm:shadow-2xl">
             {/* ----------------------------------------------------------------
                 Step 1: Amount selection
             ---------------------------------------------------------------- */}
             {step === "select-amount" && (
               <>
-                <h2 className="text-lg font-bold text-charcoal mb-1">
+                <h2 className="font-serif text-lg font-semibold text-charcoal mb-1">
                   Add Credits
                 </h2>
                 <p className="text-xs text-warmGray mb-5">
-                  Charged in USD via Stripe (Apple Pay / card)
+                  Charged in USD via Stripe (card, bank, or Apple Pay)
                 </p>
 
                 {/* Preset amounts */}
@@ -141,8 +141,8 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
                       className={`rounded-xl py-3 text-sm font-semibold border-2 transition-all
                         ${
                           !customDollars && selectedCents === p.cents
-                            ? "border-[#1e3a5f] bg-brand-50 text-brand-700"
-                            : "border-[rgba(184,134,11,0.12)] text-charcoal hover:border-brand-300"
+                            ? "border-gold bg-gold-pale text-charcoal"
+                            : "border-[rgba(184,134,11,0.12)] text-charcoal hover:border-gold/50"
                         }`}
                     >
                       {p.label}
@@ -167,7 +167,7 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
                       setSelectedCents(null);
                     }}
                     className="w-full pl-7 pr-4 py-3 border border-[rgba(184,134,11,0.12)] rounded-xl text-sm
-                               focus:outline-none focus:border-[#1e3a5f] transition text-charcoal"
+                               focus:outline-none focus:border-gold transition text-charcoal bg-white"
                   />
                 </div>
 
@@ -182,8 +182,8 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
                 <button
                   onClick={handleContinue}
                   disabled={!isValidAmount || loading}
-                  className="w-full rounded-xl bg-[#1e3a5f] py-3.5 text-white font-medium text-sm
-                             disabled:opacity-50 hover:bg-[#152f52] active:scale-95 transition-all"
+                  className="w-full rounded-xl bg-gold py-3.5 text-white font-sans font-medium text-sm
+                             disabled:opacity-50 hover:bg-gold-600 active:scale-95 transition-all"
                 >
                   {loading
                     ? "Setting up payment…"
@@ -196,7 +196,7 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
 
                 <button
                   onClick={handleClose}
-                  className="w-full mt-3 py-2 text-sm text-warmGray hover:text-warmGray transition"
+                  className="w-full mt-3 py-2 text-sm text-warmGray hover:text-charcoal transition"
                 >
                   Cancel
                 </button>
@@ -208,15 +208,25 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
             ---------------------------------------------------------------- */}
             {step === "payment" && clientSecret && stripePromise && (
               <>
-                <h2 className="text-lg font-bold text-charcoal mb-1">
-                  Payment
-                </h2>
-                <p className="text-xs text-warmGray mb-5">
-                  {isValidAmount && effectiveCents
-                    ? `$${(effectiveCents / 100).toFixed(2)}`
-                    : ""}{" "}
-                  · Powered by Stripe
-                </p>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="font-serif text-lg font-semibold text-charcoal">
+                      Payment
+                    </h2>
+                    <p className="text-xs text-warmGray mt-0.5">
+                      {isValidAmount && effectiveCents
+                        ? `$${(effectiveCents / 100).toFixed(2)}`
+                        : ""}{" "}
+                      · Powered by Stripe
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setStep("select-amount")}
+                    className="text-xs text-warmGray hover:text-charcoal transition"
+                  >
+                    ← Back
+                  </button>
+                </div>
 
                 <Elements
                   stripe={stripePromise}
@@ -225,7 +235,7 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
                     appearance: {
                       theme: "stripe",
                       variables: {
-                        colorPrimary: "#1e3a5f",
+                        colorPrimary: "#B8860B",
                         borderRadius: "12px",
                         fontFamily: "inherit",
                       },
@@ -251,7 +261,7 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
-                <h2 className="text-lg font-bold text-charcoal mb-2">
+                <h2 className="font-serif text-lg font-semibold text-charcoal mb-2">
                   Payment Successful!
                 </h2>
                 <p className="text-sm text-warmGray">
