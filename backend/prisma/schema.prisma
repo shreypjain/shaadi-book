@@ -106,8 +106,8 @@ model Market {
   /// Admin-overridable b_floor for this market. Null = use B_FLOOR_DEFAULT env var (20).
   /// @deprecated Adaptive b is being replaced by fixed bParameter. Kept to avoid breaking running code.
   bFloorOverride        Decimal?     @map("b_floor_override") @db.Decimal(18, 6)
-  /// Maximum shares per outcome for this market (fixed-supply model). Default 100.
-  maxSharesPerOutcome   Int          @default(100) @map("max_shares_per_outcome")
+  /// Maximum shares per outcome for this market (fixed-supply model). Default 1000.
+  maxSharesPerOutcome   Int          @default(1000) @map("max_shares_per_outcome")
   /// Fixed b parameter for LMSR pricing. If null, use defaultB(numOutcomes, maxSharesPerOutcome).
   bParameter            Decimal?     @map("b_parameter") @db.Decimal(10, 4)
   createdAt        DateTime     @default(now()) @map("created_at")
@@ -140,8 +140,8 @@ model Outcome {
   position   Int
   /// The LMSR state vector q[i] — total shares sold for this outcome.
   sharesSold Decimal  @default(0) @map("shares_sold") @db.Decimal(18, 6)
-  /// Maximum shares that can be sold for this outcome (fixed-supply cap). Default 100.
-  maxShares  Int      @default(100) @map("max_shares")
+  /// Maximum shares that can be sold for this outcome (fixed-supply cap). Default 1000.
+  maxShares  Int      @default(1000) @map("max_shares")
   isWinner   Boolean? @map("is_winner")
 
   // Relations
