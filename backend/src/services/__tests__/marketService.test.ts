@@ -18,6 +18,9 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+// Skip all DB-dependent tests when no DATABASE_URL is configured (e.g. in CI)
+const hasDb = !!process.env["DATABASE_URL"];
 import { PrismaClient } from "@prisma/client";
 import {
   createMarket,
@@ -50,6 +53,7 @@ let guestBId: string;
 let guestCId: string;
 
 beforeAll(async () => {
+  if (!hasDb) return;
   // Unique phones per run to avoid conflicts with parallel test runs
   const ts = Date.now().toString().slice(-6);
 
@@ -95,6 +99,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  if (!hasDb) return;
   await prisma.$disconnect();
 });
 
@@ -175,7 +180,7 @@ async function seedDepositAndPurchase(opts: {
 // Test 1: createMarket — immediate, 2 outcomes, ACTIVE, prices at 50%
 // ---------------------------------------------------------------------------
 
-describe("createMarket — immediate", () => {
+describe.skipIf(!hasDb)("createMarket — immediate", () => {
   let marketId: string;
 
   it("creates market with status ACTIVE", async () => {
@@ -247,7 +252,7 @@ describe("createMarket — immediate", () => {
 // Test 2: createMarket — scheduled, status PENDING, openedAt null
 // ---------------------------------------------------------------------------
 
-describe("createMarket — scheduled", () => {
+describe.skipIf(!hasDb)("createMarket — scheduled", () => {
   it("creates market with status PENDING when scheduledOpenAt is set", async () => {
     const futureDate = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
     const marketId = await createMarket(
@@ -306,7 +311,7 @@ describe("createMarket — scheduled", () => {
 // Test 3: resolveMarket — capped parimutuel, pool > shares → $1.00/share
 // ---------------------------------------------------------------------------
 
-describe("resolveMarket — capped parimutuel full payout ($1/share)", () => {
+describe.skipIf(!hasDb)("resolveMarket — capped parimutuel full payout ($1/share)", () => {
   let marketId: string;
   let yesId: string;
   let noId: string;
@@ -400,7 +405,7 @@ describe("resolveMarket — capped parimutuel full payout ($1/share)", () => {
 // Test 4: resolveMarket — capped parimutuel, multiple winners, pool > shares
 // ---------------------------------------------------------------------------
 
-describe("resolveMarket — capped parimutuel multi-winner full payout", () => {
+describe.skipIf(!hasDb)("resolveMarket — capped parimutuel multi-winner full payout", () => {
   let marketId: string;
   let yesId: string;
   let noId: string;
@@ -497,7 +502,7 @@ describe("resolveMarket — capped parimutuel multi-winner full payout", () => {
 // Test 4b: resolveMarket — capped parimutuel, thin pool → pool/shares < $1
 // ---------------------------------------------------------------------------
 
-describe("resolveMarket — capped parimutuel thin pool (pool < winning shares)", () => {
+describe.skipIf(!hasDb)("resolveMarket — capped parimutuel thin pool (pool < winning shares)", () => {
   let marketId: string;
   let yesId: string;
   let noId: string;
@@ -558,7 +563,7 @@ describe("resolveMarket — capped parimutuel thin pool (pool < winning shares)"
 // Test 5: resolveMarket — edge case: no bets on winning outcome → refund all
 // ---------------------------------------------------------------------------
 
-describe("resolveMarket — no bets on winning outcome", () => {
+describe.skipIf(!hasDb)("resolveMarket — no bets on winning outcome", () => {
   let marketId: string;
   let yesId: string;
   let noId: string;
@@ -658,7 +663,7 @@ describe("resolveMarket — no bets on winning outcome", () => {
 // Test 6: voidMarket — refunds all purchases, reconciliation holds
 // ---------------------------------------------------------------------------
 
-describe("voidMarket", () => {
+describe.skipIf(!hasDb)("voidMarket", () => {
   let marketId: string;
   let outcomeId: string;
   let purchaseId: string;
@@ -770,7 +775,7 @@ describe("voidMarket", () => {
 // Test 7: pauseMarket — status PAUSED
 // ---------------------------------------------------------------------------
 
-describe("pauseMarket", () => {
+describe.skipIf(!hasDb)("pauseMarket", () => {
   let marketId: string;
 
   beforeAll(async () => {
@@ -807,7 +812,7 @@ describe("pauseMarket", () => {
 // Test 8: getMarketWithPrices — prices computed from LMSR, pool info included
 // ---------------------------------------------------------------------------
 
-describe("getMarketWithPrices", () => {
+describe.skipIf(!hasDb)("getMarketWithPrices", () => {
   it("returns null for non-existent market", async () => {
     const result = await getMarketWithPrices(
       "00000000-0000-0000-0000-000000000000",

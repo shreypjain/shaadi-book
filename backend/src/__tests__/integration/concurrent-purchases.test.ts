@@ -27,6 +27,9 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+// Skip all DB-dependent tests when no DATABASE_URL is configured (e.g. in CI)
+const hasDb = !!process.env["DATABASE_URL"];
 import { PrismaClient } from "@prisma/client";
 import { appendTransaction, runReconciliation } from "../../services/ledger.js";
 import {
@@ -56,6 +59,7 @@ let userIds: string[] = [];
 // ---------------------------------------------------------------------------
 
 beforeAll(async () => {
+  if (!hasDb) return;
   process.env["JWT_SECRET"] =
     "concurrent-test-secret-64-chars-long-enough-for-hs256-algorithm";
 
@@ -111,6 +115,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
+  if (!hasDb) return;
   await prisma.$disconnect();
   delete process.env["JWT_SECRET"];
 });
@@ -119,7 +124,7 @@ afterAll(async () => {
 // The concurrent load test
 // ---------------------------------------------------------------------------
 
-describe("Concurrent purchases — 10 simultaneous buyers on the same market", () => {
+describe.skipIf(!hasDb)("Concurrent purchases — 10 simultaneous buyers on the same market", () => {
   // Capture all results once; subsequent tests inspect the captured state
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let results: Array<{ userId: string; shares: number; cost: number } | { userId: string; error: unknown }>;
@@ -260,7 +265,7 @@ describe("Concurrent purchases — 10 simultaneous buyers on the same market", (
 // Edge cases — independent of the concurrent load scenario above
 // ---------------------------------------------------------------------------
 
-describe("Concurrent safety edge cases", () => {
+describe.skipIf(!hasDb)("Concurrent safety edge cases", () => {
   it("prices sum to 1.0 after all concurrent Yes buys", async () => {
     const market = await getMarketWithPrices(marketId);
     const total = market!.outcomes.reduce((sum, o) => sum + o.price, 0);

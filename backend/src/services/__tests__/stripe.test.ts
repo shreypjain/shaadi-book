@@ -1,5 +1,5 @@
 /**
- * Stripe service tests — Task 3.1 + stripe-fee-from-charity
+ * Stripe service tests
  *
  * Coverage:
  *   estimateStripeFee:
@@ -8,29 +8,22 @@
  *     - $50 deposit → correct fee
  *     - returns integer cents
  *
- *   createDepositSession:
- *     - creates session with correct Stripe parameters
- *     - returns the checkout URL
- *     - uses NEXT_PUBLIC_APP_URL for success/cancel redirects
- *     - falls back to localhost:3000 when NEXT_PUBLIC_APP_URL is unset
+ *   createPaymentIntent:
+ *     - creates PaymentIntent with correct Stripe parameters
+ *     - returns clientSecret and paymentIntentId
  *     - throws when STRIPE_SECRET_KEY is missing
- *     - throws when Stripe returns no URL
+ *     - throws when Stripe returns no client_secret
  *     - propagates Stripe API errors
  *
- *   handleCheckoutCompleted:
- *     - inserts DEPOSIT + STRIPE_FEE transactions for a new session
- *     - DEPOSIT credits the correct user with the full gross amount
+ *   handlePaymentIntentSucceeded:
+ *     - inserts DEPOSIT transaction for a new (unprocessed) payment
  *     - DEPOSIT uses correct double-entry accounts (debit: stripe, credit: user:{id})
- *     - STRIPE_FEE uses correct double-entry (debit: charity_pool, credit: stripe_processor)
- *     - STRIPE_FEE amount = estimateStripeFee(amountCents) / 100
- *     - STRIPE_FEE chains from DEPOSIT txHash (prevHash = DEPOSIT txHash)
- *     - Both rows share the same stripeSessionId
- *     - stores stripeSessionId on both rows for idempotency
+ *     - converts amountCents to dollars correctly (2500 → 25)
+ *     - stores paymentIntentId as stripeSessionId for idempotency
  *     - builds the hash chain (prevHash/txHash)
- *     - is idempotent: second call with same session does NOT insert again
+ *     - is idempotent: second call with same id does NOT insert again
  *     - does not throw on duplicate delivery (returns cleanly)
- *     - throws when client_reference_id is missing
- *     - throws when amount_total is null
+ *     - throws when metadata.userId is missing
  *     - propagates Prisma errors from the transaction block
  */
 
@@ -44,14 +37,14 @@ import type Stripe from "stripe";
 // ---------------------------------------------------------------------------
 
 const {
-  mockCheckoutSessionsCreate,
+  mockPaymentIntentsCreate,
   mockTransactionFindFirst,
   mockPrismaTransaction,
   mockTxCreate,
   mockGetLastHash,
   mockComputeHash,
 } = vi.hoisted(() => ({
-  mockCheckoutSessionsCreate: vi.fn(),
+  mockPaymentIntentsCreate: vi.fn(),
   mockTransactionFindFirst: vi.fn(),
   mockPrismaTransaction: vi.fn(),
   mockTxCreate: vi.fn(),
@@ -65,8 +58,8 @@ const {
 
 vi.mock("stripe", () => {
   const MockStripe = vi.fn(() => ({
-    checkout: {
-      sessions: { create: mockCheckoutSessionsCreate },
+    paymentIntents: {
+      create: mockPaymentIntentsCreate,
     },
   }));
   return { default: MockStripe };
@@ -98,23 +91,27 @@ vi.mock("../hashChain.js", () => ({
 // Imports (after mocks are in place)
 // ---------------------------------------------------------------------------
 
-import { createDepositSession, handleCheckoutCompleted, estimateStripeFee } from "../stripe.js";
+import {
+  createPaymentIntent,
+  handlePaymentIntentSucceeded,
+  estimateStripeFee,
+} from "../stripe.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Build a minimal Stripe Checkout.Session stub. */
-function makeSession(
-  overrides: Partial<Stripe.Checkout.Session> = {}
-): Stripe.Checkout.Session {
+/** Build a minimal Stripe PaymentIntent stub. */
+function makePaymentIntent(
+  overrides: Partial<Stripe.PaymentIntent> = {}
+): Stripe.PaymentIntent {
   return {
-    id: "cs_test_abc123",
-    client_reference_id: "user-456",
-    amount_total: 2500,
-    object: "checkout.session",
+    id: "pi_test_abc123",
+    metadata: { userId: "user-456" },
+    amount: 2500,
+    object: "payment_intent",
     ...overrides,
-  } as Stripe.Checkout.Session;
+  } as Stripe.PaymentIntent;
 }
 
 // ---------------------------------------------------------------------------
@@ -123,7 +120,6 @@ function makeSession(
 
 beforeEach(() => {
   process.env["STRIPE_SECRET_KEY"] = "sk_test_dummy";
-  process.env["NEXT_PUBLIC_APP_URL"] = "https://shaadibook.app";
 
   vi.clearAllMocks();
 
@@ -142,7 +138,6 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env["STRIPE_SECRET_KEY"];
-  delete process.env["NEXT_PUBLIC_APP_URL"];
 });
 
 // ---------------------------------------------------------------------------
@@ -172,146 +167,97 @@ describe("estimateStripeFee", () => {
 });
 
 // ---------------------------------------------------------------------------
-// createDepositSession
+// createPaymentIntent
 // ---------------------------------------------------------------------------
 
-describe("createDepositSession", () => {
-  it("creates a Checkout Session with the correct Stripe parameters", async () => {
-    mockCheckoutSessionsCreate.mockResolvedValueOnce({
-      id: "cs_test_123",
-      url: "https://checkout.stripe.com/pay/cs_test_123",
+describe("createPaymentIntent", () => {
+  it("creates a PaymentIntent with the correct Stripe parameters", async () => {
+    mockPaymentIntentsCreate.mockResolvedValueOnce({
+      id: "pi_test_123",
+      client_secret: "pi_test_123_secret_xyz",
     });
 
-    await createDepositSession("user-123", 2500);
+    await createPaymentIntent(2500, "user-123");
 
-    expect(mockCheckoutSessionsCreate).toHaveBeenCalledOnce();
-    expect(mockCheckoutSessionsCreate).toHaveBeenCalledWith({
-      mode: "payment",
+    expect(mockPaymentIntentsCreate).toHaveBeenCalledOnce();
+    expect(mockPaymentIntentsCreate).toHaveBeenCalledWith({
+      amount: 2500,
       currency: "usd",
-      line_items: [
-        {
-          price_data: {
-            currency: "usd",
-            product_data: { name: "Shaadi Book Credits" },
-            unit_amount: 2500,
-          },
-          quantity: 1,
-        },
-      ],
-      client_reference_id: "user-123",
-      success_url: "https://shaadibook.app/wallet?deposit=success",
-      cancel_url: "https://shaadibook.app/wallet?deposit=cancelled",
+      automatic_payment_methods: { enabled: true },
+      metadata: { userId: "user-123" },
     });
   });
 
-  it("returns the Stripe Checkout URL", async () => {
-    const expectedUrl = "https://checkout.stripe.com/pay/cs_test_456";
-    mockCheckoutSessionsCreate.mockResolvedValueOnce({
-      id: "cs_test_456",
-      url: expectedUrl,
+  it("returns clientSecret and paymentIntentId", async () => {
+    mockPaymentIntentsCreate.mockResolvedValueOnce({
+      id: "pi_test_456",
+      client_secret: "pi_test_456_secret_xyz",
     });
 
-    const url = await createDepositSession("user-789", 5000);
-    expect(url).toBe(expectedUrl);
-  });
-
-  it("uses the preset amount $10 (1000 cents) correctly", async () => {
-    mockCheckoutSessionsCreate.mockResolvedValueOnce({
-      id: "cs_test_10",
-      url: "https://checkout.stripe.com/pay/cs_test_10",
-    });
-
-    await createDepositSession("user-abc", 1000);
-
-    const call = mockCheckoutSessionsCreate.mock.calls[0]?.[0] as {
-      line_items: Array<{ price_data: { unit_amount: number } }>;
-    };
-    expect(call.line_items[0]?.price_data.unit_amount).toBe(1000);
-  });
-
-  it("falls back to localhost:3000 when NEXT_PUBLIC_APP_URL is unset", async () => {
-    delete process.env["NEXT_PUBLIC_APP_URL"];
-    mockCheckoutSessionsCreate.mockResolvedValueOnce({
-      id: "cs_test_local",
-      url: "https://checkout.stripe.com/pay/cs_test_local",
-    });
-
-    await createDepositSession("user-xyz", 2500);
-
-    const call = mockCheckoutSessionsCreate.mock.calls[0]?.[0] as {
-      success_url: string;
-      cancel_url: string;
-    };
-    expect(call.success_url).toContain("localhost:3000");
-    expect(call.cancel_url).toContain("localhost:3000");
+    const result = await createPaymentIntent(5000, "user-789");
+    expect(result.clientSecret).toBe("pi_test_456_secret_xyz");
+    expect(result.paymentIntentId).toBe("pi_test_456");
   });
 
   it("throws when STRIPE_SECRET_KEY is not set", async () => {
     delete process.env["STRIPE_SECRET_KEY"];
-    await expect(createDepositSession("user-123", 2500)).rejects.toThrow(
+    await expect(createPaymentIntent(2500, "user-123")).rejects.toThrow(
       "STRIPE_SECRET_KEY"
     );
   });
 
-  it("throws when Stripe returns a session with no URL", async () => {
-    mockCheckoutSessionsCreate.mockResolvedValueOnce({
-      id: "cs_test_nurl",
-      url: null,
+  it("throws when Stripe returns a PaymentIntent with no client_secret", async () => {
+    mockPaymentIntentsCreate.mockResolvedValueOnce({
+      id: "pi_test_ncs",
+      client_secret: null,
     });
-    await expect(createDepositSession("user-123", 2500)).rejects.toThrow();
+    await expect(createPaymentIntent(2500, "user-123")).rejects.toThrow();
   });
 
   it("propagates Stripe API errors", async () => {
-    mockCheckoutSessionsCreate.mockRejectedValueOnce(
+    mockPaymentIntentsCreate.mockRejectedValueOnce(
       new Error("Stripe API error: invalid currency")
     );
-    await expect(createDepositSession("user-123", 2500)).rejects.toThrow(
+    await expect(createPaymentIntent(2500, "user-123")).rejects.toThrow(
       "Stripe API error"
     );
   });
 });
 
 // ---------------------------------------------------------------------------
-// handleCheckoutCompleted
+// handlePaymentIntentSucceeded
 // ---------------------------------------------------------------------------
 
-describe("handleCheckoutCompleted", () => {
-  it("inserts DEPOSIT + STRIPE_FEE transactions for a new (unprocessed) session", async () => {
+describe("handlePaymentIntentSucceeded", () => {
+  it("inserts DEPOSIT transaction for a new (unprocessed) payment", async () => {
     mockTransactionFindFirst.mockResolvedValueOnce(null);
 
-    await handleCheckoutCompleted(makeSession());
+    await handlePaymentIntentSucceeded(makePaymentIntent());
 
-    // Idempotency check was performed with the correct session ID
+    // Idempotency check was performed with the correct paymentIntentId
     expect(mockTransactionFindFirst).toHaveBeenCalledWith({
-      where: { stripeSessionId: "cs_test_abc123" },
+      where: { stripeSessionId: "pi_test_abc123" },
       select: { id: true },
     });
 
     // The Prisma transaction was started
     expect(mockPrismaTransaction).toHaveBeenCalledOnce();
 
-    // Two rows inserted: DEPOSIT + STRIPE_FEE
-    expect(mockTxCreate).toHaveBeenCalledTimes(2);
+    // One row inserted: DEPOSIT only
+    expect(mockTxCreate).toHaveBeenCalledTimes(1);
 
-    const { data: depositData } = mockTxCreate.mock.calls[0]?.[0] as {
+    const { data } = mockTxCreate.mock.calls[0]?.[0] as {
       data: Record<string, unknown>;
     };
-    expect(depositData["type"]).toBe("DEPOSIT");
-    expect(depositData["userId"]).toBe("user-456");
-    expect(depositData["stripeSessionId"]).toBe("cs_test_abc123");
-
-    const { data: feeData } = mockTxCreate.mock.calls[1]?.[0] as {
-      data: Record<string, unknown>;
-    };
-    expect(feeData["type"]).toBe("STRIPE_FEE");
-    expect(feeData["userId"]).toBe("user-456");
-    expect(feeData["stripeSessionId"]).toBe("cs_test_abc123");
+    expect(data["type"]).toBe("DEPOSIT");
+    expect(data["userId"]).toBe("user-456");
+    expect(data["stripeSessionId"]).toBe("pi_test_abc123");
   });
 
   it("DEPOSIT uses correct double-entry accounts (debit: stripe, credit: user:{id})", async () => {
     mockTransactionFindFirst.mockResolvedValueOnce(null);
 
-    await handleCheckoutCompleted(makeSession());
+    await handlePaymentIntentSucceeded(makePaymentIntent());
 
     const { data } = mockTxCreate.mock.calls[0]?.[0] as {
       data: Record<string, unknown>;
@@ -320,143 +266,82 @@ describe("handleCheckoutCompleted", () => {
     expect(data["creditAccount"]).toBe("user:user-456");
   });
 
-  it("STRIPE_FEE uses correct double-entry (debit: charity_pool, credit: stripe_processor)", async () => {
+  it("converts amountCents to dollars for DEPOSIT (2500 cents → $25)", async () => {
     mockTransactionFindFirst.mockResolvedValueOnce(null);
 
-    await handleCheckoutCompleted(makeSession());
-
-    const { data } = mockTxCreate.mock.calls[1]?.[0] as {
-      data: Record<string, unknown>;
-    };
-    expect(data["debitAccount"]).toBe("charity_pool");
-    expect(data["creditAccount"]).toBe("stripe_processor");
-  });
-
-  it("STRIPE_FEE amount = estimateStripeFee(2500) / 100 = 1.03", async () => {
-    mockTransactionFindFirst.mockResolvedValueOnce(null);
-
-    await handleCheckoutCompleted(makeSession({ amount_total: 2500 }));
-
-    const { data } = mockTxCreate.mock.calls[1]?.[0] as {
-      data: Record<string, unknown>;
-    };
-    // estimateStripeFee(2500) = round(2500*0.029+30) = 103 cents = $1.03
-    expect(Number(data["amount"])).toBeCloseTo(1.03, 5);
-  });
-
-  it("STRIPE_FEE prevHash chains from the DEPOSIT txHash", async () => {
-    mockTransactionFindFirst.mockResolvedValueOnce(null);
-    const depositHash = "d".repeat(64);
-    const feeHash = "f".repeat(64);
-    // computeHash called twice: first for DEPOSIT, then for STRIPE_FEE
-    mockComputeHash
-      .mockReturnValueOnce(depositHash)
-      .mockReturnValueOnce(feeHash);
-
-    await handleCheckoutCompleted(makeSession());
-
-    const { data: feeData } = mockTxCreate.mock.calls[1]?.[0] as {
-      data: Record<string, unknown>;
-    };
-    // STRIPE_FEE must use DEPOSIT's txHash as its prevHash
-    expect(feeData["prevHash"]).toBe(depositHash);
-    expect(feeData["txHash"]).toBe(feeHash);
-  });
-
-  it("converts amountCents to dollars for DEPOSIT (2500 cents → 25)", async () => {
-    mockTransactionFindFirst.mockResolvedValueOnce(null);
-
-    await handleCheckoutCompleted(makeSession({ amount_total: 2500 }));
+    await handlePaymentIntentSucceeded(makePaymentIntent({ amount: 2500 }));
 
     const { data } = mockTxCreate.mock.calls[0]?.[0] as {
       data: Record<string, unknown>;
     };
-    // Decimal(2500).div(100) == 25
     expect(Number(data["amount"])).toBe(25);
   });
 
-  it("stores stripeSessionId on both DEPOSIT and STRIPE_FEE rows", async () => {
+  it("stores paymentIntentId as stripeSessionId for idempotency", async () => {
     mockTransactionFindFirst.mockResolvedValueOnce(null);
 
-    await handleCheckoutCompleted(makeSession({ id: "cs_unique_999" }));
+    await handlePaymentIntentSucceeded(
+      makePaymentIntent({ id: "pi_unique_999" })
+    );
 
-    const { data: depositData } = mockTxCreate.mock.calls[0]?.[0] as {
+    const { data } = mockTxCreate.mock.calls[0]?.[0] as {
       data: Record<string, unknown>;
     };
-    const { data: feeData } = mockTxCreate.mock.calls[1]?.[0] as {
-      data: Record<string, unknown>;
-    };
-    expect(depositData["stripeSessionId"]).toBe("cs_unique_999");
-    expect(feeData["stripeSessionId"]).toBe("cs_unique_999");
+    expect(data["stripeSessionId"]).toBe("pi_unique_999");
   });
 
-  it("builds the hash chain: computeHash called twice (DEPOSIT then STRIPE_FEE)", async () => {
+  it("builds the hash chain: computeHash called once for DEPOSIT", async () => {
     mockTransactionFindFirst.mockResolvedValueOnce(null);
     const fakePrevHash = "f".repeat(64);
     const fakeDepositHash = "e".repeat(64);
-    const fakeFeeHash = "a".repeat(64);
     mockGetLastHash.mockResolvedValueOnce(fakePrevHash);
-    mockComputeHash
-      .mockReturnValueOnce(fakeDepositHash)
-      .mockReturnValueOnce(fakeFeeHash);
+    mockComputeHash.mockReturnValueOnce(fakeDepositHash);
 
-    await handleCheckoutCompleted(makeSession());
+    await handlePaymentIntentSucceeded(makePaymentIntent());
 
-    // computeHash called twice
-    expect(mockComputeHash).toHaveBeenCalledTimes(2);
+    expect(mockComputeHash).toHaveBeenCalledTimes(1);
 
-    // First call: DEPOSIT
     const [prevArg, typeArg, , userIdArg] = mockComputeHash.mock.calls[0] as [
       string,
       string,
       string,
-      string
+      string,
     ];
     expect(prevArg).toBe(fakePrevHash);
     expect(typeArg).toBe("DEPOSIT");
     expect(userIdArg).toBe("user-456");
 
-    // Second call: STRIPE_FEE, prevHash = deposit txHash
-    const [feePrevArg, feeTypeArg] = mockComputeHash.mock.calls[1] as [
-      string,
-      string
-    ];
-    expect(feePrevArg).toBe(fakeDepositHash);
-    expect(feeTypeArg).toBe("STRIPE_FEE");
-
-    // DEPOSIT row hashes
-    const { data: depositData } = mockTxCreate.mock.calls[0]?.[0] as {
+    const { data } = mockTxCreate.mock.calls[0]?.[0] as {
       data: Record<string, unknown>;
     };
-    expect(depositData["prevHash"]).toBe(fakePrevHash);
-    expect(depositData["txHash"]).toBe(fakeDepositHash);
+    expect(data["prevHash"]).toBe(fakePrevHash);
+    expect(data["txHash"]).toBe(fakeDepositHash);
   });
 
   // -------------------------------------------------------------------------
   // Idempotency — the core correctness requirement
   // -------------------------------------------------------------------------
 
-  it("is idempotent — second call with same session does NOT insert another row", async () => {
-    // First call: session not yet in DB → inserts DEPOSIT + STRIPE_FEE
+  it("is idempotent — second call with same id does NOT insert another row", async () => {
+    // First call: payment not yet in DB → inserts DEPOSIT
     mockTransactionFindFirst.mockResolvedValueOnce(null);
-    await handleCheckoutCompleted(makeSession());
+    await handlePaymentIntentSucceeded(makePaymentIntent());
     expect(mockPrismaTransaction).toHaveBeenCalledTimes(1);
-    expect(mockTxCreate).toHaveBeenCalledTimes(2); // DEPOSIT + STRIPE_FEE
+    expect(mockTxCreate).toHaveBeenCalledTimes(1);
 
-    // Second call with the same session: already processed
+    // Second call with the same payment: already processed
     mockTransactionFindFirst.mockResolvedValueOnce({ id: "existing-tx-id" });
-    await handleCheckoutCompleted(makeSession());
+    await handlePaymentIntentSucceeded(makePaymentIntent());
 
     // $transaction must NOT have been called a second time
     expect(mockPrismaTransaction).toHaveBeenCalledTimes(1);
-    // tx.transaction.create still only 2 total (no new rows)
-    expect(mockTxCreate).toHaveBeenCalledTimes(2);
+    expect(mockTxCreate).toHaveBeenCalledTimes(1);
   });
 
   it("does not throw on duplicate delivery — returns cleanly", async () => {
     mockTransactionFindFirst.mockResolvedValueOnce({ id: "already-done" });
     await expect(
-      handleCheckoutCompleted(makeSession())
+      handlePaymentIntentSucceeded(makePaymentIntent())
     ).resolves.toBeUndefined();
   });
 
@@ -464,28 +349,20 @@ describe("handleCheckoutCompleted", () => {
   // Error paths
   // -------------------------------------------------------------------------
 
-  it("throws when client_reference_id is null", async () => {
-    const session = makeSession({ client_reference_id: null });
-    await expect(handleCheckoutCompleted(session)).rejects.toThrow(
-      "client_reference_id"
+  it("throws when metadata.userId is missing", async () => {
+    const pi = makePaymentIntent({ metadata: {} });
+    await expect(handlePaymentIntentSucceeded(pi)).rejects.toThrow(
+      "metadata.userId"
     );
     // Should not have touched the DB at all
     expect(mockTransactionFindFirst).not.toHaveBeenCalled();
   });
 
-  it("throws when amount_total is null", async () => {
-    mockTransactionFindFirst.mockResolvedValueOnce(null);
-    const session = makeSession({ amount_total: null });
-    await expect(handleCheckoutCompleted(session)).rejects.toThrow(
-      "amount_total"
-    );
-  });
-
   it("propagates Prisma errors from the $transaction block", async () => {
     mockTransactionFindFirst.mockResolvedValueOnce(null);
     mockPrismaTransaction.mockRejectedValueOnce(new Error("DB connection lost"));
-    await expect(handleCheckoutCompleted(makeSession())).rejects.toThrow(
-      "DB connection lost"
-    );
+    await expect(
+      handlePaymentIntentSucceeded(makePaymentIntent())
+    ).rejects.toThrow("DB connection lost");
   });
 });
