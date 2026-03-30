@@ -14,6 +14,7 @@
 
 import { router, publicProcedure } from "../trpc.js";
 import { prisma } from "../db.js";
+import { HOUSE_PHONE } from "../services/houseSeeding.js";
 
 // ---------------------------------------------------------------------------
 // Router
@@ -57,8 +58,11 @@ export const leaderboardRouter = router({
       FROM users u
       LEFT JOIN payout_sums ps ON ps.user_id = u.id
       LEFT JOIN cost_sums   cs ON cs.user_id = u.id
-      WHERE COALESCE(ps.total_payouts, 0) > 0
-         OR COALESCE(cs.total_costs, 0) > 0
+      WHERE u.phone != ${HOUSE_PHONE}
+        AND (
+          COALESCE(ps.total_payouts, 0) > 0
+          OR COALESCE(cs.total_costs, 0) > 0
+        )
       ORDER BY realized_pnl DESC
       LIMIT 50
     `;

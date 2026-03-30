@@ -33,6 +33,8 @@ export default function CreateMarketForm({ onCreated }: Props) {
   const [eventTag, setEventTag] = useState<EventTag | "">("");
   const [familySide, setFamilySide] = useState<FamilySide | "">("");
   const [customTagsRaw, setCustomTagsRaw] = useState("");
+  /** Seed amount per outcome in dollars. 0 = disable. Default $20. */
+  const [seedDollars, setSeedDollars] = useState("20");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,6 +68,8 @@ export default function CreateMarketForm({ onCreated }: Props) {
       .map((t) => t.trim())
       .filter(Boolean);
 
+    const seedAmountCents = Math.round(parseFloat(seedDollars || "0") * 100);
+
     setLoading(true);
     try {
       await trpc.market.create.mutate({
@@ -79,6 +83,7 @@ export default function CreateMarketForm({ onCreated }: Props) {
         eventTag: eventTag || undefined,
         familySide: familySide || undefined,
         customTags: customTags.length ? customTags : undefined,
+        seedAmountCents: isNaN(seedAmountCents) ? 0 : seedAmountCents,
       });
       // Reset form
       setQuestion("");
@@ -89,6 +94,7 @@ export default function CreateMarketForm({ onCreated }: Props) {
       setEventTag("");
       setFamilySide("");
       setCustomTagsRaw("");
+      setSeedDollars("20");
       onCreated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create market");
@@ -244,6 +250,33 @@ export default function CreateMarketForm({ onCreated }: Props) {
           placeholder="20"
           className="w-32 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
         />
+      </div>
+
+      {/* House seed amount */}
+      <div>
+        <label className="block text-sm font-medium text-charcoal mb-1">
+          House seed per outcome{" "}
+          <span className="text-warmGray font-normal">(dollars, 0 to disable)</span>
+        </label>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-warmGray">$</span>
+          <input
+            type="number"
+            min="0"
+            max="1000"
+            step="1"
+            value={seedDollars}
+            onChange={(e) => setSeedDollars(e.target.value)}
+            placeholder="20"
+            className="w-28 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+          />
+          <span className="text-xs text-warmGray">per outcome</span>
+        </div>
+        {parseFloat(seedDollars || "0") > 0 && (
+          <p className="mt-1 text-xs text-warmGray">
+            Total seeding: ${(parseFloat(seedDollars || "0") * Math.max(outcomes.filter(Boolean).length, 2)).toFixed(0)} across all outcomes
+          </p>
+        )}
       </div>
 
       {/* Open time */}
