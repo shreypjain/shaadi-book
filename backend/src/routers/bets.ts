@@ -13,7 +13,7 @@
 
 import { router, protectedProcedure } from "../trpc.js";
 import { prisma } from "../db.js";
-import { allPrices, adaptiveB } from "../services/lmsr.js";
+import { allPrices, defaultB } from "../services/lmsr.js";
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -71,17 +71,11 @@ export const betsRouter = router({
       const totalCostCents = Math.round(toNum(pos.totalCost as unknown as number) * 100);
 
       // Compute current LMSR prices for all outcomes in this market
-      const bFloor = market.bFloorOverride != null
-        ? toNum(market.bFloorOverride as unknown as number)
-        : 20;
       const totalVolume = market.purchases.reduce(
         (sum: number, p: { cost: unknown }) => sum + toNum(p.cost as unknown as number),
         0
       );
-      const dtMs = market.openedAt
-        ? Math.max(0, Date.now() - market.openedAt.getTime())
-        : 0;
-      const b = adaptiveB(bFloor, dtMs, totalVolume);
+      const b = defaultB(market.outcomes.length);
       const q = market.outcomes.map((o: { sharesSold: unknown }) => toNum(o.sharesSold as unknown as number));
       const prices = q.length >= 2 ? allPrices(q, b) : q.map(() => 0.5);
 

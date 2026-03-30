@@ -6,7 +6,6 @@
  *
  * References:
  *   PRD §4.2 — cost function and price formula
- *   PRD §4.3 — adaptive b parameter
  *   PRD §6.3 — purchase engine pseudocode
  */
 
@@ -101,22 +100,29 @@ export function allPrices(q: number[], b: number): number[] {
 }
 
 /**
- * Binary search: find Δ shares such that
+ * Closed-form solution: find Δ shares such that
  *   C(q₁, …, qᵢ + Δ, …, qₙ) − C(q₁, …, qₙ) = dollarAmount
  *
- * Precision: converges to within 1e-7; result is rounded to 4 decimal places.
+ * Derivation:
+ *   Let S = Σⱼ≠ᵢ e^(qⱼ/b)
+ *   C(q_after) - C(q_before) = X  →  solve for Δ:
+ *   Δ = b × ln((e^(X/b) × (S + e^(qᵢ/b)) - S) / e^(qᵢ/b))
+ *
+ * Precision: exact to Decimal.js precision; result is rounded to 4 d.p.
  *
  * @param q            - Current shares-sold vector.
  * @param b            - Liquidity parameter.
  * @param outcomeIndex - Outcome being purchased.
  * @param dollarAmount - Dollar amount being spent (must be > 0).
+ * @param maxShares    - Maximum shares allowed per outcome (default 100).
  * @returns Number of shares received (rounded to 4 d.p.).
  */
 export function computeSharesForDollarAmount(
   q: number[],
   b: number,
   outcomeIndex: number,
-  dollarAmount: number
+  dollarAmount: number,
+  maxShares: number = 100
 ): number {
   if (dollarAmount <= 0) {
     throw new Error("computeSharesForDollarAmount: dollarAmount must be > 0");
@@ -127,66 +133,94 @@ export function computeSharesForDollarAmount(
     );
   }
 
-  const cBefore = costFunction(q, b);
-  const target = cBefore + dollarAmount;
+  const bd = new Decimal(b);
+  const X = new Decimal(dollarAmount);
+  const qi = new Decimal(q[outcomeIndex] ?? 0);
 
-  /** Cost of the state vector after buying `delta` additional shares. */
-  const costAtDelta = (delta: number): number => {
-    const qNew = q.slice();
-    qNew[outcomeIndex] = (q[outcomeIndex] ?? 0) + delta;
-    return costFunction(qNew, b);
-  };
+  // S = Σⱼ≠ᵢ e^(qⱼ/b)
+  const S = q.reduce((acc, qj, j) => {
+    if (j === outcomeIndex) return acc;
+    return acc.plus(new Decimal(qj).dividedBy(bd).exp());
+  }, new Decimal(0));
 
-  // Expand upper bound until cost(hi) > target.
-  let lo = 0;
-  let hi = Math.max(dollarAmount, 1);
-  while (costAtDelta(hi) < target) {
-    hi *= 2;
+  const eQi = qi.dividedBy(bd).exp();
+
+  // Δ = b × ln((e^(X/b) × (S + e^(qᵢ/b)) - S) / e^(qᵢ/b))
+  const eXb = X.dividedBy(bd).exp();
+  const numerator = eXb.times(S.plus(eQi)).minus(S);
+  const delta = bd.times(numerator.dividedBy(eQi).ln());
+
+  const deltaNum = delta.toDecimalPlaces(4, Decimal.ROUND_DOWN).toNumber();
+
+  if ((q[outcomeIndex] ?? 0) + deltaNum > maxShares) {
+    throw new Error(
+      `computeSharesForDollarAmount: purchase would exceed maxShares (${maxShares}). ` +
+        `Current: ${q[outcomeIndex]}, buying: ${deltaNum}`
+    );
   }
 
-  // Bisection — 200 iterations gives precision << 1e-7 for any reasonable range.
-  for (let i = 0; i < 200; i++) {
-    const mid = (lo + hi) / 2;
-    const diff = costAtDelta(mid) - target;
-
-    if (Math.abs(diff) < 1e-7) break;
-
-    if (diff < 0) {
-      lo = mid;
-    } else {
-      hi = mid;
-    }
-  }
-
-  // Round to 4 decimal places as required.
-  return Math.round(((lo + hi) / 2) * 10_000) / 10_000;
+  return deltaNum;
 }
 
 /**
- * Adaptive liquidity parameter.
+ * Revenue from selling shares back to the AMM.
  *
- * b(t, V) = max(bFloor, 20 + (0.6 × 0.25 × √(Δt_ms)) + (0.4 × 0.5 × V))
+ * Revenue = C(q_before) - C(q_after)
+ * where q_after[outcomeIndex] = q_before[outcomeIndex] - sharesToSell
  *
- * The hybrid time/volume formula ensures markets are price-sensitive early
- * (driving excitement) and stabilise as both time and money flow in.
- *
- * @param bFloor      - Minimum allowed b (default 20; admin-configurable per market).
- * @param dtMs        - Milliseconds elapsed since the market opened.
- * @param totalVolume - Total dollar volume traded in this market so far.
- * @returns The current b value (≥ bFloor).
+ * @param q            - Current shares-sold vector (before the sale).
+ * @param b            - Liquidity parameter.
+ * @param outcomeIndex - Outcome being sold.
+ * @param sharesToSell - Number of shares to sell (must be > 0 and ≤ q[i]).
+ * @returns Dollar revenue received (rounded to 4 d.p.).
  */
-export function adaptiveB(
-  bFloor: number,
-  dtMs: number,
-  totalVolume: number
+export function computeDollarAmountForShares(
+  q: number[],
+  b: number,
+  outcomeIndex: number,
+  sharesToSell: number
 ): number {
-  if (bFloor <= 0) throw new Error("adaptiveB: bFloor must be positive");
-  if (dtMs < 0) throw new Error("adaptiveB: dtMs must be >= 0");
-  if (totalVolume < 0) throw new Error("adaptiveB: totalVolume must be >= 0");
+  if (sharesToSell <= 0) {
+    throw new Error("computeDollarAmountForShares: sharesToSell must be > 0");
+  }
+  if (outcomeIndex < 0 || outcomeIndex >= q.length) {
+    throw new Error(
+      `computeDollarAmountForShares: outcomeIndex ${outcomeIndex} out of range`
+    );
+  }
+  const currentShares = q[outcomeIndex] ?? 0;
+  if (sharesToSell > currentShares) {
+    throw new Error(
+      `computeDollarAmountForShares: cannot sell ${sharesToSell} shares — only ${currentShares} held`
+    );
+  }
 
-  const computed =
-    20 + 0.6 * 0.25 * Math.sqrt(dtMs) + 0.4 * 0.5 * totalVolume;
-  return Math.max(bFloor, computed);
+  const qAfter = q.slice();
+  qAfter[outcomeIndex] = currentShares - sharesToSell;
+
+  const revenue = costFunction(q, b) - costFunction(qAfter, b);
+  return Math.round(revenue * 10_000) / 10_000;
+}
+
+/**
+ * Default fixed liquidity parameter for a market.
+ *
+ * b = maxShares / ln(19^(numOutcomes - 1))
+ *
+ * Calibrated so that betting the entire supply on one outcome costs roughly
+ * maxShares dollars more than an equal-weight starting state.
+ *
+ * Typical values (maxShares = 100):
+ *   n=2: ≈ 33.95   n=3: ≈ 16.98   n=4: ≈ 11.32
+ *
+ * @param numOutcomes - Number of outcomes in the market (≥ 2).
+ * @param maxShares   - Maximum shares per outcome (default 100).
+ * @returns Fixed b value for the market.
+ */
+export function defaultB(numOutcomes: number, maxShares: number = 100): number {
+  if (numOutcomes < 2) throw new Error("defaultB: numOutcomes must be >= 2");
+  if (maxShares <= 0) throw new Error("defaultB: maxShares must be positive");
+  return maxShares / Math.log(Math.pow(19, numOutcomes - 1));
 }
 
 /**

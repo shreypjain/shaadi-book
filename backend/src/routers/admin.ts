@@ -21,7 +21,7 @@ import { runReconciliation, getTotalDeposits } from "../services/ledger.js";
 import { verifyChainIntegrity } from "../services/hashChainVerifier.js";
 import { getRecentAuditLog } from "../services/auditLog.js";
 import { prisma } from "../db.js";
-import { adaptiveB } from "../services/lmsr.js";
+import { defaultB } from "../services/lmsr.js";
 import { Decimal } from "decimal.js";
 
 // ---------------------------------------------------------------------------
@@ -149,13 +149,7 @@ export const adminRouter = router({
         );
         totalVolume = totalVolume.plus(marketVolume);
 
-        const dtMs = market.openedAt
-          ? Date.now() - market.openedAt.getTime()
-          : 0;
-        const bFloor = market.bFloorOverride
-          ? Number(market.bFloorOverride)
-          : 20;
-        const b = adaptiveB(bFloor, dtMs, marketVolume.toNumber());
+        const b = defaultB(market.outcomes.length);
 
         return {
           marketId: market.id,
