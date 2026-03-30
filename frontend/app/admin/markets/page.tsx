@@ -78,10 +78,10 @@ export default function AdminMarketsPage() {
               <button
                 key={s}
                 onClick={() => setFilter(s)}
-                className={`rounded px-2 py-0.5 text-xs font-medium transition-colors min-h-0 min-w-0 h-auto ${
+                className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors min-h-0 min-w-0 h-auto ${
                   filter === s
-                    ? "bg-gray-800 text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    ? "border-[#c8a45c] bg-[#c8a45c] text-white shadow-sm"
+                    : "border-[#2C2C2C]/20 bg-transparent text-[#2C2C2C] hover:border-[#c8a45c]/50 hover:text-[#c8a45c]"
                 }`}
               >
                 {s}

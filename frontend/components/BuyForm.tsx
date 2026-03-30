@@ -217,8 +217,8 @@ export function BuyForm({
                 className={cn(
                   "flex-1 py-2 rounded-full text-sm font-semibold transition-all duration-150",
                   dollarAmountStr === String(amt)
-                    ? "bg-[#1e3a5f] text-white shadow-sm"
-                    : "bg-white border border-[#e8e4df] text-[#4a4a5a] hover:border-[#1e3a5f] hover:text-[#1e3a5f]"
+                    ? "border border-[#c8a45c] bg-[#c8a45c] text-white shadow-sm"
+                    : "bg-white border border-[#2C2C2C]/20 text-[#4a4a5a] hover:border-[#c8a45c]/50 hover:text-[#c8a45c]"
                 )}
               >
                 ${amt}
