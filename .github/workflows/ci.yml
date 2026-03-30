@@ -20,6 +20,9 @@ jobs:
 
       - run: npm install
 
+      - name: Generate Prisma client
+        run: cd backend && npx prisma generate
+
       - name: Backend tests
         run: cd backend && npm test -- --run
 
