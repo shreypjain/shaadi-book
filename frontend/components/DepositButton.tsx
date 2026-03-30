@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
 import { api } from "@/lib/api";
@@ -104,8 +105,8 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
         + Add Credits
       </button>
 
-      {/* Modal overlay — full screen centered */}
-      {open && (
+      {/* Modal overlay — portaled to document.body to escape parent stacking contexts */}
+      {open && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           {/* Backdrop — covers everything */}
           <div
@@ -270,7 +271,8 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

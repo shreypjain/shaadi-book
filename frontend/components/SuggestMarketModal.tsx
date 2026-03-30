@@ -13,6 +13,7 @@
  */
 
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { api } from "@/lib/api";
 
@@ -127,7 +128,9 @@ export function SuggestMarketModal({ isOpen, onClose }: Props) {
   // Render
   // ---------------------------------------------------------------------------
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -341,6 +344,7 @@ export function SuggestMarketModal({ isOpen, onClose }: Props) {
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 }
