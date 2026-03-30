@@ -9,8 +9,10 @@ Live prediction market web app for Parsh & Spoorthi's wedding in Udaipur. Guests
 - Database: PostgreSQL 16 + Prisma ORM
 - Real-time: Socket.io (WebSocket) with Redis adapter
 - Auth: Custom OTP via Twilio Verify (phone-based, supports +1 US and +91 IN)
-- Payments: Stripe only (Apple Pay + credit card, USD). No Razorpay.
-- Hosting: Vercel (frontend) + Railway (backend, Postgres, Redis)
+- Payments: Stripe (ACH preferred, card fallback, USD)
+- Hosting: DigitalOcean droplet (159.223.173.109) — Docker Compose with Caddy + Next.js + Express + Postgres + Redis
+- Domain: markets.parshandspoorthi.com (SSL via Caddy/Let's Encrypt)
+- CI/CD: GitHub Actions → SSH deploy to droplet on push to main
 
 ## Architecture Rules
 - All monetary operations go through the append-only `transactions` table.
@@ -19,9 +21,62 @@ Live prediction market web app for Parsh & Spoorthi's wedding in Udaipur. Guests
 - Every transaction row has a SHA-256 hash chain. No UPDATE/DELETE on `transactions` or `purchases` — trigger-enforced.
 - Double-entry bookkeeping: every transaction has debit_account and credit_account.
 - Reconciliation invariant: SUM(user balances) + SUM(withdrawals paid) = SUM(deposits received) — checked on every balance-modifying transaction.
+- **Capped parimutuel resolution**: payout_per_share = min($1.00, total_pool / winning_shares). House NEVER loses.
+- **House seeding**: markets auto-seed $20/outcome from a House account on creation (internal ledger credit, no Stripe).
+- **Minimum 5 unique bettors** to resolve a market.
 - Adaptive b formula: b(t,V) = max(b_floor, 20 + (0.6 * 0.25 * sqrt(dt_ms)) + (0.4 * 0.5 * V))
 - $200 max bet per user per market.
 - No selling — buy and hold until resolution.
+
+## Deployment & Operations
+- Production: `docker compose -f docker-compose.prod.yml` on DO droplet
+- SSH: `ssh -i ~/.ssh/shaadi_droplet root@159.223.173.109`
+- Deploy: push to main → GitHub Actions auto-deploys, or manual: `git pull && docker compose build && up -d`
+- Env: `.env` on droplet only (never committed). Contains Stripe live keys, Twilio, JWT secret.
+- Migrations: `docker compose exec -T api npx prisma migrate deploy`
+- Hash chain fixes: use `/tmp/fix-chain.mjs` script via `docker cp` + `docker exec`
+
+## Agent Orchestration (Arcanist)
+This project is developed using Claude Code as an orchestrator with Arcanist coding agents.
+See the arcanist skill instructions for full patterns. Key conventions:
+- Launch agents with detailed prompts including file paths, exact changes, branch names
+- Always include "Create a PR to main" in agent prompts
+- Poll for PRs with exponential backoff after launching agents
+- Nudge stuck agents with `arcanist message <session-id>`
+- Review PRs: check diffs, rebase conflicts, merge with `gh pr merge --admin`
+- After merging: pull to droplet, rebuild, run migrations, fix hash chain if needed
+- Close stale/superseded PRs with comments explaining why
+
+## Workbook — Shared Agent Context (.workbook/WORKBOOK.md)
+Every Claude Code session on this repo MUST use the workbook to coordinate with other sessions.
+
+### On session start:
+1. Generate your agent name: run `~/.claude/scripts/workbook-init.sh` to get a city-based ID
+2. Read `.workbook/WORKBOOK.md` to see what other agents are doing
+3. Register yourself in the Active Sessions table
+
+### Before starting work:
+1. Read the workbook's "In Progress" section
+2. If another agent is touching the same files, coordinate or pick different work
+3. Claim your task by moving it from "Up Next" to "In Progress" with your name and files
+
+### Updating the workbook:
+1. Acquire lock: `~/.claude/scripts/workbook-lock.sh`
+2. Read the file, make edits, write back
+3. Release lock: `~/.claude/scripts/workbook-unlock.sh`
+4. If lock fails (another agent writing), retry with exponential backoff (the lock script handles this)
+5. Update the "Last updated" timestamp at the bottom
+
+### When finishing work:
+1. Move your task from "In Progress" to "Recently Completed"
+2. Note any PRs created, dependencies, or follow-up needed
+3. Remove yourself from Active Sessions if the conversation is ending
+
+### Key rules:
+- NEVER skip reading the workbook before starting work on files
+- Always list the specific files you're touching so others avoid them
+- If you see a merge conflict risk, note it in Dependencies & Blockers
+- Keep the workbook concise — it's a standup board, not a novel
 
 ## Conventions
 - TypeScript strict mode everywhere.
