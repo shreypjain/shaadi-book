@@ -249,26 +249,7 @@ export function BuyForm({
               </div>
             </div>
 
-            {/* Middle: price movement */}
-            <div className="flex items-center gap-2 text-sm">
-              <svg
-                className="w-3.5 h-3.5 text-[#c8a45c] flex-shrink-0"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
-                  d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
-              <span className="text-warmGray tabular-nums">
-                {Math.round(preview.priceBefore * 100)}¢
-              </span>
-              <span className="text-warmGray">→</span>
-              <span className="text-charcoal font-semibold tabular-nums">
-                {Math.round(preview.priceAfter * 100)}¢
-              </span>
-              <span className="text-xs text-warmGray ml-auto">price impact</span>
-            </div>
+            {/* Price impact display removed — cleaner UX */}
 
             {/* Bottom: gold payout banner — capped parimutuel estimate */}
             {(() => {
