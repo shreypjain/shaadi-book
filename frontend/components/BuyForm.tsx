@@ -356,7 +356,7 @@ export function BuyForm({
         </div>
 
         <div className="text-center">
-          <p className="text-base font-bold text-charcoal">Bet placed!</p>
+          <p className="text-base font-bold text-charcoal">Bet placed</p>
           <p className="text-sm text-warmGray mt-1">
             {formatShares(preview.shares)} shares of{" "}
             <span className={cn("font-semibold", colors.text)}>{selectedOutcome.label}</span>

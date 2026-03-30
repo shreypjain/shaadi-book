@@ -59,7 +59,7 @@ export function WithdrawalForm({
     return (
       <div className="rounded-2xl bg-green-50 border border-green-200 p-5 text-center">
         <p className="text-2xl mb-2">✓</p>
-        <p className="font-semibold text-green-800">Withdrawal requested!</p>
+        <p className="font-semibold text-green-800">Withdrawal requested</p>
         <p className="text-sm text-green-600 mt-1">
           Shrey will send your payout via Venmo/Zelle after the event.
         </p>
