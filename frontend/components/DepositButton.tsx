@@ -113,9 +113,10 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
             onClick={step !== "payment" ? handleClose : undefined}
           />
 
-          {/* Modal card — centered, scrollable */}
+          {/* Modal card — centered, scrollable, opaque white */}
           <div className="relative z-[101] w-full max-w-md max-h-[85vh] overflow-y-auto
-                          bg-ivory rounded-2xl p-6 shadow-2xl">
+                          bg-white rounded-2xl p-6 shadow-[0_25px_60px_rgba(0,0,0,0.3)]
+                          border border-[rgba(184,134,11,0.12)]">
             {/* ----------------------------------------------------------------
                 Step 1: Amount selection
             ---------------------------------------------------------------- */}
