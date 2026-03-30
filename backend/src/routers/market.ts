@@ -26,6 +26,7 @@ import {
   openMarket,
   type ListMarketsFilters,
 } from "../services/marketService.js";
+import { seedMarket, DEFAULT_SEED_CENTS } from "../services/houseSeeding.js";
 import {
   notifyNewMarket,
   notifyMarketResolved,
@@ -353,6 +354,8 @@ export const marketRouter = router({
         eventTag: EventTagSchema.optional(),
         familySide: FamilySideSchema.optional(),
         customTags: z.array(z.string().min(1).max(50)).max(10).optional(),
+        /** House seed amount per outcome in cents. Defaults to $20 (2000). Set to 0 to skip seeding. */
+        seedAmountCents: z.number().int().min(0).max(100000).default(DEFAULT_SEED_CENTS),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -371,6 +374,14 @@ export const marketRouter = router({
           customTags: input.customTags,
         }
       );
+
+      // Seed the market with house funds (fire-and-forget on failure so market
+      // creation still succeeds; admin can see error in logs)
+      if (input.seedAmountCents > 0) {
+        seedMarket(marketId, input.seedAmountCents).catch((err: unknown) => {
+          console.error("[market.create] House seeding failed (non-fatal):", err);
+        });
+      }
 
       const market = await getMarketWithPrices(marketId);
       if (!market) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });

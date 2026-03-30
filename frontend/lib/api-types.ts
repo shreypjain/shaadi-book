@@ -55,6 +55,8 @@ export interface MarketWithPrices {
   familySide: string | null;
   /** Freeform custom tags. */
   customTags: string[];
+  /** Number of unique non-house bettors who have placed at least one buy. */
+  bettorCount: number;
 }
 
 // ---------------------------------------------------------------------------

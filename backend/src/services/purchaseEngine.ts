@@ -241,7 +241,14 @@ export async function buyShares(
   userId: string,
   marketId: string,
   outcomeId: string,
-  dollarAmountCents: number
+  dollarAmountCents: number,
+  opts?: {
+    /**
+     * When true, skip the $200 per-user per-market cap check.
+     * INTERNAL USE ONLY — set exclusively by houseSeeding.seedMarket().
+     */
+    skipCapCheck?: boolean;
+  }
 ): Promise<PurchaseResult> {
   // -------------------------------------------------------------------------
   // 1. Pre-flight input validation (before any DB round-trip)
@@ -354,23 +361,25 @@ export async function buyShares(
       }
 
       // -----------------------------------------------------------------------
-      // 6. Check $200 per-user per-market cap
+      // 6. Check $200 per-user per-market cap (bypassed for house seeding)
       // -----------------------------------------------------------------------
-      const spendResult = (await tx.$queryRaw`
-        SELECT COALESCE(SUM(cost), 0) AS total_spend
-        FROM purchases
-        WHERE user_id  = ${userId}
-          AND market_id = ${marketId}
-      `) as Array<{ total_spend: unknown }>;
+      if (!opts?.skipCapCheck) {
+        const spendResult = (await tx.$queryRaw`
+          SELECT COALESCE(SUM(cost), 0) AS total_spend
+          FROM purchases
+          WHERE user_id  = ${userId}
+            AND market_id = ${marketId}
+        `) as Array<{ total_spend: unknown }>;
 
-      const existingSpendDollars = toNumber(spendResult[0]?.total_spend ?? 0);
+        const existingSpendDollars = toNumber(spendResult[0]?.total_spend ?? 0);
 
-      if (existingSpendDollars + dollarAmount > 200) {
-        const remaining = Math.max(0, 200 - existingSpendDollars);
-        throw new PurchaseError(
-          "CAP_EXCEEDED",
-          `Purchase would exceed $200 market cap. Already spent: $${existingSpendDollars.toFixed(2)}, remaining: $${remaining.toFixed(2)}, attempted: $${dollarAmount.toFixed(2)}`
-        );
+        if (existingSpendDollars + dollarAmount > 200) {
+          const remaining = Math.max(0, 200 - existingSpendDollars);
+          throw new PurchaseError(
+            "CAP_EXCEEDED",
+            `Purchase would exceed $200 market cap. Already spent: $${existingSpendDollars.toFixed(2)}, remaining: $${remaining.toFixed(2)}, attempted: $${dollarAmount.toFixed(2)}`
+          );
+        }
       }
 
       // -----------------------------------------------------------------------
