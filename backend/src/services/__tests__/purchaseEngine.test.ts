@@ -19,7 +19,6 @@ import { buyShares, PurchaseError, toNumber } from "../purchaseEngine.js";
 import {
   allPrices,
   computeSharesForDollarAmount,
-  price,
 } from "../lmsr.js";
 
 // ---------------------------------------------------------------------------
@@ -108,24 +107,21 @@ function mockTransaction(tx: ReturnType<typeof makeTx>): void {
 /**
  * Set up a tx mock for a HAPPY-PATH purchase.
  *
- * @param balanceDollars    - User's current ledger balance in dollars
- * @param spendDollars      - Existing spend in this market in dollars
- * @param volumeDollars     - Total market volume in dollars (for adaptive b)
- * @param sharesSold        - Current state vector [yes, no] as number[]
+ * @param balanceDollars - User's current ledger balance in dollars
+ * @param spendDollars   - Existing spend in this market in dollars
+ * @param sharesSold     - Current state vector [yes, no] as number[]
  */
 function wireHappyPath(
   tx: ReturnType<typeof makeTx>,
   opts: {
     balanceDollars?: number;
     spendDollars?: number;
-    volumeDollars?: number;
     sharesSold?: number[];
   } = {}
 ): void {
   const {
     balanceDollars = 20,
     spendDollars = 0,
-    volumeDollars = 0,
     sharesSold = [0, 0],
   } = opts;
 
@@ -144,9 +140,6 @@ function wireHappyPath(
 
   // Market spend
   tx.$queryRaw.mockResolvedValueOnce([{ total_spend: spendDollars }]);
-
-  // Market volume
-  tx.$queryRaw.mockResolvedValueOnce([{ total_volume: volumeDollars }]);
 
   // outcome.update
   tx.outcome.update.mockResolvedValue({});
@@ -438,8 +431,7 @@ describe("buyShares — reconciliation invariant", () => {
     tx.$queryRaw
       .mockResolvedValueOnce(mockOutcomes) // lock
       .mockResolvedValueOnce([{ balance: 20 }]) // balance: $20
-      .mockResolvedValueOnce([{ total_spend: 0 }]) // no prior spend
-      .mockResolvedValueOnce([{ total_volume: 0 }]); // no prior volume
+      .mockResolvedValueOnce([{ total_spend: 0 }]); // no prior spend
 
     tx.outcome.update.mockResolvedValue({});
     tx.transaction.findFirst.mockResolvedValue(null);
@@ -470,8 +462,7 @@ describe("buyShares — reconciliation invariant", () => {
     tx.$queryRaw
       .mockResolvedValueOnce(mockOutcomes)
       .mockResolvedValueOnce([{ balance: 20 }])
-      .mockResolvedValueOnce([{ total_spend: 0 }])
-      .mockResolvedValueOnce([{ total_volume: 0 }]);
+      .mockResolvedValueOnce([{ total_spend: 0 }]);
 
     tx.outcome.update.mockResolvedValue({});
     tx.transaction.findFirst.mockResolvedValue(null);
@@ -509,18 +500,13 @@ describe("buyShares — price impact matches LMSR formula", () => {
     mockTransaction(tx);
   });
 
-  it("$10 on fresh binary market (q=[0,0], b≈46) — prices match allPrices()", async () => {
-    const openedAt = new Date(Date.now() - 30_000); // 30s ago → b≈46 at V=0
-    tx.market.findUnique.mockResolvedValue({
-      ...mockMarket,
-      openedAt,
-    });
+  it("$10 on fresh binary market (q=[0,0], b≈27) — prices match allPrices()", async () => {
+    tx.market.findUnique.mockResolvedValue(mockMarket);
 
     tx.$queryRaw
       .mockResolvedValueOnce(mockOutcomes)           // lock: q=[0,0]
       .mockResolvedValueOnce([{ balance: 50 }])      // balance
-      .mockResolvedValueOnce([{ total_spend: 0 }])   // spend
-      .mockResolvedValueOnce([{ total_volume: 0 }]); // volume
+      .mockResolvedValueOnce([{ total_spend: 0 }]);  // spend
 
     tx.outcome.update.mockResolvedValue({});
     tx.transaction.findFirst.mockResolvedValue(null);
@@ -541,21 +527,14 @@ describe("buyShares — price impact matches LMSR formula", () => {
 
     const result = await buyShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 1000); // $10
 
-    // Independently compute expected values using the same LMSR math
+    // Fixed b for binary market: defaultB(2) ≈ 27.17
     const q = [0, 0];
-    const dtMs = Date.now() - openedAt.getTime();
-    // b ≈ 20 + 0.6 * 0.25 * sqrt(30000) ≈ 45.98 (time-only at V=0)
-    // Allow some variance because dtMs fluctuates slightly between calls
-    const b = 20 + 0.6 * 0.25 * Math.sqrt(dtMs); // approximate
+    const b = (0.8 * 100) / Math.log(19 * 1); // = defaultB(2)
 
     const expectedShares = computeSharesForDollarAmount(q, b, 0, 10);
-    const qNew = [expectedShares, 0];
-    const expectedPrices = allPrices(qNew, b);
-    const expectedPriceBefore = price(q, b, 0);
 
-    // Shares should be within 5% of expected (b is slightly different due to timing)
-    expect(result.shares).toBeGreaterThan(expectedShares * 0.95);
-    expect(result.shares).toBeLessThan(expectedShares * 1.05);
+    // Shares match defaultB(2) exactly
+    expect(result.shares).toBeCloseTo(expectedShares, 1);
 
     // priceBefore should be near 50¢ (fair coin on fresh market)
     expect(result.priceBeforeCents).toBeCloseTo(50, 0);
@@ -563,14 +542,9 @@ describe("buyShares — price impact matches LMSR formula", () => {
     // priceAfter should be > priceBefore (bought Yes → Yes price up)
     expect(result.priceAfterCents).toBeGreaterThan(result.priceBeforeCents);
 
-    // allNewPrices should match allPrices() applied to qNew
-    // (within rounding since we use cents)
+    // allNewPrices should sum to 1
     const sumPrices = result.allNewPrices.reduce((a, b) => a + b, 0);
     expect(Math.abs(sumPrices - 1.0)).toBeLessThan(0.0001);
-
-    // Suppress unused variable warnings
-    void expectedPriceBefore;
-    void expectedPrices;
   });
 
   it("buying Yes moves Yes price up and No price down", async () => {
