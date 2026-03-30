@@ -349,7 +349,7 @@ export default function MarketDetailPage() {
                 />
               </svg>
               <p className="text-xs text-amber-700 leading-snug">
-                More bets = bigger payouts for everyone. Spread the word!
+                More bets = bigger payouts for everyone. Spread the word.
               </p>
             </div>
           )}
