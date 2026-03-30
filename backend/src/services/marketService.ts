@@ -402,7 +402,7 @@ export async function resolveMarket(
       const uniqueBettors = await tx.purchase.findMany({
         where: {
           marketId,
-          user: { isHouse: false },
+          user: { phone: { not: HOUSE_PHONE } },
         },
         select: { userId: true },
         distinct: ["userId"],
@@ -814,7 +814,7 @@ export async function listMarkets(
         select: {
           cost: true,
           userId: true,
-          user: { select: { isHouse: true } },
+          user: { select: { phone: true } },
         },
       },
     },
