@@ -117,7 +117,7 @@ export function allPrices(q: number[], b: number): number[] {
  * @param b            - Liquidity parameter.
  * @param outcomeIndex - Outcome being purchased.
  * @param dollarAmount - Dollar amount being spent (must be > 0).
- * @param maxShares    - Per-outcome share cap (default 100). Throws
+ * @param maxShares    - Per-outcome share cap (default 1000). Throws
  *                       SHARE_CAP_EXCEEDED if the purchase would breach it.
  * @returns Number of shares received (rounded to 4 d.p.).
  */
