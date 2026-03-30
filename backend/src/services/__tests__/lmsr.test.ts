@@ -1,23 +1,30 @@
 /**
  * LMSR Pricing Engine — Unit Tests
  *
+ * Fixed 100-share supply model with buying and selling.
+ *
  * Coverage:
- *   1. Prices sum to 1.0 for arbitrary (q, b)
- *   2. Initial equal prices when q = [0, 0]
- *   3. Cost function is monotonically increasing
- *   4. computeSharesForDollarAmount binary search convergence
- *   5. Adaptive b formula — spot-check against PRD §4.3
- *   6. Edge cases (tiny b, huge b, 5-outcome market, near-certain outcome)
- *   7. Price impact example derived from PRD §4.4
- *   8. Property test — 100 random (q, b) pairs
+ *   1.  Prices sum to 1.0 for arbitrary (q, b)
+ *   2.  Initial equal prices when q = [0, 0]
+ *   3.  Cost function is monotonically increasing
+ *   4.  computeSharesForDollarAmount — closed-form correctness
+ *   5.  computeSharesForDollarAmount — closed-form matches binary-search reference
+ *   6.  computeSharesForDollarAmount — SHARE_CAP_EXCEEDED guard
+ *   7.  computeDollarAmountForShares — selling
+ *   8.  Round-trip: buy then sell recovers original dollar amount
+ *   9.  defaultB — calibration targets
+ *   10. Edge cases
+ *   11. Price impact examples
+ *   12. Property test — 100 random (q, b) pairs
  */
 
 import { describe, expect, it } from "vitest";
 import {
-  adaptiveB,
   allPrices,
+  computeDollarAmountForShares,
   computeSharesForDollarAmount,
   costFunction,
+  defaultB,
   maxHouseExposure,
   price,
   priceAfterPurchase,
@@ -28,7 +35,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const EPSILON = 0.0001; // tolerance for prices-sum-to-1 tests
-const COST_TOL = 0.01; // tolerance for binary-search cost convergence
+const COST_TOL = 0.01; // tolerance for cost convergence
 
 function sum(arr: number[]): number {
   return arr.reduce((a, b) => a + b, 0);
@@ -43,12 +50,44 @@ function lcg(seed: number): () => number {
   };
 }
 
+/**
+ * Reference binary-search implementation — used only to cross-validate the
+ * closed-form solution.  NOT used in production.
+ */
+function binarySearchShares(
+  q: number[],
+  b: number,
+  outcomeIndex: number,
+  dollarAmount: number
+): number {
+  const cBefore = costFunction(q, b);
+  const target = cBefore + dollarAmount;
+
+  const costAtDelta = (delta: number): number => {
+    const qNew = q.slice();
+    qNew[outcomeIndex] = (q[outcomeIndex] ?? 0) + delta;
+    return costFunction(qNew, b);
+  };
+
+  let lo = 0;
+  let hi = Math.max(dollarAmount, 1);
+  while (costAtDelta(hi) < target) hi *= 2;
+
+  for (let i = 0; i < 200; i++) {
+    const mid = (lo + hi) / 2;
+    if (Math.abs(costAtDelta(mid) - target) < 1e-7) break;
+    if (costAtDelta(mid) < target) lo = mid;
+    else hi = mid;
+  }
+
+  return Math.round(((lo + hi) / 2) * 10_000) / 10_000;
+}
+
 // ---------------------------------------------------------------------------
 // 1. Prices sum to 1.0
 // ---------------------------------------------------------------------------
 
 describe("allPrices — prices sum to 1.0", () => {
-  /** Cases where all prices are strictly between 0 and 1. */
   const strictCases: Array<[number[], number]> = [
     [[0, 0], 20],
     [[10, 5], 20],
@@ -69,12 +108,6 @@ describe("allPrices — prices sum to 1.0", () => {
     });
   }
 
-  /**
-   * Extreme cases: one outcome dominates completely.
-   * In IEEE 754 float64 the underdog's probability rounds to exactly 0 (or 1
-   * for the leader) because the difference is below machine epsilon (~10^-16).
-   * What matters is that the sum still equals 1 and values stay in [0, 1].
-   */
   it("extreme dominance q=[1000,0], b=20 — sum=1, values in [0,1]", () => {
     const prices = allPrices([1000, 0], 20);
     expect(prices).toHaveLength(2);
@@ -116,7 +149,7 @@ describe("allPrices — initial equal prices", () => {
     }
   });
 
-  it("5-outcome market [0,0,0,0,0] → [0.20, 0.20, 0.20, 0.20, 0.20]", () => {
+  it("5-outcome market [0,0,0,0,0] → [0.20, …]", () => {
     const prices = allPrices([0, 0, 0, 0, 0], 50);
     for (const p of prices) {
       expect(p).toBeCloseTo(0.2, 6);
@@ -150,8 +183,7 @@ describe("costFunction — monotonically increasing", () => {
 
   it("buying more shares costs more (5-outcome market)", () => {
     const b = 50;
-    const baseQ = [0, 0, 0, 0, 0];
-    let prev = costFunction(baseQ, b);
+    let prev = costFunction([0, 0, 0, 0, 0], b);
     for (const delta of [2, 10, 25, 50, 100]) {
       const q = [delta, 0, 0, 0, 0];
       const next = costFunction(q, b);
@@ -161,7 +193,6 @@ describe("costFunction — monotonically increasing", () => {
   });
 
   it("cost difference equals dollar amount spent (self-consistency)", () => {
-    // C(q + Δe_i) - C(q) should equal the dollar amount we computed
     const q = [10, 5];
     const b = 30;
     const dollarAmount = 15;
@@ -184,16 +215,15 @@ describe("costFunction — monotonically increasing", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. computeSharesForDollarAmount — binary search convergence
+// 4. computeSharesForDollarAmount — closed-form correctness
 // ---------------------------------------------------------------------------
 
-describe("computeSharesForDollarAmount — convergence", () => {
+describe("computeSharesForDollarAmount — closed-form correctness", () => {
   const cases = [
     { q: [0, 0], b: 20, idx: 0, dollars: 10 },
     { q: [0, 0], b: 20, idx: 1, dollars: 20 },
     { q: [50, 20], b: 40, idx: 0, dollars: 5 },
     { q: [0, 0, 0, 0, 0], b: 50, idx: 2, dollars: 15 },
-    { q: [100, 50], b: 200, idx: 0, dollars: 50 },
     { q: [0, 0], b: 1, idx: 0, dollars: 0.5 }, // very small b
     { q: [0, 0], b: 10000, idx: 0, dollars: 25 }, // very large b
   ];
@@ -203,7 +233,6 @@ describe("computeSharesForDollarAmount — convergence", () => {
       const delta = computeSharesForDollarAmount(q, b, idx, dollars);
       expect(delta).toBeGreaterThan(0);
 
-      // Re-compute cost to verify convergence
       const qNew = q.slice();
       qNew[idx] = (q[idx] ?? 0) + delta;
       const costDiff = costFunction(qNew, b) - costFunction(q, b);
@@ -211,97 +240,314 @@ describe("computeSharesForDollarAmount — convergence", () => {
     });
   }
 
-  it("$200 max bet on binary market always solvable", () => {
-    const delta = computeSharesForDollarAmount([0, 0], 20, 0, 200);
-    expect(delta).toBeGreaterThan(0);
-    const qNew = [delta, 0];
-    const costDiff = costFunction(qNew, 20) - costFunction([0, 0], 20);
-    expect(Math.abs(costDiff - 200)).toBeLessThan(COST_TOL);
-  });
-
   it("result is rounded to 4 decimal places", () => {
     const delta = computeSharesForDollarAmount([0, 0], 20, 0, 15);
     const decimals = (delta.toString().split(".")[1] ?? "").length;
     expect(decimals).toBeLessThanOrEqual(4);
   });
-});
 
-// ---------------------------------------------------------------------------
-// 5. Adaptive b formula
-// ---------------------------------------------------------------------------
-
-describe("adaptiveB — PRD §4.3 formula verification", () => {
-  /**
-   * b(t,V) = max(bFloor, 20 + (0.6 × 0.25 × √Δt_ms) + (0.4 × 0.5 × V))
-   *
-   * bFloor defaults to 20 across all checks below.
-   */
-  const BF = 20;
-
-  it("t=0, V=0 → b=20 (floor)", () => {
-    expect(adaptiveB(BF, 0, 0)).toBeCloseTo(20, 1);
+  it("throws for dollarAmount <= 0", () => {
+    expect(() => computeSharesForDollarAmount([0, 0], 20, 0, 0)).toThrow();
+    expect(() => computeSharesForDollarAmount([0, 0], 20, 0, -5)).toThrow();
   });
 
-  it("t=30s, V=$0 → b≈46 (time-only hardening)", () => {
-    // 20 + 0.6×0.25×√30000 ≈ 20 + 25.98 = 45.98
-    expect(adaptiveB(BF, 30_000, 0)).toBeCloseTo(45.98, 1);
-  });
-
-  it("t=30s, V=$100 → b≈66 (time + volume)", () => {
-    // 45.98 + 0.4×0.5×100 = 45.98 + 20 = 65.98
-    expect(adaptiveB(BF, 30_000, 100)).toBeCloseTo(65.98, 1);
-  });
-
-  it("t=5min, V=$500 → b≈202 (formula; PRD table shows 182 — see note)", () => {
-    /**
-     * NOTE: PRD §4.3 table lists b≈182 for this row, but applying the
-     * documented formula exactly yields ≈202:
-     *   20 + 0.6×0.25×√300000 + 0.4×0.5×500
-     *   = 20 + 82.16 + 100 = 202.16
-     *
-     * The PRD table rows for t=2min and t=5min appear to have been
-     * generated with different coefficients.  The formula in §4.3 and
-     * CLAUDE.md is unambiguous; this implementation follows it exactly.
-     */
-    const b = adaptiveB(BF, 300_000, 500);
-    expect(b).toBeCloseTo(202.16, 1);
-  });
-
-  it("b grows with time (volume constant)", () => {
-    const v = 200;
-    const b30s = adaptiveB(BF, 30_000, v);
-    const b2m = adaptiveB(BF, 120_000, v);
-    const b5m = adaptiveB(BF, 300_000, v);
-    expect(b2m).toBeGreaterThan(b30s);
-    expect(b5m).toBeGreaterThan(b2m);
-  });
-
-  it("b grows with volume (time constant)", () => {
-    const t = 60_000;
-    const b0 = adaptiveB(BF, t, 0);
-    const b100 = adaptiveB(BF, t, 100);
-    const b500 = adaptiveB(BF, t, 500);
-    expect(b100).toBeGreaterThan(b0);
-    expect(b500).toBeGreaterThan(b100);
-  });
-
-  it("b never falls below bFloor", () => {
-    // Even with t=0, V=0, computed = 20 which equals bFloor.
-    expect(adaptiveB(50, 0, 0)).toBe(50); // custom floor above 20
-    expect(adaptiveB(20, 0, 0)).toBe(20); // standard floor
-  });
-
-  it("custom bFloor (admin-set) is respected", () => {
-    // Admin sets bFloor=100; even at t=0,V=0, b should be 100.
-    expect(adaptiveB(100, 0, 0)).toBe(100);
-    // But once the formula exceeds it, formula wins.
-    const highB = adaptiveB(100, 30_000_000, 0);
-    expect(highB).toBeGreaterThan(100);
+  it("throws for out-of-range outcomeIndex", () => {
+    expect(() => computeSharesForDollarAmount([0, 0], 20, 5, 10)).toThrow();
   });
 });
 
 // ---------------------------------------------------------------------------
-// 6. Edge cases
+// 5. computeSharesForDollarAmount — matches binary-search reference
+// ---------------------------------------------------------------------------
+
+describe("computeSharesForDollarAmount — closed-form matches binary-search reference", () => {
+  const cases = [
+    { q: [0, 0], b: 20, idx: 0, dollars: 10 },
+    { q: [0, 0], b: 20, idx: 1, dollars: 20 },
+    { q: [50, 20], b: 40, idx: 0, dollars: 5 },
+    { q: [0, 0, 0, 0, 0], b: 50, idx: 2, dollars: 15 },
+    { q: [0, 0], b: 1, idx: 0, dollars: 0.5 },
+    { q: [0, 0], b: 10000, idx: 0, dollars: 25 },
+    { q: [30, 10], b: 50, idx: 1, dollars: 8 },
+    { q: [0, 0, 0], b: 30, idx: 0, dollars: 3 },
+  ];
+
+  for (const { q, b, idx, dollars } of cases) {
+    it(`q=${JSON.stringify(q)}, b=${b}, idx=${idx}, $${dollars}`, () => {
+      // Pass maxShares=Infinity so neither implementation is capped
+      const closedForm = computeSharesForDollarAmount(
+        q,
+        b,
+        idx,
+        dollars,
+        Infinity
+      );
+      const bsRef = binarySearchShares(q, b, idx, dollars);
+      expect(Math.abs(closedForm - bsRef)).toBeLessThan(0.001);
+    });
+  }
+
+  it("50 random cases match within 0.001", () => {
+    const rand = lcg(77);
+    let failures = 0;
+
+    for (let i = 0; i < 50; i++) {
+      const b = 5 + rand() * 195;
+      const n = 2 + Math.floor(rand() * 3);
+      const q = Array.from({ length: n }, () => rand() * 80); // keep q < 80 to stay well under cap
+      const idx = Math.floor(rand() * n);
+      const dollars = 0.5 + rand() * 9.5; // keep small so shares stay under cap
+
+      try {
+        const closedForm = computeSharesForDollarAmount(
+          q,
+          b,
+          idx,
+          dollars,
+          Infinity
+        );
+        const bsRef = binarySearchShares(q, b, idx, dollars);
+        if (Math.abs(closedForm - bsRef) >= 0.001) failures++;
+      } catch {
+        failures++;
+      }
+    }
+
+    expect(failures).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. computeSharesForDollarAmount — SHARE_CAP_EXCEEDED guard
+// ---------------------------------------------------------------------------
+
+describe("computeSharesForDollarAmount — SHARE_CAP_EXCEEDED", () => {
+  it("throws SHARE_CAP_EXCEEDED when shares would exceed maxShares=100", () => {
+    // Buying $200 at b=20 from q=[0,0] yields ~214 shares — well over 100
+    expect(() =>
+      computeSharesForDollarAmount([0, 0], 20, 0, 200)
+    ).toThrowError(/SHARE_CAP_EXCEEDED/);
+  });
+
+  it("throws when outcome already at cap and any purchase attempted", () => {
+    // qi is already at 100; the smallest purchase exceeds maxShares
+    expect(() =>
+      computeSharesForDollarAmount([100, 0], 27, 0, 0.01)
+    ).toThrowError(/SHARE_CAP_EXCEEDED/);
+  });
+
+  it("succeeds when purchase lands exactly at maxShares boundary", () => {
+    // Find a dollar amount that purchases exactly up to ~99.9 shares from q=0
+    const b = 27;
+    // At b=27, buying from q=[0,0], Δ = 27*ln(2*e^(X/27)-1)
+    // We want Δ ≈ 99 so it's just under the cap
+    const X = b * Math.log(Math.exp(99 / b) + 1) - b * Math.log(2); // ≈ cost of 99 shares
+    const delta = computeSharesForDollarAmount([0, 0], b, 0, X); // default maxShares=100
+    expect(delta).toBeLessThanOrEqual(100);
+  });
+
+  it("custom maxShares parameter is respected", () => {
+    // maxShares=50: buying $10 at b=20 from q=[0,0] gives ~16 shares — fine
+    expect(() =>
+      computeSharesForDollarAmount([0, 0], 20, 0, 10, 50)
+    ).not.toThrow();
+
+    // But buying $30 at b=20 from q=[0,0] gives ~40+ shares — over custom cap of 30
+    expect(() =>
+      computeSharesForDollarAmount([0, 0], 20, 0, 30, 30)
+    ).toThrowError(/SHARE_CAP_EXCEEDED/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7. computeDollarAmountForShares — selling
+// ---------------------------------------------------------------------------
+
+describe("computeDollarAmountForShares — selling", () => {
+  it("selling shares returns a positive dollar amount", () => {
+    const q = [40, 10];
+    const b = 27;
+    const revenue = computeDollarAmountForShares(q, b, 0, 10);
+    expect(revenue).toBeGreaterThan(0);
+  });
+
+  it("selling more shares returns more money (monotonic)", () => {
+    const q = [80, 10];
+    const b = 27;
+    const rev10 = computeDollarAmountForShares(q, b, 0, 10);
+    const rev20 = computeDollarAmountForShares(q, b, 0, 20);
+    const rev40 = computeDollarAmountForShares(q, b, 0, 40);
+    expect(rev20).toBeGreaterThan(rev10);
+    expect(rev40).toBeGreaterThan(rev20);
+  });
+
+  it("result equals the cost-function difference", () => {
+    const q = [50, 20];
+    const b = 30;
+    const sharesToSell = 15;
+    const revenue = computeDollarAmountForShares(q, b, 0, sharesToSell);
+    const qAfter = [q[0]! - sharesToSell, q[1]!];
+    const expectedRevenue = costFunction(q, b) - costFunction(qAfter, b);
+    expect(Math.abs(revenue - expectedRevenue)).toBeLessThan(COST_TOL);
+  });
+
+  it("result is rounded to 4 decimal places", () => {
+    const revenue = computeDollarAmountForShares([50, 20], 30, 0, 15);
+    const decimals = (revenue.toString().split(".")[1] ?? "").length;
+    expect(decimals).toBeLessThanOrEqual(4);
+  });
+
+  it("throws when sharesToSell > qᵢ", () => {
+    expect(() =>
+      computeDollarAmountForShares([20, 10], 27, 0, 25)
+    ).toThrow(/cannot sell/);
+  });
+
+  it("throws when sharesToSell <= 0", () => {
+    expect(() =>
+      computeDollarAmountForShares([20, 10], 27, 0, 0)
+    ).toThrow();
+    expect(() =>
+      computeDollarAmountForShares([20, 10], 27, 0, -5)
+    ).toThrow();
+  });
+
+  it("throws for out-of-range outcomeIndex", () => {
+    expect(() =>
+      computeDollarAmountForShares([20, 10], 27, 5, 5)
+    ).toThrow();
+  });
+
+  it("sells all shares on an outcome (full liquidation)", () => {
+    const q = [30, 10];
+    const b = 27;
+    const revenue = computeDollarAmountForShares(q, b, 0, 30);
+    expect(revenue).toBeGreaterThan(0);
+    // After selling all, cost should equal C([0, 10], b)
+    const cAfterSell = costFunction([0, q[1]!], b);
+    const cBefore = costFunction(q, b);
+    expect(Math.abs(revenue - (cBefore - cAfterSell))).toBeLessThan(COST_TOL);
+  });
+
+  it("5-outcome market: selling from non-zero index", () => {
+    const q = [10, 5, 30, 8, 2];
+    const b = 40;
+    const revenue = computeDollarAmountForShares(q, b, 2, 10);
+    expect(revenue).toBeGreaterThan(0);
+    const qAfter = [10, 5, 20, 8, 2];
+    const expected = costFunction(q, b) - costFunction(qAfter, b);
+    expect(Math.abs(revenue - expected)).toBeLessThan(COST_TOL);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Round-trip: buy X dollars → sell those shares → recover ≈ X dollars
+// ---------------------------------------------------------------------------
+
+describe("round-trip: buy then sell", () => {
+  const cases = [
+    { q: [0, 0], b: 27, idx: 0, dollars: 5 },
+    { q: [20, 10], b: 27, idx: 0, dollars: 3 },
+    { q: [0, 0, 0], b: 27, idx: 1, dollars: 8 },
+    { q: [10, 5, 3], b: 40, idx: 2, dollars: 2 },
+  ];
+
+  for (const { q, b, idx, dollars } of cases) {
+    it(`q=${JSON.stringify(q)}, b=${b}, idx=${idx}, $${dollars}`, () => {
+      const shares = computeSharesForDollarAmount(q, b, idx, dollars);
+      const qAfterBuy = q.slice();
+      qAfterBuy[idx] = (q[idx] ?? 0) + shares;
+
+      const sellRevenue = computeDollarAmountForShares(
+        qAfterBuy,
+        b,
+        idx,
+        shares
+      );
+
+      // Due to 4 d.p. rounding of the share count, won't be perfectly exact.
+      // The round-trip error is at most the cost of the rounding difference.
+      expect(Math.abs(sellRevenue - dollars)).toBeLessThan(0.01);
+    });
+  }
+
+  it("sell revenue is always less than or equal to buy cost (no free money)", () => {
+    const q = [0, 0];
+    const b = 27;
+    for (const dollars of [1, 5, 10, 20, 50]) {
+      const shares = computeSharesForDollarAmount(q, b, 0, dollars);
+      const qNew = [shares, 0];
+      const revenue = computeDollarAmountForShares(qNew, b, 0, shares);
+      // Revenue should be ≤ cost (LMSR is a proper scoring rule)
+      expect(revenue).toBeLessThanOrEqual(dollars + 0.0001);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9. defaultB — calibration targets
+// ---------------------------------------------------------------------------
+
+describe("defaultB — calibration targets", () => {
+  it("binary market (n=2, M=100) → b ≈ 27.2", () => {
+    const b = defaultB(2, 100);
+    expect(b).toBeCloseTo(27.17, 1);
+  });
+
+  it("binary market: p(0,0) = 0.50", () => {
+    const b = defaultB(2);
+    const p = allPrices([0, 0], b)[0]!;
+    expect(p).toBeCloseTo(0.5, 4);
+  });
+
+  it("binary market: p at q=(50,0) ≈ 0.86", () => {
+    const b = defaultB(2);
+    const p = allPrices([50, 0], b)[0]!;
+    expect(p).toBeCloseTo(0.86, 1);
+  });
+
+  it("binary market: p at q=(80,0) ≈ 0.95 (design target)", () => {
+    const b = defaultB(2);
+    const p = allPrices([80, 0], b)[0]!;
+    expect(p).toBeCloseTo(0.95, 1);
+  });
+
+  it("binary market: p at q=(100,0) ≈ 0.98", () => {
+    const b = defaultB(2);
+    const p = allPrices([100, 0], b)[0]!;
+    expect(p).toBeCloseTo(0.98, 1);
+  });
+
+  it("3-outcome market gives a smaller b (more price-sensitive)", () => {
+    const b2 = defaultB(2);
+    const b3 = defaultB(3);
+    expect(b3).toBeLessThan(b2);
+  });
+
+  it("3-outcome market: p at q=(80,0,0) ≈ 0.95", () => {
+    const b = defaultB(3);
+    const p = allPrices([80, 0, 0], b)[0]!;
+    expect(p).toBeCloseTo(0.95, 1);
+  });
+
+  it("default maxShares=100 is used when omitted", () => {
+    expect(defaultB(2)).toBeCloseTo(defaultB(2, 100), 10);
+  });
+
+  it("scales proportionally with maxShares", () => {
+    const b100 = defaultB(2, 100);
+    const b200 = defaultB(2, 200);
+    expect(b200).toBeCloseTo(b100 * 2, 6);
+  });
+
+  it("throws for numOutcomes < 2", () => {
+    expect(() => defaultB(1)).toThrow();
+    expect(() => defaultB(0)).toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 10. Edge cases
 // ---------------------------------------------------------------------------
 
 describe("edge cases", () => {
@@ -312,8 +558,6 @@ describe("edge cases", () => {
   });
 
   it("very large b (b=10000) — near-flat price impact", () => {
-    const before = allPrices([0, 0], 10000);
-    // Buy $50 of Yes
     const delta = computeSharesForDollarAmount([0, 0], 10000, 0, 50);
     const after = priceAfterPurchase([0, 0], 10000, 0, delta);
     // With huge b the price should barely move from 50¢
@@ -329,7 +573,6 @@ describe("edge cases", () => {
   });
 
   it("near-certain outcome (one share >> others) — price approaches 1", () => {
-    // q[0] is far ahead; its price should be near 1
     const q = [1000, 0];
     const b = 20;
     const prices = allPrices(q, b);
@@ -339,11 +582,9 @@ describe("edge cases", () => {
   });
 
   it("negative q values are allowed (market maker accounting)", () => {
-    // q can go negative if the house position is tracked that way
     const q = [-10, 10];
     const prices = allPrices(q, 20);
     expect(Math.abs(sum(prices) - 1)).toBeLessThan(EPSILON);
-    // The outcome with higher q should have a higher price
     expect(prices[1]).toBeGreaterThan(prices[0]!);
   });
 
@@ -358,41 +599,28 @@ describe("edge cases", () => {
     const b = 20;
     const shares = 20;
     const newPrices = priceAfterPurchase(q, b, 0, shares);
-    // Yes should be more expensive, No cheaper
     expect(newPrices[0]).toBeGreaterThan(0.5);
     expect(newPrices[1]).toBeLessThan(0.5);
     expect(Math.abs(sum(newPrices) - 1)).toBeLessThan(EPSILON);
   });
 
   it("costFunction increases after any purchase", () => {
-    const q = [0, 0];
-    const b = 20;
-    const before = costFunction(q, b);
-    const after = costFunction([10, 0], b);
+    const before = costFunction([0, 0], 20);
+    const after = costFunction([10, 0], 20);
     expect(after).toBeGreaterThan(before);
   });
 });
 
 // ---------------------------------------------------------------------------
-// 7. Price impact example
+// 11. Price impact examples
 // ---------------------------------------------------------------------------
 
 describe("price impact example — binary market", () => {
   /**
-   * Starting state: q=[0,0], b=20 (opening conditions, PRD §4.4).
-   *
-   * PRD §4.4 states: "$20 bet on Yes → price swings to Yes=$0.88, No=$0.12"
-   *
-   * NOTE: applying the LMSR formula exactly, a $20 bet at b=20 from q=[0,0]
-   * yields Yes≈0.816, not 0.88.  The PRD example is illustrative and was
-   * apparently generated with b≈14.  This test asserts the correct
-   * mathematical output of the formula as documented in §4.2.
-   *
-   * Derivation:
-   *   C_before = 20 × ln(2) ≈ 13.863
-   *   C_after  = 13.863 + 20 = 33.863
-   *   e^(Δ/20) = 2e − 1 ≈ 4.437   →   Δ ≈ 29.806 shares
-   *   p(Yes)   = 4.437 / 5.437   ≈ 0.816
+   * $20 bet at b=20 from q=[0,0]:
+   *   C_before = 20·ln(2) ≈ 13.863
+   *   Δ = 20·ln(2e − 1) ≈ 29.806 shares
+   *   p(Yes) = e^(Δ/b) / (e^(Δ/b)+1) ≈ 0.816
    */
   it("$20 bet on Yes at q=[0,0], b=20 → Yes price ≈ 0.816", () => {
     const q = [0, 0];
@@ -400,22 +628,20 @@ describe("price impact example — binary market", () => {
     const dollar = 20;
 
     const delta = computeSharesForDollarAmount(q, b, 0, dollar);
-    expect(delta).toBeGreaterThan(25); // should receive many shares (cheap entry)
+    expect(delta).toBeGreaterThan(25);
 
     const newPrices = priceAfterPurchase(q, b, 0, delta);
-    expect(newPrices[0]).toBeCloseTo(0.816, 2); // Yes
-    expect(newPrices[1]).toBeCloseTo(0.184, 2); // No
+    expect(newPrices[0]).toBeCloseTo(0.816, 2);
+    expect(newPrices[1]).toBeCloseTo(0.184, 2);
     expect(Math.abs(sum(newPrices) - 1)).toBeLessThan(EPSILON);
   });
 
   it("price moves monotonically toward purchased outcome", () => {
-    const q = [0, 0];
-    const b = 20;
+    const b = 27;
     let runningQ = [0, 0];
-
     let prevYesPrice = 0.5;
 
-    for (const dollarsIn of [5, 10, 15, 20]) {
+    for (const dollarsIn of [2, 3, 4, 5]) {
       const delta = computeSharesForDollarAmount(runningQ, b, 0, dollarsIn);
       runningQ = [runningQ[0]! + delta, runningQ[1]!];
       const yesPrice = allPrices(runningQ, b)[0]!;
@@ -426,49 +652,16 @@ describe("price impact example — binary market", () => {
 
   it("purchase of No drives Yes price down", () => {
     const q = [0, 0];
-    const b = 20;
-    const delta = computeSharesForDollarAmount(q, b, 1, 20); // buy No
+    const b = 27;
+    const delta = computeSharesForDollarAmount(q, b, 1, 10);
     const newPrices = priceAfterPurchase(q, b, 1, delta);
-    expect(newPrices[0]).toBeLessThan(0.5); // Yes now cheaper
-    expect(newPrices[1]).toBeGreaterThan(0.5); // No now more expensive
-  });
-
-  it("sequenced trades (PRD §4.4 narrative)", () => {
-    /**
-     * Approximate re-run of PRD §4.4 example with adaptive b.
-     * Exact prices differ from the PRD (which has inaccurate values) but
-     * the qualitative behaviour is verified: early mover has big impact,
-     * later trades barely move the market.
-     */
-    let q = [0, 0];
-
-    // Trade 1: Guest A bets $20 on Yes at t=0, V=$0 → b=20
-    const b1 = adaptiveB(20, 0, 0); // 20
-    const d1 = computeSharesForDollarAmount(q, b1, 0, 20);
-    q = [q[0]! + d1, q[1]!];
-    const p1Yes = allPrices(q, b1)[0]!;
-    expect(p1Yes).toBeGreaterThan(0.75); // big first-mover impact
-
-    // Trade 2: Guest B bets $10 on No at t=15s, V=$20 → b
-    const b2 = adaptiveB(20, 15_000, 20);
-    const d2 = computeSharesForDollarAmount(q, b2, 1, 10);
-    q = [q[0]!, q[1]! + d2];
-    const p2Yes = allPrices(q, b2)[0]!;
-    expect(p2Yes).toBeLessThan(p1Yes); // No purchase moves Yes down
-
-    // After many trades the market hardens (b grows → small price impact)
-    const bHardened = adaptiveB(20, 300_000, 95);
-    const smallDelta = computeSharesForDollarAmount(q, bHardened, 0, 10);
-    const pBefore = allPrices(q, bHardened)[0]!;
-    const qAfter = [q[0]! + smallDelta, q[1]!];
-    const pAfter = allPrices(qAfter, bHardened)[0]!;
-    // Hard market: $10 nudges the price only a small amount
-    expect(pAfter - pBefore).toBeLessThan(0.05);
+    expect(newPrices[0]).toBeLessThan(0.5);
+    expect(newPrices[1]).toBeGreaterThan(0.5);
   });
 });
 
 // ---------------------------------------------------------------------------
-// 8. Property test — 100 random (q, b) pairs
+// 12. Property test — 100 random (q, b) pairs
 // ---------------------------------------------------------------------------
 
 describe("property test — 100 random (q, b) pairs", () => {
@@ -477,11 +670,8 @@ describe("property test — 100 random (q, b) pairs", () => {
     let failures = 0;
 
     for (let i = 0; i < 100; i++) {
-      // Random b in [1, 500]
       const b = 1 + rand() * 499;
-      // Random number of outcomes [2, 6]
       const n = 2 + Math.floor(rand() * 5);
-      // Random q values in [-100, 200]
       const q = Array.from({ length: n }, () => -100 + rand() * 300);
 
       const prices = allPrices(q, b);
@@ -506,13 +696,11 @@ describe("property test — 100 random (q, b) pairs", () => {
 
       const c = costFunction(q, b);
       expect(Number.isFinite(c)).toBe(true);
-      // Cost is always positive: b × ln(Σ e^xi) ≥ b × ln(1) = 0 when any q=0,
-      // and in general C = b × max(q/b) + b × ln(Σ e^(qi/b - max)) ≥ max(q).
       expect(c).toBeGreaterThan(0);
     }
   });
 
-  it("computeSharesForDollarAmount always converges (50 random cases)", () => {
+  it("computeSharesForDollarAmount always converges (50 random cases, uncapped)", () => {
     const rand = lcg(77);
     let failures = 0;
 
@@ -521,10 +709,10 @@ describe("property test — 100 random (q, b) pairs", () => {
       const n = 2 + Math.floor(rand() * 3);
       const q = Array.from({ length: n }, () => rand() * 100);
       const idx = Math.floor(rand() * n);
-      const dollars = 0.5 + rand() * 199.5; // $0.50 – $200
+      const dollars = 0.5 + rand() * 19.5; // keep small; bypass cap with Infinity
 
       try {
-        const delta = computeSharesForDollarAmount(q, b, idx, dollars);
+        const delta = computeSharesForDollarAmount(q, b, idx, dollars, Infinity);
         const qNew = q.slice();
         qNew[idx] = (q[idx] ?? 0) + delta;
         const costDiff = costFunction(qNew, b) - costFunction(q, b);

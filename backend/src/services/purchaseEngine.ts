@@ -18,9 +18,10 @@ import { Decimal } from "decimal.js";
 
 import { prisma } from "../db.js";
 import {
-  adaptiveB,
+  defaultB,
   allPrices,
   computeSharesForDollarAmount,
+  computeDollarAmountForShares,
   price,
 } from "./lmsr.js";
 import { computeHash } from "./hashChain.js";
@@ -28,6 +29,16 @@ import { recordPurchaseSnapshots } from "./priceSnapshot.js";
 
 /** Canonical phone for the house liquidity account — mirrors HOUSE_PHONE in houseSeeding.ts. */
 const HOUSE_PHONE = "+0000000000";
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** 10% fee on sell revenue. Stays in house_amm (no separate transaction). */
+export const SELL_FEE_RATE = 0.10;
+
+/** 30-minute cooldown: users cannot sell shares within 30 min of buying them. */
+export const SELL_COOLDOWN_MS = 30 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -49,7 +60,7 @@ export function toNumber(val: unknown): number {
 // Public types
 // ---------------------------------------------------------------------------
 
-/** Structured error thrown by buyShares() — carries a machine-readable code. */
+/** Structured error thrown by buyShares() / sellShares() — carries a machine-readable code. */
 export class PurchaseError extends Error {
   constructor(
     public readonly code:
@@ -61,12 +72,39 @@ export class PurchaseError extends Error {
       | "OUTCOME_NOT_FOUND"
       | "INSUFFICIENT_BALANCE"
       | "CAP_EXCEEDED"
-      | "RECONCILIATION_FAILED",
+      | "RECONCILIATION_FAILED"
+      | "NO_POSITION"
+      | "INSUFFICIENT_SHARES"
+      | "SELL_COOLDOWN",
     message: string
   ) {
     super(message);
     this.name = "PurchaseError";
   }
+}
+
+/** Shape returned by a successful sellShares() call. */
+export interface SellResult {
+  /** UUID of the newly created Transaction row (type=SALE). */
+  transactionId: string;
+  /** Number of shares sold. */
+  shares: number;
+  /** Net revenue received after sell fee — integer cents. */
+  revenueCents: number;
+  /** Gross revenue before fee — integer cents. */
+  grossRevenueCents: number;
+  /** Fee deducted — integer cents. */
+  feeCents: number;
+  /** Spot price of the sold outcome immediately BEFORE the trade — cents. */
+  priceBeforeCents: number;
+  /** Spot price of the sold outcome immediately AFTER the trade — cents. */
+  priceAfterCents: number;
+  /** Updated prices for ALL outcomes, ordered by position, in [0,1] fractions. */
+  allNewPrices: number[];
+  /** All outcome UUIDs ordered by position (parallel to allNewPrices). */
+  outcomeIds: string[];
+  /** Outcome label of the sold outcome (for WebSocket broadcast). */
+  outcomeLabel: string;
 }
 
 /** Shape returned by a successful buyShares() call. */
@@ -360,26 +398,15 @@ export async function buyShares(
       }
 
       // -----------------------------------------------------------------------
-      // 7. Compute adaptive b (PRD §4.3)
-      //    dtMs   = now - market.openedAt
-      //    V      = SUM(purchases.cost) for this market (total volume in $)
-      //    bFloor = market.bFloorOverride ?? B_FLOOR_DEFAULT ?? 20
+      // 7. Compute b — fixed per market shape, admin-overridable via bFloorOverride
+      //    With fixed 100-share supply, b is constant for the lifetime of the market.
+      //    defaultB(n) targets p≈0.95 when the leading outcome holds 80% of shares.
       // -----------------------------------------------------------------------
-      const volumeResult = (await tx.$queryRaw`
-        SELECT COALESCE(SUM(cost), 0) AS total_volume
-        FROM purchases
-        WHERE market_id = ${marketId}
-      `) as Array<{ total_volume: unknown }>;
-
-      const totalVolume = toNumber(volumeResult[0]?.total_volume ?? 0);
-
-      const dtMs = Date.now() - market.openedAt.getTime();
-      const bFloor =
+      const bOverride =
         market.bFloorOverride !== null && market.bFloorOverride !== undefined
           ? toNumber(market.bFloorOverride)
-          : parseFloat(process.env["B_FLOOR_DEFAULT"] ?? "20");
-
-      const b = adaptiveB(bFloor, dtMs, totalVolume);
+          : 0;
+      const b = bOverride > 0 ? bOverride : defaultB(lockedOutcomes.length);
 
       // -----------------------------------------------------------------------
       // 8. Read state vector q[] from locked outcome rows
@@ -511,6 +538,352 @@ export async function buyShares(
     {
       isolationLevel: "Serializable",
       timeout: 10_000, // 10 s — plenty for the purchase path
+    }
+  );
+
+  // -------------------------------------------------------------------------
+  // Fire-and-forget: record price snapshots for the chart (outside the
+  // serializable transaction to keep it lean).
+  // -------------------------------------------------------------------------
+  recordPurchaseSnapshots(marketId, result.outcomeIds, result.allNewPrices).catch(
+    (err: unknown) => {
+      console.warn("[purchaseEngine] Failed to record price snapshots:", err);
+    }
+  );
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Public — sellShares()
+// ---------------------------------------------------------------------------
+
+/**
+ * Execute a share sale as a single atomic Postgres transaction.
+ *
+ * This is the mirror image of buyShares():
+ *  - money flows FROM house_amm TO user (SALE transaction)
+ *  - outcome sharesSold DECREMENTS
+ *  - position shares and totalCost DECREMENT proportionally
+ *  - a Purchase row with NEGATIVE shares/cost is inserted so that
+ *    SUM(purchases.cost) over a market gives the true net pool
+ *
+ * Steps:
+ *  1. Input validation
+ *  2. BEGIN TRANSACTION (Serializable isolation)
+ *  3. Validate market is ACTIVE
+ *  4. SELECT outcomes FOR UPDATE (row-level lock)
+ *  5. Fetch Position — validate user holds >= sharesToSell
+ *  6. Compute b (same as buyShares)
+ *  7. Read state vector q[]
+ *  8. Get spot price BEFORE sale
+ *  9. Compute revenue via computeDollarAmountForShares
+ * 10. UPDATE outcomes[i].sharesSold -= sharesToSell
+ * 11. Compute new prices for all outcomes
+ * 12. Get prevHash, compute txHash, INSERT SALE Transaction
+ * 13. UPDATE Position (decrement shares + proportional totalCost)
+ * 14. INSERT Purchase row with negative shares/cost
+ * 15. Run reconciliation invariant check
+ * 16. COMMIT → return SellResult
+ *
+ * @param userId       - UUID of the selling user
+ * @param marketId     - UUID of the target market
+ * @param outcomeId    - UUID of the outcome being sold
+ * @param sharesToSell - Number of shares to sell (must be > 0)
+ * @returns SellResult on success; throws PurchaseError on validation failure
+ */
+export async function sellShares(
+  userId: string,
+  marketId: string,
+  outcomeId: string,
+  sharesToSell: number
+): Promise<SellResult> {
+  // -------------------------------------------------------------------------
+  // 1. Pre-flight input validation (before any DB round-trip)
+  // -------------------------------------------------------------------------
+  if (sharesToSell <= 0 || !isFinite(sharesToSell)) {
+    throw new PurchaseError(
+      "INVALID_AMOUNT",
+      `sharesToSell must be a positive finite number; got ${sharesToSell}`
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // 2. Atomic transaction — Serializable isolation to prevent write-skew
+  // -------------------------------------------------------------------------
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result: SellResult = await (prisma.$transaction as any)(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async (tx: any): Promise<SellResult> => {
+      // -----------------------------------------------------------------------
+      // 3. Fetch market — validate status ACTIVE and openedAt is set
+      // -----------------------------------------------------------------------
+      const market = (await tx.market.findUnique({
+        where: { id: marketId },
+        select: {
+          id: true,
+          status: true,
+          openedAt: true,
+          bFloorOverride: true,
+        },
+      })) as {
+        id: string;
+        status: string;
+        openedAt: Date | null;
+        bFloorOverride: unknown | null;
+      } | null;
+
+      if (!market) {
+        throw new PurchaseError(
+          "MARKET_NOT_FOUND",
+          `Market ${marketId} not found`
+        );
+      }
+      if (market.status !== "ACTIVE") {
+        throw new PurchaseError(
+          "MARKET_NOT_ACTIVE",
+          `Market is ${market.status}, expected ACTIVE`
+        );
+      }
+      if (!market.openedAt) {
+        throw new PurchaseError(
+          "MARKET_NOT_OPEN",
+          "Market is ACTIVE but has no openedAt timestamp"
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // 4. Lock all outcome rows for this market (SELECT ... FOR UPDATE)
+      //    Orders by position so state vector q[] is always deterministic.
+      // -----------------------------------------------------------------------
+      const lockedOutcomes = (await tx.$queryRaw`
+        SELECT id, market_id, position, shares_sold, label
+        FROM outcomes
+        WHERE market_id = ${marketId}
+        ORDER BY position
+        FOR UPDATE
+      `) as LockedOutcomeRow[];
+
+      if (lockedOutcomes.length === 0) {
+        throw new PurchaseError(
+          "NO_OUTCOMES",
+          `Market ${marketId} has no outcome rows`
+        );
+      }
+
+      const outcomeIndex = lockedOutcomes.findIndex(
+        (o: LockedOutcomeRow) => o.id === outcomeId
+      );
+      if (outcomeIndex === -1) {
+        throw new PurchaseError(
+          "OUTCOME_NOT_FOUND",
+          `Outcome ${outcomeId} not found in market ${marketId}`
+        );
+      }
+
+      const targetOutcome = lockedOutcomes[outcomeIndex] as LockedOutcomeRow;
+
+      // -----------------------------------------------------------------------
+      // 5. Fetch user's Position — validate they hold enough shares to sell
+      // -----------------------------------------------------------------------
+      const position = (await tx.position.findUnique({
+        where: {
+          userId_marketId_outcomeId: { userId, marketId, outcomeId },
+        },
+        select: { shares: true, totalCost: true },
+      })) as { shares: unknown; totalCost: unknown } | null;
+
+      if (!position) {
+        throw new PurchaseError(
+          "NO_POSITION",
+          `User ${userId} has no position in outcome ${outcomeId}`
+        );
+      }
+
+      const positionShares = toNumber(position.shares);
+      if (positionShares < sharesToSell) {
+        throw new PurchaseError(
+          "INSUFFICIENT_SHARES",
+          `Cannot sell ${sharesToSell} shares — only ${positionShares.toFixed(4)} held`
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // 5b. Sell cooldown: cannot sell within 30 min of last buy
+      // -----------------------------------------------------------------------
+      const lastBuyResult = (await tx.$queryRaw`
+        SELECT MAX(created_at) AS last_buy_at
+        FROM purchases
+        WHERE user_id = ${userId}
+          AND outcome_id = ${outcomeId}
+          AND shares > 0
+      `) as Array<{ last_buy_at: Date | null }>;
+
+      const lastBuyAt = lastBuyResult[0]?.last_buy_at;
+      if (lastBuyAt) {
+        const elapsed = Date.now() - new Date(lastBuyAt).getTime();
+        if (elapsed < SELL_COOLDOWN_MS) {
+          const remainingMin = Math.ceil((SELL_COOLDOWN_MS - elapsed) / 60_000);
+          throw new PurchaseError(
+            "SELL_COOLDOWN",
+            `Cannot sell yet — ${remainingMin} minute${remainingMin === 1 ? "" : "s"} remaining. Shares must be held for 30 minutes after purchase.`
+          );
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // 6. Compute b — fixed per market shape, admin-overridable via bFloorOverride
+      // -----------------------------------------------------------------------
+      const bOverride =
+        market.bFloorOverride !== null && market.bFloorOverride !== undefined
+          ? toNumber(market.bFloorOverride)
+          : 0;
+      const b = bOverride > 0 ? bOverride : defaultB(lockedOutcomes.length);
+
+      // -----------------------------------------------------------------------
+      // 7. Read state vector q[] from locked outcome rows
+      // -----------------------------------------------------------------------
+      const q: number[] = lockedOutcomes.map((o: LockedOutcomeRow) =>
+        toNumber(o.shares_sold)
+      );
+
+      // -----------------------------------------------------------------------
+      // 8. Get spot price BEFORE the sale
+      // -----------------------------------------------------------------------
+      const priceBeforeFraction = price(q, b, outcomeIndex);
+
+      // -----------------------------------------------------------------------
+      // 9. Compute revenue: C(q_before) − C(q_after), minus 10% sell fee
+      //    Fee stays in house_amm (no separate transaction — we simply credit
+      //    the user less than the gross LMSR revenue).
+      // -----------------------------------------------------------------------
+      const grossRevenueDollars = computeDollarAmountForShares(
+        q,
+        b,
+        outcomeIndex,
+        sharesToSell
+      );
+      const feeDollars = grossRevenueDollars * SELL_FEE_RATE;
+      const revenueDollars = Math.round((grossRevenueDollars - feeDollars) * 10_000) / 10_000;
+      const revenueCents = Math.round(revenueDollars * 100);
+
+      // -----------------------------------------------------------------------
+      // 10. UPDATE outcomes[i].sharesSold -= sharesToSell
+      // -----------------------------------------------------------------------
+      await tx.outcome.update({
+        where: { id: outcomeId },
+        data: {
+          sharesSold: { decrement: new Decimal(sharesToSell) },
+        },
+      });
+
+      // -----------------------------------------------------------------------
+      // 11. Compute new prices for all outcomes post-sale
+      // -----------------------------------------------------------------------
+      const qNew = q.slice();
+      qNew[outcomeIndex] = (q[outcomeIndex] ?? 0) - sharesToSell;
+      const newPrices = allPrices(qNew, b);
+      const priceAfterFraction = newPrices[outcomeIndex] as number;
+      const avgPrice =
+        sharesToSell > 0 ? revenueDollars / sharesToSell : priceBeforeFraction;
+
+      // -----------------------------------------------------------------------
+      // 12. Hash chain: get prevHash, compute txHash, INSERT SALE Transaction
+      //     SALE reverses PURCHASE: debit house_amm, credit user:{userId}
+      // -----------------------------------------------------------------------
+      const lastTx = (await tx.transaction.findFirst({
+        orderBy: { createdAt: "desc" },
+        select: { txHash: true },
+      })) as { txHash: string } | null;
+
+      const prevHash = lastTx?.txHash ?? "0".repeat(64);
+      const now = new Date();
+      const txHash = computeHash(
+        prevHash,
+        "SALE",
+        revenueDollars.toFixed(6),
+        userId,
+        now.toISOString()
+      );
+
+      const txRecord = (await tx.transaction.create({
+        data: {
+          userId,
+          debitAccount: "house_amm",
+          creditAccount: `user:${userId}`,
+          type: "SALE",
+          amount: new Decimal(revenueDollars),
+          prevHash,
+          txHash,
+          createdAt: now,
+        },
+      })) as { id: string };
+
+      // -----------------------------------------------------------------------
+      // 13. UPDATE Position: decrement shares; decrement totalCost proportionally
+      //     costToSubtract = totalCost × (sharesToSell / positionShares)
+      // -----------------------------------------------------------------------
+      const positionTotalCost = toNumber(position.totalCost);
+      const costToSubtract =
+        positionShares > 0
+          ? new Decimal(positionTotalCost)
+              .times(new Decimal(sharesToSell))
+              .dividedBy(new Decimal(positionShares))
+          : new Decimal(0);
+
+      await tx.position.update({
+        where: {
+          userId_marketId_outcomeId: { userId, marketId, outcomeId },
+        },
+        data: {
+          shares: { decrement: new Decimal(sharesToSell) },
+          totalCost: { decrement: costToSubtract },
+        },
+      });
+
+      // -----------------------------------------------------------------------
+      // 14. INSERT Purchase row with NEGATIVE shares/cost to track the sale
+      //     SUM(purchases.cost) for a market = net pool (buys minus sells).
+      //     INSERT is safe even with immutability triggers — it is an append.
+      // -----------------------------------------------------------------------
+      await tx.purchase.create({
+        data: {
+          userId,
+          marketId,
+          outcomeId,
+          shares: new Decimal(-sharesToSell),
+          cost: new Decimal(-revenueDollars),
+          avgPrice: new Decimal(avgPrice),
+          priceBefore: new Decimal(priceBeforeFraction),
+          priceAfter: new Decimal(priceAfterFraction),
+          bAtPurchase: new Decimal(b),
+        },
+      });
+
+      // -----------------------------------------------------------------------
+      // 15. Reconciliation invariant check — ROLLBACK on failure
+      // -----------------------------------------------------------------------
+      await runReconciliation(tx);
+
+      // -----------------------------------------------------------------------
+      // 16. Return result (Prisma commits on clean return)
+      // -----------------------------------------------------------------------
+      return {
+        transactionId: txRecord.id,
+        shares: sharesToSell,
+        revenueCents,
+        grossRevenueCents: Math.round(grossRevenueDollars * 100),
+        feeCents: Math.round(feeDollars * 100),
+        priceBeforeCents: Math.round(priceBeforeFraction * 100),
+        priceAfterCents: Math.round(priceAfterFraction * 100),
+        allNewPrices: newPrices,
+        outcomeIds: lockedOutcomes.map((o: LockedOutcomeRow) => o.id),
+        outcomeLabel: targetOutcome.label,
+      };
+    },
+    {
+      isolationLevel: "Serializable",
+      timeout: 10_000,
     }
   );
 

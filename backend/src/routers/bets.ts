@@ -13,7 +13,7 @@
 
 import { router, protectedProcedure } from "../trpc.js";
 import { prisma } from "../db.js";
-import { allPrices, adaptiveB } from "../services/lmsr.js";
+import { allPrices, defaultB } from "../services/lmsr.js";
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -63,6 +63,21 @@ export const betsRouter = router({
       orderBy: { createdAt: "desc" },
     });
 
+    // Fetch most-recent purchase timestamp per outcome for cooldown enforcement.
+    // Single query: group by outcomeId, pick latest createdAt.
+    const recentPurchases = await prisma.purchase.findMany({
+      where: { userId: ctx.userId },
+      select: { outcomeId: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+    });
+    // Keep only the latest per outcomeId
+    const lastPurchaseByOutcome = new Map<string, Date>();
+    for (const p of recentPurchases) {
+      if (!lastPurchaseByOutcome.has(p.outcomeId)) {
+        lastPurchaseByOutcome.set(p.outcomeId, p.createdAt);
+      }
+    }
+
     type RawPos = typeof positions[number];
     return positions.map((pos: RawPos) => {
       const market = pos.market;
@@ -70,18 +85,18 @@ export const betsRouter = router({
       const shares = toNum(pos.shares as unknown as number);
       const totalCostCents = Math.round(toNum(pos.totalCost as unknown as number) * 100);
 
-      // Compute current LMSR prices for all outcomes in this market
-      const bFloor = market.bFloorOverride != null
-        ? toNum(market.bFloorOverride as unknown as number)
-        : 20;
+      // Total dollar volume traded in this market (= parimutuel pool size)
       const totalVolume = market.purchases.reduce(
         (sum: number, p: { cost: unknown }) => sum + toNum(p.cost as unknown as number),
         0
       );
-      const dtMs = market.openedAt
-        ? Math.max(0, Date.now() - market.openedAt.getTime())
+
+      // Compute current LMSR prices for all outcomes in this market
+      // Fixed b per market shape (admin-overridable via bFloorOverride).
+      const bOverride = market.bFloorOverride != null
+        ? toNum(market.bFloorOverride as unknown as number)
         : 0;
-      const b = adaptiveB(bFloor, dtMs, totalVolume);
+      const b = bOverride > 0 ? bOverride : defaultB(market.outcomes.length);
       const q = market.outcomes.map((o: { sharesSold: unknown }) => toNum(o.sharesSold as unknown as number));
       const prices = q.length >= 2 ? allPrices(q, b) : q.map(() => 0.5);
 
@@ -99,6 +114,8 @@ export const betsRouter = router({
       const estimatedPayoutPerShare =
         sharesSoldOnOutcome > 0 ? Math.min(1.0, totalVolume / sharesSoldOnOutcome) : 0;
       const potentialPayoutCents = Math.round(shares * estimatedPayoutPerShare * 100);
+
+      const lastPurchaseAt = lastPurchaseByOutcome.get(outcome.id) ?? null;
 
       return {
         id: pos.id,
@@ -119,6 +136,8 @@ export const betsRouter = router({
         currentPriceCents,
         currentValueCents,
         potentialPayoutCents,
+        /** ISO timestamp of the user's most recent purchase of this outcome (for sell cooldown). */
+        lastPurchaseAt: lastPurchaseAt?.toISOString() ?? null,
       };
     });
   }),

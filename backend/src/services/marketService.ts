@@ -16,19 +16,13 @@ import crypto from "crypto";
 import { Decimal } from "decimal.js";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "../db.js";
-import { allPrices, adaptiveB } from "./lmsr.js";
-import { HOUSE_PHONE } from "./houseSeeding.js";
+import { allPrices, defaultB } from "./lmsr.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const GENESIS_HASH = "0".repeat(64);
-const B_FLOOR_DEFAULT = 20;
-
-/** Minimum number of unique (non-house) bettors required to resolve a market. */
-export const MIN_BETTORS = 5;
-
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -38,6 +32,10 @@ export interface OutcomeWithPrice {
   label: string;
   position: number;
   sharesSold: number;
+  /** Maximum shares available for this outcome (fixed-supply cap). */
+  maxShares: number;
+  /** Shares still available to purchase (= maxShares - sharesSold). */
+  sharesRemaining: number;
   isWinner: boolean | null;
   /** Price in [0, 1]. */
   price: number;
@@ -45,7 +43,9 @@ export interface OutcomeWithPrice {
   priceCents: number;
   /**
    * Estimated parimutuel payout per share if this outcome wins.
-   * = totalPool / sharesSold. 0 if no shares sold yet.
+   * = min($1.00, totalPool / sharesSold). 0 if no shares sold yet.
+   * totalPool = SUM(purchases.cost) — will naturally account for sells once
+   * the purchase engine records sells as negative-cost purchase rows.
    * This is an ESTIMATE — the pool grows as more bets come in.
    */
   estimatedPayoutPerShare: number;
@@ -57,13 +57,16 @@ export interface MarketWithPrices {
   status: string;
   openedAt: Date | null;
   scheduledOpenAt: Date | null;
+  /** @deprecated Use bParameter / currentB instead. Kept for backwards compatibility. */
   bFloorOverride: number | null;
+  /** Maximum shares per outcome for this market. */
+  maxSharesPerOutcome: number;
   createdAt: Date;
   resolvedAt: Date | null;
   winningOutcomeId: string | null;
   outcomes: OutcomeWithPrice[];
   currentB: number;
-  /** Total dollar volume traded in this market (= sum of all purchase costs). */
+  /** Total dollar volume traded in this market (= net of purchases minus sells). */
   totalVolume: number;
   /**
    * Parimutuel pool size in dollars.  Always equal to totalVolume.
@@ -81,11 +84,6 @@ export interface MarketWithPrices {
   familySide: string | null;
   /** Freeform custom tags. */
   customTags: string[];
-  /**
-   * Number of unique non-house bettors in this market.
-   * Used to enforce MIN_BETTORS before resolution.
-   */
-  uniqueBettorCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -134,13 +132,9 @@ interface RawOutcome {
   label: string;
   position: number;
   sharesSold: { toNumber(): number } | number;
+  /** Fixed-supply cap for this outcome (default 100). */
+  maxShares: number;
   isWinner: boolean | null;
-}
-
-interface RawPurchase {
-  cost: { toNumber(): number } | number;
-  userId: string;
-  user?: { phone: string } | null;
 }
 
 interface RawMarket {
@@ -149,12 +143,17 @@ interface RawMarket {
   status: string;
   openedAt: Date | null;
   scheduledOpenAt: Date | null;
+  /** @deprecated Kept for backwards compatibility. Use bParameter instead. */
   bFloorOverride: { toNumber(): number } | number | null;
+  /** Fixed b parameter override. If null, use defaultB(numOutcomes, maxSharesPerOutcome). */
+  bParameter: { toNumber(): number } | number | null;
+  /** Maximum shares per outcome for this market. */
+  maxSharesPerOutcome: number;
   createdAt: Date;
   resolvedAt: Date | null;
   winningOutcomeId: string | null;
   outcomes: RawOutcome[];
-  purchases: RawPurchase[];
+  purchases: Array<{ cost: { toNumber(): number } | number }>;
   eventTag: string | null;
   familySide: string | null;
   customTags: string[];
@@ -169,29 +168,21 @@ function toNum(v: { toNumber(): number } | number): number {
 // ---------------------------------------------------------------------------
 
 function buildMarketWithPrices(market: RawMarket): MarketWithPrices {
-  const bFloor = market.bFloorOverride != null
-    ? toNum(market.bFloorOverride)
-    : B_FLOOR_DEFAULT;
+  const numOutcomes = market.outcomes.length;
+  const maxSharesPerOutcome = market.maxSharesPerOutcome ?? 100;
+
+  // Use market.bParameter if explicitly set; otherwise calculate via defaultB.
+  const b = market.bParameter != null
+    ? toNum(market.bParameter)
+    : defaultB(numOutcomes, maxSharesPerOutcome);
+
+  const q = market.outcomes.map((o: RawOutcome) => toNum(o.sharesSold));
 
   const totalVolume = market.purchases.reduce(
-    (sum: number, p: RawPurchase) => sum + toNum(p.cost),
+    (sum: number, p: { cost: { toNumber(): number } | number }) =>
+      sum + toNum(p.cost),
     0
   );
-
-  // Unique bettor count excludes the house liquidity account (identified by
-  // phone +0000000000) so the displayed count reflects real user engagement.
-  const uniqueBettorCount = new Set(
-    market.purchases
-      .filter((p: RawPurchase) => p.user?.phone !== HOUSE_PHONE)
-      .map((p: RawPurchase) => p.userId)
-  ).size;
-
-  const dtMs = market.openedAt
-    ? Math.max(0, Date.now() - market.openedAt.getTime())
-    : 0;
-
-  const b = adaptiveB(bFloor, dtMs, totalVolume);
-  const q = market.outcomes.map((o: RawOutcome) => toNum(o.sharesSold));
   const prices = q.length >= 2 ? allPrices(q, b) : q.map(() => 0);
 
   return {
@@ -201,16 +192,21 @@ function buildMarketWithPrices(market: RawMarket): MarketWithPrices {
     openedAt: market.openedAt,
     scheduledOpenAt: market.scheduledOpenAt,
     bFloorOverride: market.bFloorOverride != null ? toNum(market.bFloorOverride) : null,
+    maxSharesPerOutcome,
     createdAt: market.createdAt,
     resolvedAt: market.resolvedAt,
     winningOutcomeId: market.winningOutcomeId,
     outcomes: market.outcomes.map((o: RawOutcome, i: number) => {
       const sharesSold = toNum(o.sharesSold);
+      const maxShares = o.maxShares ?? maxSharesPerOutcome;
+      const sharesRemaining = Math.max(0, maxShares - sharesSold);
       return {
         id: o.id,
         label: o.label,
         position: o.position,
         sharesSold,
+        maxShares,
+        sharesRemaining,
         isWinner: o.isWinner,
         price: prices[i] ?? 0,
         priceCents: Math.round((prices[i] ?? 0) * 100),
@@ -225,7 +221,6 @@ function buildMarketWithPrices(market: RawMarket): MarketWithPrices {
     eventTag: market.eventTag ?? null,
     familySide: market.familySide ?? null,
     customTags: market.customTags ?? [],
-    uniqueBettorCount,
   };
 }
 
@@ -246,7 +241,12 @@ export async function createMarket(
   question: string,
   outcomeLabels: string[],
   opts?: {
+    /** @deprecated Use bParameter instead. Kept for backwards compatibility. */
     bFloorOverride?: number;
+    /** Fixed b parameter for LMSR pricing. If omitted, uses defaultB(numOutcomes, maxSharesPerOutcome). */
+    bParameter?: number;
+    /** Maximum shares per outcome. Defaults to 100. */
+    maxSharesPerOutcome?: number;
     scheduledOpenAt?: Date;
     ipAddress?: string;
     prismaClient?: PrismaClient;
@@ -262,6 +262,7 @@ export async function createMarket(
   const db = opts?.prismaClient ?? defaultPrisma;
   const isImmediate = !opts?.scheduledOpenAt;
   const now = new Date();
+  const maxSharesPerOutcome = opts?.maxSharesPerOutcome ?? 100;
 
   const marketId = await db.$transaction(async (tx: Prisma.TransactionClient) => {
     const market = await tx.market.create({
@@ -272,6 +273,8 @@ export async function createMarket(
         openedAt: isImmediate ? now : null,
         scheduledOpenAt: opts?.scheduledOpenAt ?? null,
         bFloorOverride: opts?.bFloorOverride ?? null,
+        bParameter: opts?.bParameter ?? null,
+        maxSharesPerOutcome,
         eventTag: opts?.eventTag ?? null,
         familySide: opts?.familySide ?? null,
         customTags: opts?.customTags ?? [],
@@ -280,6 +283,7 @@ export async function createMarket(
             label,
             position: i,
             sharesSold: 0,
+            maxShares: maxSharesPerOutcome,
           })),
         },
       },
@@ -296,7 +300,8 @@ export async function createMarket(
           outcomeLabels,
           isImmediate,
           scheduledOpenAt: opts?.scheduledOpenAt?.toISOString() ?? null,
-          bFloorOverride: opts?.bFloorOverride ?? null,
+          maxSharesPerOutcome,
+          bParameter: opts?.bParameter ?? null,
         },
         ipAddress: opts?.ipAddress ?? "0.0.0.0",
       },
@@ -393,27 +398,6 @@ export async function resolveMarket(
       if (!winningOutcome) {
         throw new Error(
           `Outcome ${winningOutcomeId} does not belong to market ${marketId}`
-        );
-      }
-
-      // -----------------------------------------------------------------------
-      // MIN_BETTORS guard — require at least 5 unique non-house bettors
-      // -----------------------------------------------------------------------
-      const uniqueBettors = await tx.purchase.findMany({
-        where: {
-          marketId,
-          user: { phone: { not: HOUSE_PHONE } },
-        },
-        select: { userId: true },
-        distinct: ["userId"],
-      });
-      const uniqueBettorCount = uniqueBettors.length;
-
-      if (uniqueBettorCount < MIN_BETTORS) {
-        throw new Error(
-          `Market needs at least ${MIN_BETTORS} unique bettors to resolve ` +
-          `(currently ${uniqueBettorCount}). ` +
-          `Void this market to issue refunds instead.`
         );
       }
 
@@ -760,19 +744,24 @@ export async function getMarketWithPrices(
   const market = await db.market.findUnique({
     where: { id: marketId },
     include: {
-      outcomes: { orderBy: { position: "asc" } },
-      purchases: {
+      outcomes: {
+        orderBy: { position: "asc" },
         select: {
-          cost: true,
-          userId: true,
-          user: { select: { phone: true } },
+          id: true,
+          label: true,
+          position: true,
+          sharesSold: true,
+          maxShares: true,
+          isWinner: true,
         },
       },
+      purchases: { select: { cost: true } },
     },
+    // Select market-level fields explicitly to include new schema fields
   });
   if (!market) return null;
 
-  return buildMarketWithPrices(market as RawMarket);
+  return buildMarketWithPrices(market as unknown as RawMarket);
 }
 
 // ---------------------------------------------------------------------------
@@ -809,17 +798,21 @@ export async function listMarkets(
   const markets = await db.market.findMany({
     where: Object.keys(where).length ? where : undefined,
     include: {
-      outcomes: { orderBy: { position: "asc" } },
-      purchases: {
+      outcomes: {
+        orderBy: { position: "asc" },
         select: {
-          cost: true,
-          userId: true,
-          user: { select: { phone: true } },
+          id: true,
+          label: true,
+          position: true,
+          sharesSold: true,
+          maxShares: true,
+          isWinner: true,
         },
       },
+      purchases: { select: { cost: true } },
     },
     orderBy: { createdAt: "desc" },
   });
 
-  return (markets as RawMarket[]).map((m: RawMarket) => buildMarketWithPrices(m));
+  return (markets as unknown as RawMarket[]).map((m: RawMarket) => buildMarketWithPrices(m));
 }

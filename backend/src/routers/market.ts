@@ -14,7 +14,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { router, publicProcedure, protectedProcedure, adminProcedure } from "../trpc.js";
-import { buyShares, PurchaseError } from "../services/purchaseEngine.js";
+import { buyShares, sellShares, PurchaseError } from "../services/purchaseEngine.js";
 import { getUserBalance } from "../services/balance.js";
 import {
   createMarket,
@@ -50,6 +50,12 @@ function getIOSafe() {
 // ---------------------------------------------------------------------------
 // Input schemas
 // ---------------------------------------------------------------------------
+
+const sellInput = z.object({
+  marketId: z.string().uuid(),
+  outcomeId: z.string().uuid(),
+  shares: z.number().positive("Shares must be positive"),
+});
 
 const buyInput = z.object({
   marketId: z.string().uuid(),
@@ -223,6 +229,79 @@ export const marketRouter = router({
         }
       } catch (wsErr) {
         console.warn("[market.buy] WebSocket broadcast failed (non-fatal):", wsErr);
+      }
+
+      return result;
+    }),
+
+  /**
+   * market.sell — authenticated
+   * Sell shares back to the AMM at the current LMSR price minus a 10% fee.
+   */
+  sell: protectedProcedure
+    .input(sellInput)
+    .mutation(async ({ ctx, input }) => {
+      const { userId } = ctx;
+      const { marketId, outcomeId, shares } = input;
+
+      let result;
+      try {
+        result = await sellShares(userId, marketId, outcomeId, shares);
+      } catch (err) {
+        if (err instanceof PurchaseError) {
+          switch (err.code) {
+            case "MARKET_NOT_FOUND":
+            case "NO_OUTCOMES":
+            case "OUTCOME_NOT_FOUND":
+              throw new TRPCError({ code: "NOT_FOUND", message: err.message });
+            case "MARKET_NOT_ACTIVE":
+            case "MARKET_NOT_OPEN":
+            case "INSUFFICIENT_BALANCE":
+            case "CAP_EXCEEDED":
+            case "INVALID_AMOUNT":
+              throw new TRPCError({ code: "BAD_REQUEST", message: err.message });
+            case "RECONCILIATION_FAILED":
+              console.error("[market.sell] CRITICAL reconciliation failure:", err);
+              throw new TRPCError({
+                code: "INTERNAL_SERVER_ERROR",
+                message: "Transaction integrity check failed. Please contact support.",
+              });
+            default:
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: err.message,
+              });
+          }
+        }
+        console.error("[market.sell] Unexpected error:", err);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Sale failed: ${err instanceof Error ? err.message : String(err)}`,
+          cause: err,
+        });
+      }
+
+      // Broadcast via WebSocket (fire-and-forget)
+      try {
+        const io = getIOSafe();
+        if (io) {
+          const { broadcastPriceUpdate, broadcastBalanceUpdate } =
+            await import("../ws/broadcaster.js");
+
+          broadcastPriceUpdate(
+            io,
+            marketId,
+            result.allNewPrices.map((p: number, i: number) => ({
+              outcomeId: result.outcomeIds[i] ?? outcomeId,
+              priceCents: Math.round(p * 100),
+            }))
+          );
+
+          const newBalanceCents = await getUserBalance(userId);
+          broadcastBalanceUpdate(io, userId, { balanceCents: newBalanceCents });
+        }
+      } catch (wsErr) {
+        console.warn("[market.sell] WebSocket broadcast failed (non-fatal):", wsErr);
       }
 
       return result;

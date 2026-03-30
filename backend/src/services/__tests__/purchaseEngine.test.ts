@@ -15,11 +15,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { buyShares, PurchaseError, toNumber } from "../purchaseEngine.js";
+import { buyShares, sellShares, PurchaseError, toNumber } from "../purchaseEngine.js";
 import {
   allPrices,
   computeSharesForDollarAmount,
-  price,
+  computeDollarAmountForShares,
 } from "../lmsr.js";
 
 // ---------------------------------------------------------------------------
@@ -92,7 +92,7 @@ function makeTx() {
     outcome: { update: vi.fn() },
     purchase: { create: vi.fn() },
     transaction: { findFirst: vi.fn(), create: vi.fn() },
-    position: { upsert: vi.fn() },
+    position: { upsert: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
   };
 }
 
@@ -108,24 +108,21 @@ function mockTransaction(tx: ReturnType<typeof makeTx>): void {
 /**
  * Set up a tx mock for a HAPPY-PATH purchase.
  *
- * @param balanceDollars    - User's current ledger balance in dollars
- * @param spendDollars      - Existing spend in this market in dollars
- * @param volumeDollars     - Total market volume in dollars (for adaptive b)
- * @param sharesSold        - Current state vector [yes, no] as number[]
+ * @param balanceDollars - User's current ledger balance in dollars
+ * @param spendDollars   - Existing spend in this market in dollars
+ * @param sharesSold     - Current state vector [yes, no] as number[]
  */
 function wireHappyPath(
   tx: ReturnType<typeof makeTx>,
   opts: {
     balanceDollars?: number;
     spendDollars?: number;
-    volumeDollars?: number;
     sharesSold?: number[];
   } = {}
 ): void {
   const {
     balanceDollars = 20,
     spendDollars = 0,
-    volumeDollars = 0,
     sharesSold = [0, 0],
   } = opts;
 
@@ -144,9 +141,6 @@ function wireHappyPath(
 
   // Market spend
   tx.$queryRaw.mockResolvedValueOnce([{ total_spend: spendDollars }]);
-
-  // Market volume
-  tx.$queryRaw.mockResolvedValueOnce([{ total_volume: volumeDollars }]);
 
   // outcome.update
   tx.outcome.update.mockResolvedValue({});
@@ -438,8 +432,7 @@ describe("buyShares — reconciliation invariant", () => {
     tx.$queryRaw
       .mockResolvedValueOnce(mockOutcomes) // lock
       .mockResolvedValueOnce([{ balance: 20 }]) // balance: $20
-      .mockResolvedValueOnce([{ total_spend: 0 }]) // no prior spend
-      .mockResolvedValueOnce([{ total_volume: 0 }]); // no prior volume
+      .mockResolvedValueOnce([{ total_spend: 0 }]); // no prior spend
 
     tx.outcome.update.mockResolvedValue({});
     tx.transaction.findFirst.mockResolvedValue(null);
@@ -470,8 +463,7 @@ describe("buyShares — reconciliation invariant", () => {
     tx.$queryRaw
       .mockResolvedValueOnce(mockOutcomes)
       .mockResolvedValueOnce([{ balance: 20 }])
-      .mockResolvedValueOnce([{ total_spend: 0 }])
-      .mockResolvedValueOnce([{ total_volume: 0 }]);
+      .mockResolvedValueOnce([{ total_spend: 0 }]);
 
     tx.outcome.update.mockResolvedValue({});
     tx.transaction.findFirst.mockResolvedValue(null);
@@ -509,18 +501,13 @@ describe("buyShares — price impact matches LMSR formula", () => {
     mockTransaction(tx);
   });
 
-  it("$10 on fresh binary market (q=[0,0], b≈46) — prices match allPrices()", async () => {
-    const openedAt = new Date(Date.now() - 30_000); // 30s ago → b≈46 at V=0
-    tx.market.findUnique.mockResolvedValue({
-      ...mockMarket,
-      openedAt,
-    });
+  it("$10 on fresh binary market (q=[0,0], b≈27) — prices match allPrices()", async () => {
+    tx.market.findUnique.mockResolvedValue(mockMarket);
 
     tx.$queryRaw
       .mockResolvedValueOnce(mockOutcomes)           // lock: q=[0,0]
       .mockResolvedValueOnce([{ balance: 50 }])      // balance
-      .mockResolvedValueOnce([{ total_spend: 0 }])   // spend
-      .mockResolvedValueOnce([{ total_volume: 0 }]); // volume
+      .mockResolvedValueOnce([{ total_spend: 0 }]);  // spend
 
     tx.outcome.update.mockResolvedValue({});
     tx.transaction.findFirst.mockResolvedValue(null);
@@ -541,21 +528,14 @@ describe("buyShares — price impact matches LMSR formula", () => {
 
     const result = await buyShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 1000); // $10
 
-    // Independently compute expected values using the same LMSR math
+    // Fixed b for binary market: defaultB(2) ≈ 27.17
     const q = [0, 0];
-    const dtMs = Date.now() - openedAt.getTime();
-    // b ≈ 20 + 0.6 * 0.25 * sqrt(30000) ≈ 45.98 (time-only at V=0)
-    // Allow some variance because dtMs fluctuates slightly between calls
-    const b = 20 + 0.6 * 0.25 * Math.sqrt(dtMs); // approximate
+    const b = (0.8 * 100) / Math.log(19 * 1); // = defaultB(2)
 
     const expectedShares = computeSharesForDollarAmount(q, b, 0, 10);
-    const qNew = [expectedShares, 0];
-    const expectedPrices = allPrices(qNew, b);
-    const expectedPriceBefore = price(q, b, 0);
 
-    // Shares should be within 5% of expected (b is slightly different due to timing)
-    expect(result.shares).toBeGreaterThan(expectedShares * 0.95);
-    expect(result.shares).toBeLessThan(expectedShares * 1.05);
+    // Shares match defaultB(2) exactly
+    expect(result.shares).toBeCloseTo(expectedShares, 1);
 
     // priceBefore should be near 50¢ (fair coin on fresh market)
     expect(result.priceBeforeCents).toBeCloseTo(50, 0);
@@ -563,14 +543,9 @@ describe("buyShares — price impact matches LMSR formula", () => {
     // priceAfter should be > priceBefore (bought Yes → Yes price up)
     expect(result.priceAfterCents).toBeGreaterThan(result.priceBeforeCents);
 
-    // allNewPrices should match allPrices() applied to qNew
-    // (within rounding since we use cents)
+    // allNewPrices should sum to 1
     const sumPrices = result.allNewPrices.reduce((a, b) => a + b, 0);
     expect(Math.abs(sumPrices - 1.0)).toBeLessThan(0.0001);
-
-    // Suppress unused variable warnings
-    void expectedPriceBefore;
-    void expectedPrices;
   });
 
   it("buying Yes moves Yes price up and No price down", async () => {
@@ -612,6 +587,343 @@ describe("buyShares — price impact matches LMSR formula", () => {
     // Each successive $10 buy should yield fewer shares (diminishing returns)
     expect(r2.shares).toBeLessThan(r1.shares);
     expect(r3.shares).toBeLessThan(r2.shares);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sellShares — shared fixtures
+// ---------------------------------------------------------------------------
+
+const SALE_TRANSACTION_ID = "ffffffff-0000-0000-0000-000000000001";
+
+/**
+ * Wire a happy-path sell scenario.
+ *
+ * @param tx           - tx mock from makeTx()
+ * @param opts.sharesSold      - current outcome state vector [yes, no]
+ * @param opts.positionShares  - shares the user currently holds
+ * @param opts.positionCost    - total cost basis for the user's position
+ */
+function wireSellHappyPath(
+  tx: ReturnType<typeof makeTx>,
+  opts: {
+    sharesSold?: number[];
+    positionShares?: number;
+    positionCost?: number;
+  } = {}
+): void {
+  const {
+    sharesSold = [5, 5],
+    positionShares = 5,
+    positionCost = 20,
+  } = opts;
+
+  tx.market.findUnique.mockResolvedValue(mockMarket);
+
+  // FOR UPDATE lock on outcomes
+  tx.$queryRaw.mockResolvedValueOnce(
+    mockOutcomes.map((o, i) => ({
+      ...o,
+      shares_sold: String(sharesSold[i] ?? 0),
+    }))
+  );
+
+  // Position lookup
+  tx.position.findUnique.mockResolvedValue({
+    shares: String(positionShares),
+    totalCost: String(positionCost),
+  });
+
+  // outcome.update (decrement sharesSold)
+  tx.outcome.update.mockResolvedValue({});
+
+  // transaction.findFirst (prevHash)
+  tx.transaction.findFirst.mockResolvedValue(null);
+
+  // transaction.create (SALE)
+  tx.transaction.create.mockResolvedValue({ id: SALE_TRANSACTION_ID });
+
+  // position.update
+  tx.position.update.mockResolvedValue({});
+
+  // purchase.create (negative record)
+  tx.purchase.create.mockResolvedValue({ id: PURCHASE_ID });
+
+  // Reconciliation query — balanced:
+  // deposits=$50, user balance=$30 (got revenue back), house_amm=$20
+  tx.$queryRaw.mockResolvedValueOnce([
+    {
+      user_balances: 30,
+      house_amm: 20,
+      total_deposits: 50,
+      total_withdrawals: 0,
+    },
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// sellShares — happy path
+// ---------------------------------------------------------------------------
+
+describe("sellShares — basic sale", () => {
+  let tx: ReturnType<typeof makeTx>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tx = makeTx();
+    mockTransaction(tx);
+  });
+
+  it("returns revenueCents > 0 when selling 2 shares from a non-empty market", async () => {
+    wireSellHappyPath(tx, { sharesSold: [5, 5], positionShares: 5 });
+
+    const result = await sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 2);
+
+    expect(result.revenueCents).toBeGreaterThan(0);
+    expect(result.shares).toBe(2);
+    expect(result.transactionId).toBe(SALE_TRANSACTION_ID);
+  });
+
+  it("priceBefore > priceAfter when selling Yes shares (price goes down)", async () => {
+    wireSellHappyPath(tx, { sharesSold: [10, 5], positionShares: 10 });
+
+    const result = await sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 3);
+
+    // Selling Yes reduces Yes price
+    expect(result.priceAfterCents).toBeLessThan(result.priceBeforeCents);
+  });
+
+  it("allNewPrices sums to 1.0 after sell", async () => {
+    wireSellHappyPath(tx);
+
+    const result = await sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 2);
+
+    const sum = result.allNewPrices.reduce((a, b) => a + b, 0);
+    expect(Math.abs(sum - 1.0)).toBeLessThan(0.0001);
+  });
+
+  it("creates a SALE Transaction via tx.transaction.create", async () => {
+    wireSellHappyPath(tx);
+
+    await sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 2);
+
+    expect(tx.transaction.create).toHaveBeenCalledOnce();
+    const txData = tx.transaction.create.mock.calls[0]?.[0]?.data;
+    expect(txData?.type).toBe("SALE");
+    expect(txData?.debitAccount).toBe("house_amm");
+    expect(txData?.creditAccount).toBe(`user:${USER_ID}`);
+  });
+
+  it("inserts a negative-cost Purchase record via tx.purchase.create", async () => {
+    wireSellHappyPath(tx);
+
+    await sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 2);
+
+    expect(tx.purchase.create).toHaveBeenCalledOnce();
+    const purchaseData = tx.purchase.create.mock.calls[0]?.[0]?.data;
+    // shares and cost should both be negative
+    expect(purchaseData?.shares.toNumber()).toBeLessThan(0);
+    expect(purchaseData?.cost.toNumber()).toBeLessThan(0);
+  });
+
+  it("decrements outcome sharesSold via tx.outcome.update", async () => {
+    wireSellHappyPath(tx);
+
+    await sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 2);
+
+    expect(tx.outcome.update).toHaveBeenCalledOnce();
+    const updateArgs = tx.outcome.update.mock.calls[0]?.[0];
+    expect(updateArgs?.where?.id).toBe(OUTCOME_YES_ID);
+    expect(updateArgs?.data?.sharesSold?.decrement).toBeDefined();
+  });
+
+  it("updates position via tx.position.update (not upsert)", async () => {
+    wireSellHappyPath(tx);
+
+    await sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 2);
+
+    expect(tx.position.update).toHaveBeenCalledOnce();
+    expect(tx.position.upsert).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sellShares — revenue matches LMSR formula
+// ---------------------------------------------------------------------------
+
+describe("sellShares — revenue matches LMSR formula", () => {
+  let tx: ReturnType<typeof makeTx>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tx = makeTx();
+    mockTransaction(tx);
+  });
+
+  it("revenue matches computeDollarAmountForShares(q, b, i, shares)", async () => {
+    const sharesSold = [8, 4]; // q = [8, 4]
+    const sharesToSell = 3;
+
+    wireSellHappyPath(tx, { sharesSold, positionShares: 8 });
+
+    const result = await sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, sharesToSell);
+
+    const b = (0.8 * 100) / Math.log(19 * 1); // defaultB(2)
+    const expectedRevenue = computeDollarAmountForShares(sharesSold, b, 0, sharesToSell);
+    const expectedCents = Math.round(expectedRevenue * 100);
+
+    expect(result.revenueCents).toBe(expectedCents);
+  });
+
+  it("selling all shares returns less than buying cost (AMM spread)", async () => {
+    // For a binary market at q=[5,5] selling 5 shares should return < $10
+    // because the user bought at higher prices than they're selling
+    const b = (0.8 * 100) / Math.log(19 * 1);
+    const revenue = computeDollarAmountForShares([5, 5], b, 0, 5);
+
+    // Revenue is always positive
+    expect(revenue).toBeGreaterThan(0);
+
+    // Selling 5 shares at q=[5,5] should be well under $5 (AMM spread)
+    expect(revenue).toBeLessThan(5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sellShares — error cases
+// ---------------------------------------------------------------------------
+
+describe("sellShares — NO_POSITION error", () => {
+  let tx: ReturnType<typeof makeTx>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tx = makeTx();
+    mockTransaction(tx);
+  });
+
+  it("throws NO_POSITION when user has no position in the outcome", async () => {
+    tx.market.findUnique.mockResolvedValue(mockMarket);
+    tx.$queryRaw.mockResolvedValueOnce(mockOutcomes); // lock
+    tx.position.findUnique.mockResolvedValue(null);    // no position
+
+    await expect(
+      sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 2)
+    ).rejects.toMatchObject({ code: "NO_POSITION" });
+  });
+});
+
+describe("sellShares — INSUFFICIENT_SHARES error", () => {
+  let tx: ReturnType<typeof makeTx>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tx = makeTx();
+    mockTransaction(tx);
+  });
+
+  it("throws INSUFFICIENT_SHARES when user tries to sell more than they hold", async () => {
+    tx.market.findUnique.mockResolvedValue(mockMarket);
+    tx.$queryRaw.mockResolvedValueOnce(mockOutcomes);
+    tx.position.findUnique.mockResolvedValue({
+      shares: "2",    // only 2 shares
+      totalCost: "5",
+    });
+
+    await expect(
+      sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 10) // trying to sell 10
+    ).rejects.toMatchObject({ code: "INSUFFICIENT_SHARES" });
+  });
+
+  it("allows selling exactly the shares held", async () => {
+    // User holds exactly 5 shares — selling 5 should succeed
+    wireSellHappyPath(tx, { sharesSold: [5, 5], positionShares: 5, positionCost: 20 });
+
+    const result = await sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 5);
+    expect(result.shares).toBe(5);
+  });
+});
+
+describe("sellShares — market status validation", () => {
+  let tx: ReturnType<typeof makeTx>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tx = makeTx();
+    mockTransaction(tx);
+  });
+
+  it("throws MARKET_NOT_ACTIVE for PENDING market", async () => {
+    tx.market.findUnique.mockResolvedValue({ ...mockMarket, status: "PENDING" });
+
+    await expect(
+      sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 2)
+    ).rejects.toMatchObject({ code: "MARKET_NOT_ACTIVE" });
+  });
+
+  it("throws MARKET_NOT_ACTIVE for RESOLVED market", async () => {
+    tx.market.findUnique.mockResolvedValue({ ...mockMarket, status: "RESOLVED" });
+
+    await expect(
+      sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 2)
+    ).rejects.toMatchObject({ code: "MARKET_NOT_ACTIVE" });
+  });
+
+  it("throws MARKET_NOT_FOUND when market does not exist", async () => {
+    tx.market.findUnique.mockResolvedValue(null);
+
+    await expect(
+      sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 2)
+    ).rejects.toMatchObject({ code: "MARKET_NOT_FOUND" });
+  });
+
+  it("throws INVALID_AMOUNT for sharesToSell <= 0", async () => {
+    await expect(
+      sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 0)
+    ).rejects.toMatchObject({ code: "INVALID_AMOUNT" });
+  });
+
+  it("throws INVALID_AMOUNT for negative sharesToSell", async () => {
+    await expect(
+      sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, -3)
+    ).rejects.toMatchObject({ code: "INVALID_AMOUNT" });
+  });
+});
+
+describe("sellShares — reconciliation", () => {
+  let tx: ReturnType<typeof makeTx>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tx = makeTx();
+    mockTransaction(tx);
+  });
+
+  it("throws RECONCILIATION_FAILED when conservation is violated after sale", async () => {
+    tx.market.findUnique.mockResolvedValue(mockMarket);
+    tx.$queryRaw.mockResolvedValueOnce(
+      mockOutcomes.map((o, i) => ({ ...o, shares_sold: String([5, 5][i] ?? 0) }))
+    );
+    tx.position.findUnique.mockResolvedValue({ shares: "5", totalCost: "20" });
+    tx.outcome.update.mockResolvedValue({});
+    tx.transaction.findFirst.mockResolvedValue(null);
+    tx.transaction.create.mockResolvedValue({ id: SALE_TRANSACTION_ID });
+    tx.position.update.mockResolvedValue({});
+    tx.purchase.create.mockResolvedValue({ id: PURCHASE_ID });
+
+    // Broken reconciliation: lhs ≠ rhs
+    tx.$queryRaw.mockResolvedValueOnce([
+      {
+        user_balances: 999,
+        house_amm: 0,
+        total_deposits: 20,
+        total_withdrawals: 0,
+      },
+    ]);
+
+    await expect(
+      sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 2)
+    ).rejects.toMatchObject({ code: "RECONCILIATION_FAILED" });
   });
 });
 
