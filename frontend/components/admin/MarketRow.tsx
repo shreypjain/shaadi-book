@@ -16,12 +16,16 @@ import { trpc } from "@/lib/trpc";
 
 type MarketStatus = "PENDING" | "ACTIVE" | "PAUSED" | "RESOLVED" | "VOIDED";
 
+/** Minimum unique bettors required to resolve — mirrors backend MIN_BETTORS. */
+export const MIN_BETTORS = 5;
+
 export interface MarketRowData {
   id: string;
   question: string;
   status: string;
   currentB: number;
   totalVolume: number;
+  uniqueBettorCount: number;
   outcomes: Array<{ id: string; label: string; price: number }>;
   createdAt: Date | string;
   resolvedAt: Date | string | null;
@@ -89,11 +93,27 @@ export default function MarketRow({ market, onChanged }: Props) {
           <p className="text-sm font-medium text-charcoal break-words">
             {market.question}
           </p>
-          <p className="text-xs text-warmGray mt-0.5">
-            {new Date(market.createdAt).toLocaleString()} ·{" "}
-            vol ${market.totalVolume.toFixed(2)} ·{" "}
-            b={market.currentB.toFixed(1)} ·{" "}
-            exposure ${houseExposure}
+          <p className="text-xs text-warmGray mt-0.5 flex items-center gap-1.5 flex-wrap">
+            <span>{new Date(market.createdAt).toLocaleString()}</span>
+            <span>· vol ${market.totalVolume.toFixed(2)}</span>
+            <span>· b={market.currentB.toFixed(1)}</span>
+            <span>· exposure ${houseExposure}</span>
+            <span className={`inline-flex items-center gap-1 ${
+              market.uniqueBettorCount < MIN_BETTORS
+                ? "text-amber-600 font-medium"
+                : "text-warmGray"
+            }`}>
+              ·{" "}
+              {market.uniqueBettorCount} bettor{market.uniqueBettorCount !== 1 ? "s" : ""}
+              {market.uniqueBettorCount < MIN_BETTORS && market.status === "ACTIVE" && (
+                <span
+                  title={`Needs ${MIN_BETTORS - market.uniqueBettorCount} more bettor(s) before resolving`}
+                  className="inline-flex items-center rounded-full bg-amber-100 text-amber-700 px-1.5 py-0.5 text-[10px] font-medium"
+                >
+                  ⚠ {MIN_BETTORS - market.uniqueBettorCount} needed
+                </span>
+              )}
+            </span>
           </p>
         </div>
         <span

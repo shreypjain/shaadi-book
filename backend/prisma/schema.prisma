@@ -78,6 +78,8 @@ model User {
   phone     String   @unique
   country   Country
   role      Role     @default(GUEST)
+  /// True for the internal house liquidity account. House user is excluded from leaderboard rankings.
+  isHouse   Boolean  @default(false) @map("is_house")
   createdAt DateTime @default(now()) @map("created_at")
 
   // Relations

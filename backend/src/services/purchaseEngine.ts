@@ -197,13 +197,15 @@ async function runReconciliation(tx: any): Promise<void> {
  * @param marketId          - UUID of the target market
  * @param outcomeId         - UUID of the outcome being purchased
  * @param dollarAmountCents - Integer amount in cents (e.g. 1000 = $10.00)
+ * @param options.bypassCap - Skip the $200 per-user-per-market cap (house seeding only)
  * @returns PurchaseResult on success; throws PurchaseError on validation failure
  */
 export async function buyShares(
   userId: string,
   marketId: string,
   outcomeId: string,
-  dollarAmountCents: number
+  dollarAmountCents: number,
+  options?: { bypassCap?: boolean }
 ): Promise<PurchaseResult> {
   // -------------------------------------------------------------------------
   // 1. Pre-flight input validation (before any DB round-trip)
@@ -220,6 +222,8 @@ export async function buyShares(
   // -------------------------------------------------------------------------
   // 2. Atomic transaction — Serializable isolation to prevent write-skew
   // -------------------------------------------------------------------------
+  const bypassCap = options?.bypassCap === true;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result: PurchaseResult = await (prisma.$transaction as any)(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -316,23 +320,25 @@ export async function buyShares(
       }
 
       // -----------------------------------------------------------------------
-      // 6. Check $200 per-user per-market cap
+      // 6. Check $200 per-user per-market cap (skipped for house account)
       // -----------------------------------------------------------------------
-      const spendResult = (await tx.$queryRaw`
-        SELECT COALESCE(SUM(cost), 0) AS total_spend
-        FROM purchases
-        WHERE user_id  = ${userId}
-          AND market_id = ${marketId}
-      `) as Array<{ total_spend: unknown }>;
+      if (!bypassCap) {
+        const spendResult = (await tx.$queryRaw`
+          SELECT COALESCE(SUM(cost), 0) AS total_spend
+          FROM purchases
+          WHERE user_id  = ${userId}
+            AND market_id = ${marketId}
+        `) as Array<{ total_spend: unknown }>;
 
-      const existingSpendDollars = toNumber(spendResult[0]?.total_spend ?? 0);
+        const existingSpendDollars = toNumber(spendResult[0]?.total_spend ?? 0);
 
-      if (existingSpendDollars + dollarAmount > 200) {
-        const remaining = Math.max(0, 200 - existingSpendDollars);
-        throw new PurchaseError(
-          "CAP_EXCEEDED",
-          `Purchase would exceed $200 market cap. Already spent: $${existingSpendDollars.toFixed(2)}, remaining: $${remaining.toFixed(2)}, attempted: $${dollarAmount.toFixed(2)}`
-        );
+        if (existingSpendDollars + dollarAmount > 200) {
+          const remaining = Math.max(0, 200 - existingSpendDollars);
+          throw new PurchaseError(
+            "CAP_EXCEEDED",
+            `Purchase would exceed $200 market cap. Already spent: $${existingSpendDollars.toFixed(2)}, remaining: $${remaining.toFixed(2)}, attempted: $${dollarAmount.toFixed(2)}`
+          );
+        }
       }
 
       // -----------------------------------------------------------------------

@@ -33,6 +33,7 @@ export default function AdminMarketsPage() {
         status: m.status,
         currentB: m.currentB,
         totalVolume: m.totalVolume,
+        uniqueBettorCount: m.uniqueBettorCount,
         outcomes: m.outcomes.map((o) => ({
           id: o.id,
           label: o.label,

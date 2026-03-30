@@ -31,6 +31,7 @@ import {
   notifyMarketResolved,
   scheduleMarketOpen,
 } from "../services/notificationService.js";
+import { seedMarket, DEFAULT_SEED_CENTS } from "../services/houseSeeding.js";
 import { prisma } from "../db.js";
 
 // ---------------------------------------------------------------------------
@@ -274,6 +275,11 @@ export const marketRouter = router({
         eventTag: EventTagSchema.optional(),
         familySide: FamilySideSchema.optional(),
         customTags: z.array(z.string().min(1).max(50)).max(10).optional(),
+        /**
+         * House seed amount per outcome in cents (e.g. 2000 = $20).
+         * Set to 0 to skip seeding. Defaults to DEFAULT_SEED_CENTS ($20).
+         */
+        seedAmountCents: z.number().int().min(0).max(100_000).default(DEFAULT_SEED_CENTS),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -308,14 +314,34 @@ export const marketRouter = router({
           async () => {
             await openMarket(marketId);
             const opened = await getMarketWithPrices(marketId);
-            if (opened) await notifyNewMarket(opened, io);
+            if (opened) {
+              // Seed the market with initial house liquidity when it opens.
+              if (input.seedAmountCents > 0) {
+                await seedMarket(
+                  marketId,
+                  opened.outcomes.map((o) => o.id),
+                  input.seedAmountCents
+                );
+              }
+              await notifyNewMarket(opened, io);
+            }
           },
           io
         );
       } else {
+        // Immediate open — seed right away.
+        if (input.seedAmountCents > 0) {
+          await seedMarket(
+            marketId,
+            market.outcomes.map((o) => o.id),
+            input.seedAmountCents
+          );
+        }
         await notifyNewMarket(market, io);
       }
 
+      // Return the market (prices may differ slightly after seeding, but
+      // the client will receive a WebSocket price-update broadcast shortly).
       return market;
     }),
 

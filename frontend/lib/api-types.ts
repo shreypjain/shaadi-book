@@ -55,6 +55,11 @@ export interface MarketWithPrices {
   familySide: string | null;
   /** Freeform custom tags. */
   customTags: string[];
+  /**
+   * Number of unique non-house bettors. Used to enforce the 5-bettor minimum
+   * before market resolution; shown on cards and detail pages.
+   */
+  uniqueBettorCount: number;
 }
 
 // ---------------------------------------------------------------------------
