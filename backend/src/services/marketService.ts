@@ -16,15 +16,13 @@ import crypto from "crypto";
 import { Decimal } from "decimal.js";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "../db.js";
-import { allPrices, adaptiveB } from "./lmsr.js";
+import { allPrices, defaultB } from "./lmsr.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const GENESIS_HASH = "0".repeat(64);
-const B_FLOOR_DEFAULT = 20;
-
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -154,22 +152,18 @@ function toNum(v: { toNumber(): number } | number): number {
 // ---------------------------------------------------------------------------
 
 function buildMarketWithPrices(market: RawMarket): MarketWithPrices {
-  const bFloor = market.bFloorOverride != null
+  // Fixed b per market shape (admin-overridable via bFloorOverride).
+  const bOverride = market.bFloorOverride != null
     ? toNum(market.bFloorOverride)
-    : B_FLOOR_DEFAULT;
+    : 0;
+  const b = bOverride > 0 ? bOverride : defaultB(market.outcomes.length);
+  const q = market.outcomes.map((o: RawOutcome) => toNum(o.sharesSold));
 
   const totalVolume = market.purchases.reduce(
     (sum: number, p: { cost: { toNumber(): number } | number }) =>
       sum + toNum(p.cost),
     0
   );
-
-  const dtMs = market.openedAt
-    ? Math.max(0, Date.now() - market.openedAt.getTime())
-    : 0;
-
-  const b = adaptiveB(bFloor, dtMs, totalVolume);
-  const q = market.outcomes.map((o: RawOutcome) => toNum(o.sharesSold));
   const prices = q.length >= 2 ? allPrices(q, b) : q.map(() => 0);
 
   return {
