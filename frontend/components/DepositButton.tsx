@@ -104,19 +104,18 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
         + Add Credits
       </button>
 
-      {/* Modal overlay */}
+      {/* Modal overlay — full screen centered */}
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-          {/* Backdrop */}
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          {/* Backdrop — covers everything */}
           <div
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
             onClick={step !== "payment" ? handleClose : undefined}
           />
 
-          {/* Sheet — scrollable with max height */}
-          <div className="relative w-full sm:max-w-md max-h-[90vh] overflow-y-auto
-                          bg-ivory rounded-t-2xl sm:rounded-2xl p-6
-                          shadow-[0_-4px_40px_rgba(0,0,0,0.15)] sm:shadow-2xl">
+          {/* Modal card — centered, scrollable */}
+          <div className="relative z-[101] w-full max-w-md max-h-[85vh] overflow-y-auto
+                          bg-ivory rounded-2xl p-6 shadow-2xl">
             {/* ----------------------------------------------------------------
                 Step 1: Amount selection
             ---------------------------------------------------------------- */}
