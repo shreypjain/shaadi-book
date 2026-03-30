@@ -21,12 +21,14 @@ Live prediction market web app for Parsh & Spoorthi's wedding in Udaipur. Guests
 - Every transaction row has a SHA-256 hash chain. No UPDATE/DELETE on `transactions` or `purchases` — trigger-enforced.
 - Double-entry bookkeeping: every transaction has debit_account and credit_account.
 - Reconciliation invariant: SUM(user balances) + SUM(withdrawals paid) = SUM(deposits received) — checked on every balance-modifying transaction.
-- **Capped parimutuel resolution**: payout_per_share = min($1.00, total_pool / winning_shares). House NEVER loses.
-- **House seeding**: markets auto-seed $20/outcome from a House account on creation (internal ledger credit, no Stripe).
+- **Capped parimutuel resolution**: payout_per_share = min($1.00, pool / winning_shares). Pool = total_buys - total_sells. House NEVER loses.
+- **House seeding**: markets auto-seed $20/outcome from a House account on creation (internal ledger credit, no Stripe). House surplus from resolved markets is reinjected into active markets.
 - **Minimum 5 unique bettors** to resolve a market.
-- Adaptive b formula: b(t,V) = max(b_floor, 20 + (0.6 * 0.25 * sqrt(dt_ms)) + (0.4 * 0.5 * V))
-- $200 max bet per user per market.
-- No selling — buy and hold until resolution.
+- Fixed b parameter per market. Default calculated via defaultB(numOutcomes, maxShares). For binary markets with 100 shares, b ≈ 27.
+- $200 max bet per user per market. 100 shares max per outcome (configurable per market).
+- Selling allowed — users can sell shares back to the AMM at the current LMSR price. Revenue = C(q_before) - C(q_after).
+- Share calculation uses closed-form analytical solution (no binary search). Δ = b × ln((e^(X/b) × (S + e^(qᵢ/b)) - S) / e^(qᵢ/b))
+- Selling creates SALE transactions: debit house_amm, credit user. Position shares decrease.
 
 ## Deployment & Operations
 - Production: `docker compose -f docker-compose.prod.yml` on DO droplet
@@ -113,6 +115,7 @@ shaadi-book/
 ```
 
 ## Key PRD Sections for Reference
+- Note: The LMSR model has been updated from the original PRD. The codebase uses fixed 100-share supply with selling, not the unbounded model described in the PRD. The code is authoritative.
 - Section 4.2: LMSR pricing formulas
 - Section 4.3: Adaptive b parameter formula
 - Section 6.2: Complete data model
