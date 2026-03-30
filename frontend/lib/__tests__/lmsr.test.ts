@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { costFunction, price, allPrices, adaptiveB, computePreview } from "../lmsr";
+import { costFunction, price, allPrices, defaultB, computePreview, computeDollarAmountForShares } from "../lmsr";
 
 // ---------------------------------------------------------------------------
 // costFunction
@@ -106,48 +106,80 @@ describe("allPrices", () => {
 });
 
 // ---------------------------------------------------------------------------
-// adaptiveB
+// defaultB
 // ---------------------------------------------------------------------------
 
-describe("adaptiveB", () => {
-  it("returns b_floor when formula gives less", () => {
-    // With dt=0 and V=0, formula = 20 + 0 + 0 = 20 → max(b_floor, 20) = max(20, 20) = 20
-    const result = adaptiveB(20, 0, 0);
-    expect(result).toBe(20);
+describe("defaultB", () => {
+  it("throws for fewer than 2 outcomes", () => {
+    expect(() => defaultB(1)).toThrow("numOutcomes must be >= 2");
   });
 
-  it("grows with time", () => {
-    const b0 = adaptiveB(20, 0, 0);
-    const b1 = adaptiveB(20, 60000, 0); // 1 minute
-    const b2 = adaptiveB(20, 300000, 0); // 5 minutes
-    expect(b1).toBeGreaterThan(b0);
-    expect(b2).toBeGreaterThan(b1);
+  it("binary market with 100 shares ≈ 27.2", () => {
+    // b = 0.8 × 100 / ln(19 × 1) ≈ 80 / ln(19) ≈ 27.17
+    expect(defaultB(2, 100)).toBeCloseTo(27.17, 1);
   });
 
-  it("grows with volume", () => {
-    const b0 = adaptiveB(20, 0, 0);
-    const b1 = adaptiveB(20, 0, 100); // $100 volume
-    const b2 = adaptiveB(20, 0, 500); // $500 volume
-    expect(b1).toBeGreaterThan(b0);
-    expect(b2).toBeGreaterThan(b1);
+  it("defaults maxShares to 100", () => {
+    expect(defaultB(2)).toBeCloseTo(defaultB(2, 100), 10);
   });
 
-  it("matches formula-computed values", () => {
-    // b(0, 0) = max(20, 20 + 0 + 0) = 20
-    expect(adaptiveB(20, 0, 0)).toBeCloseTo(20, 5);
-    // b(30s, $0) = 20 + 0.6×0.25×√30000 ≈ 20 + 25.98 = 45.98
-    expect(adaptiveB(20, 30_000, 0)).toBeCloseTo(45.98, 1);
-    // b(5min, $500) = 20 + 0.6×0.25×√300000 + 0.4×0.5×500
-    //              = 20 + 82.16 + 100 = 202.16
-    expect(adaptiveB(20, 5 * 60 * 1000, 500)).toBeCloseTo(202.16, 1);
-    // b(30min, $2000) = 20 + 0.6×0.25×√1800000 + 0.4×0.5×2000
-    //                 = 20 + 201.25 + 400 = 621.25
-    expect(adaptiveB(20, 30 * 60 * 1000, 2000)).toBeCloseTo(621.25, 0);
+  it("scales with maxShares", () => {
+    const b50 = defaultB(2, 50);
+    const b100 = defaultB(2, 100);
+    expect(b100).toBeCloseTo(b50 * 2, 5);
   });
 
-  it("respects custom b_floor", () => {
-    const result = adaptiveB(50, 0, 0);
-    expect(result).toBe(50); // formula gives 20, but floor is 50
+  it("decreases as numOutcomes increases (more outcomes → smaller b for same maxShares)", () => {
+    const b2 = defaultB(2, 100);
+    const b3 = defaultB(3, 100);
+    const b5 = defaultB(5, 100);
+    expect(b3).toBeLessThan(b2);
+    expect(b5).toBeLessThan(b3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeDollarAmountForShares
+// ---------------------------------------------------------------------------
+
+describe("computeDollarAmountForShares", () => {
+  it("throws for sharesToSell <= 0", () => {
+    expect(() => computeDollarAmountForShares([10, 10], 27, 0, 0)).toThrow();
+    expect(() => computeDollarAmountForShares([10, 10], 27, 0, -1)).toThrow();
+  });
+
+  it("throws for outcomeIndex out of range", () => {
+    expect(() => computeDollarAmountForShares([10, 10], 27, 2, 5)).toThrow();
+  });
+
+  it("throws if sharesToSell > qi", () => {
+    expect(() => computeDollarAmountForShares([5, 10], 27, 0, 10)).toThrow();
+  });
+
+  it("returns positive revenue for valid sell", () => {
+    const q = [50, 20];
+    const b = defaultB(2, 100);
+    const revenue = computeDollarAmountForShares(q, b, 0, 10);
+    expect(revenue).toBeGreaterThan(0);
+  });
+
+  it("selling more shares yields more revenue", () => {
+    const q = [60, 20];
+    const b = defaultB(2, 100);
+    const r5 = computeDollarAmountForShares(q, b, 0, 5);
+    const r10 = computeDollarAmountForShares(q, b, 0, 10);
+    expect(r10).toBeGreaterThan(r5);
+  });
+
+  it("revenue = C(before) - C(after)", () => {
+    const q = [40, 30];
+    const b = 27;
+    const sharesToSell = 8;
+    const before = costFunction(q, b);
+    const qAfter = [32, 30];
+    const after = costFunction(qAfter, b);
+    const expected = Math.round((before - after) * 10_000) / 10_000;
+    expect(computeDollarAmountForShares(q, b, 0, sharesToSell)).toBeCloseTo(expected, 4);
   });
 });
 

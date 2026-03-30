@@ -99,15 +99,21 @@ export function MarketCard({ market, livePrices, lastPurchaseAt }: MarketCardPro
         {market.outcomes.map((outcome) => {
           const livePrice = livePrices?.[outcome.id];
           const displayPriceCents = livePrice !== undefined ? livePrice : outcome.priceCents;
+          const sharesRemaining = outcome.sharesRemaining ?? Math.max(0, (outcome.maxShares ?? 100) - outcome.sharesSold);
+          const maxShares = outcome.maxShares ?? 100;
 
           return (
-            <ProbabilityBar
-              key={outcome.id}
-              label={outcome.label}
-              priceCents={displayPriceCents}
-              isWinner={outcome.isWinner === true}
-              size="sm"
-            />
+            <div key={outcome.id} className="space-y-0.5">
+              <ProbabilityBar
+                label={outcome.label}
+                priceCents={displayPriceCents}
+                isWinner={outcome.isWinner === true}
+                size="sm"
+              />
+              <p className="text-[10px] text-[#8B7355]/60 pl-0.5 tabular-nums">
+                {sharesRemaining.toFixed(0)}/{maxShares} shares remaining
+              </p>
+            </div>
           );
         })}
       </div>

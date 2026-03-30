@@ -335,8 +335,8 @@ export default function MarketDetailPage() {
               const colors = outcomeColor(i);
               const history = priceHistory[outcome.id] ?? [];
               const isWinner = outcome.isWinner === true || outcome.id === winningOutcomeId;
-              const sharesSold = Number(outcome.sharesSold ?? 0);
-              const sharesAvailable = Math.max(0, 100 - sharesSold);
+              const sharesRemaining = Number(outcome.sharesRemaining ?? Math.max(0, 100 - Number(outcome.sharesSold ?? 0)));
+              const maxShares = Number(outcome.maxShares ?? 100);
 
               return (
                 <div key={outcome.id} className="space-y-1.5">
@@ -352,9 +352,9 @@ export default function MarketDetailPage() {
                   {/* Shares availability */}
                   <p className="text-[11px] text-warmGray pl-0.5">
                     <span className="font-semibold text-charcoal tabular-nums">
-                      {sharesAvailable.toFixed(1)}
+                      {sharesRemaining.toFixed(1)}
                     </span>
-                    /100 shares available
+                    /{maxShares} shares remaining
                   </p>
                   {history.length >= 3 && (
                     <div className="opacity-50">
