@@ -74,13 +74,14 @@ export interface PositionItem {
 
 export interface SellResult {
   transactionId: string;
-  sharesSold: number;
-  /** Gross revenue before fee, in cents. */
+  /** Number of shares sold. */
+  shares: number;
+  /** Net revenue after fee — integer cents. */
+  revenueCents: number;
+  /** Gross revenue before fee — integer cents. */
   grossRevenueCents: number;
-  /** 10% fee, in cents. */
+  /** Fee deducted — integer cents. */
   feeCents: number;
-  /** Net revenue after fee, in cents. */
-  netRevenueCents: number;
   priceBeforeCents: number;
   priceAfterCents: number;
   allNewPrices: number[];

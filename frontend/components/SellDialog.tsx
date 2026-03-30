@@ -62,7 +62,7 @@ function formatCountdown(ms: number): string {
 interface SellDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (result: { sharesSold: number; netRevenueCents: number }) => void;
+  onSuccess: (result: { shares: number; revenueCents: number }) => void;
   marketId: string;
   outcomeId: string;
   outcomeLabel: string;
@@ -175,8 +175,8 @@ export function SellDialog({
       .then((result) => {
         setStep("success");
         onSuccess({
-          sharesSold: result.sharesSold ?? sharesToSell,
-          netRevenueCents: result.netRevenueCents ?? preview?.netCents ?? 0,
+          shares: result.shares ?? sharesToSell,
+          revenueCents: result.revenueCents ?? preview?.netCents ?? 0,
         });
       })
       .catch((err: Error) => {
