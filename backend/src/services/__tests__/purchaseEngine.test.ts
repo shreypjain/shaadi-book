@@ -64,6 +64,8 @@ const mockMarket = {
   status: "ACTIVE",
   openedAt: OPENED_AT,
   bFloorOverride: null,
+  bParameter: null,
+  maxSharesPerOutcome: 1000,
 };
 
 /** Outcomes with q=[0,0] — fresh market, no shares sold. */
@@ -528,9 +530,9 @@ describe("buyShares — price impact matches LMSR formula", () => {
 
     const result = await buyShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 1000); // $10
 
-    // Fixed b for binary market: defaultB(2) ≈ 27.17
+    // Fixed b for binary market: defaultB(2, 1000) ≈ 271.7
     const q = [0, 0];
-    const b = (0.8 * 100) / Math.log(19 * 1); // = defaultB(2)
+    const b = (0.8 * 1000) / Math.log(19 * 1); // = defaultB(2, 1000)
 
     const expectedShares = computeSharesForDollarAmount(q, b, 0, 10);
 
@@ -634,6 +636,9 @@ function wireSellHappyPath(
     totalCost: String(positionCost),
   });
 
+  // Sell cooldown: last buy was >30 min ago (no cooldown block)
+  tx.$queryRaw.mockResolvedValueOnce([{ last_buy_at: null }]);
+
   // outcome.update (decrement sharesSold)
   tx.outcome.update.mockResolvedValue({});
 
@@ -685,9 +690,10 @@ describe("sellShares — basic sale", () => {
   });
 
   it("priceBefore > priceAfter when selling Yes shares (price goes down)", async () => {
-    wireSellHappyPath(tx, { sharesSold: [10, 5], positionShares: 10 });
+    // Use larger share values relative to b≈272 for visible price impact
+    wireSellHappyPath(tx, { sharesSold: [200, 50], positionShares: 200 });
 
-    const result = await sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 3);
+    const result = await sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, 50);
 
     // Selling Yes reduces Yes price
     expect(result.priceAfterCents).toBeLessThan(result.priceBeforeCents);
@@ -760,7 +766,7 @@ describe("sellShares — revenue matches LMSR formula", () => {
     mockTransaction(tx);
   });
 
-  it("revenue matches computeDollarAmountForShares(q, b, i, shares)", async () => {
+  it("revenue matches computeDollarAmountForShares minus 10% sell fee", async () => {
     const sharesSold = [8, 4]; // q = [8, 4]
     const sharesToSell = 3;
 
@@ -768,24 +774,26 @@ describe("sellShares — revenue matches LMSR formula", () => {
 
     const result = await sellShares(USER_ID, MARKET_ID, OUTCOME_YES_ID, sharesToSell);
 
-    const b = (0.8 * 100) / Math.log(19 * 1); // defaultB(2)
-    const expectedRevenue = computeDollarAmountForShares(sharesSold, b, 0, sharesToSell);
-    const expectedCents = Math.round(expectedRevenue * 100);
+    const b = (0.8 * 1000) / Math.log(19 * 1); // defaultB(2, 1000)
+    const grossRevenue = computeDollarAmountForShares(sharesSold, b, 0, sharesToSell);
+    const fee = grossRevenue * 0.10; // SELL_FEE_RATE = 10%
+    const netRevenue = Math.round((grossRevenue - fee) * 10_000) / 10_000;
+    const expectedCents = Math.round(netRevenue * 100);
 
     expect(result.revenueCents).toBe(expectedCents);
   });
 
   it("selling all shares returns less than buying cost (AMM spread)", async () => {
-    // For a binary market at q=[5,5] selling 5 shares should return < $10
+    // For a binary market at q=[50,50] selling 50 shares should return less than cost
     // because the user bought at higher prices than they're selling
-    const b = (0.8 * 100) / Math.log(19 * 1);
-    const revenue = computeDollarAmountForShares([5, 5], b, 0, 5);
+    const b = (0.8 * 1000) / Math.log(19 * 1); // defaultB(2, 1000)
+    const revenue = computeDollarAmountForShares([50, 50], b, 0, 50);
 
     // Revenue is always positive
     expect(revenue).toBeGreaterThan(0);
 
-    // Selling 5 shares at q=[5,5] should be well under $5 (AMM spread)
-    expect(revenue).toBeLessThan(5);
+    // Selling 50 shares at q=[50,50] should be well under $50 (AMM spread)
+    expect(revenue).toBeLessThan(50);
   });
 });
 
@@ -905,6 +913,8 @@ describe("sellShares — reconciliation", () => {
       mockOutcomes.map((o, i) => ({ ...o, shares_sold: String([5, 5][i] ?? 0) }))
     );
     tx.position.findUnique.mockResolvedValue({ shares: "5", totalCost: "20" });
+    // Sell cooldown: no recent buy
+    tx.$queryRaw.mockResolvedValueOnce([{ last_buy_at: null }]);
     tx.outcome.update.mockResolvedValue({});
     tx.transaction.findFirst.mockResolvedValue(null);
     tx.transaction.create.mockResolvedValue({ id: SALE_TRANSACTION_ID });

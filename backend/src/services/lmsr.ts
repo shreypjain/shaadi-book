@@ -1,7 +1,7 @@
 /**
  * LMSR (Logarithmic Market Scoring Rule) Pricing Engine
  *
- * Fixed 100-shares-per-outcome model with buying and selling support.
+ * Fixed 1000-shares-per-outcome model with buying and selling support.
  * Uses a closed-form analytical solution instead of binary search.
  *
  * Pure functions with zero DB dependency. All monetary values are in dollars
@@ -117,7 +117,7 @@ export function allPrices(q: number[], b: number): number[] {
  * @param b            - Liquidity parameter.
  * @param outcomeIndex - Outcome being purchased.
  * @param dollarAmount - Dollar amount being spent (must be > 0).
- * @param maxShares    - Per-outcome share cap (default 100). Throws
+ * @param maxShares    - Per-outcome share cap (default 1000). Throws
  *                       SHARE_CAP_EXCEEDED if the purchase would breach it.
  * @returns Number of shares received (rounded to 4 d.p.).
  */
@@ -126,7 +126,7 @@ export function computeSharesForDollarAmount(
   b: number,
   outcomeIndex: number,
   dollarAmount: number,
-  maxShares: number = 100
+  maxShares: number = 1000
 ): number {
   if (dollarAmount <= 0) {
     throw new Error("computeSharesForDollarAmount: dollarAmount must be > 0");
@@ -221,17 +221,19 @@ export function computeDollarAmountForShares(
  *   ⟹  e^(0.8·M/b) = 19·(n−1)
  *   ⟹  b = 0.8·M / ln(19·(n−1))
  *
- * For a binary market with M=100:  b = 80/ln(19) ≈ 27.2
- *   p at q=(0,0):    0.50
- *   p at q=(50,0):  ~0.86
- *   p at q=(80,0):  ~0.95  ← target
- *   p at q=(100,0): ~0.98
+ * For a binary market with M=1000: b = 800/ln(19) ≈ 272
+ *   p at q=(0,0):      0.50
+ *   p at q=(500,0):   ~0.86
+ *   p at q=(800,0):   ~0.95  ← target
+ *   p at q=(1000,0):  ~0.98
+ *
+ * For a 3-outcome market with M=1000: b = 800/ln(38) ≈ 220
  *
  * @param numOutcomes - Number of outcomes (≥ 2).
- * @param maxShares   - Per-outcome share cap (default 100).
+ * @param maxShares   - Per-outcome share cap (default 1000).
  * @returns A b value calibrated for the given market shape.
  */
-export function defaultB(numOutcomes: number, maxShares: number = 100): number {
+export function defaultB(numOutcomes: number, maxShares: number = 1000): number {
   if (numOutcomes < 2) throw new Error("defaultB: numOutcomes must be >= 2");
   return (0.8 * maxShares) / Math.log(19 * (numOutcomes - 1));
 }
