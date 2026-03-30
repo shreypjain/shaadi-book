@@ -330,6 +330,30 @@ export default function MarketDetailPage() {
           <h2 className="font-serif text-xs font-medium text-[#B8860B]/70 uppercase tracking-[0.2em] mb-4">
             Current Odds
           </h2>
+
+          {/* Thin-pool nudge: any outcome with est. payout < 90¢/share on active markets */}
+          {isActive && market.outcomes.some(
+            (o: { estimatedPayoutPerShare?: number }) =>
+              (o.estimatedPayoutPerShare ?? 1) < 0.9
+          ) && (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 flex items-start gap-2 mb-4">
+              <svg
+                className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-px"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              <p className="text-xs text-amber-700 leading-snug">
+                More bets = bigger payouts for everyone. Spread the word!
+              </p>
+            </div>
+          )}
+
           <div className="flex flex-col gap-4">
             {market.outcomes.map((outcome, i) => {
               const livePrice = livePrices[outcome.id];
@@ -340,6 +364,7 @@ export default function MarketDetailPage() {
               const isWinner = outcome.isWinner === true || outcome.id === winningOutcomeId;
               const sharesRemaining = Number(outcome.sharesRemaining ?? Math.max(0, 100 - Number(outcome.sharesSold ?? 0)));
               const maxShares = Number(outcome.maxShares ?? 100);
+              const estPayoutCents = Math.round((outcome.estimatedPayoutPerShare ?? 0) * 100);
 
               return (
                 <div key={outcome.id} className="space-y-1.5">
@@ -352,6 +377,20 @@ export default function MarketDetailPage() {
                     isWinner={isWinner}
                     size="md"
                   />
+                  {/* Price + est. payout */}
+                  <p className="text-[11px] text-warmGray pl-0.5">
+                    <span className="font-semibold text-charcoal tabular-nums">
+                      {displayPriceCents}¢
+                    </span>
+                    {estPayoutCents > 0 && (
+                      <>
+                        {" | "}
+                        <span className="text-[#8a6d30] font-medium">
+                          est. payout: {estPayoutCents}¢/share
+                        </span>
+                      </>
+                    )}
+                  </p>
                   {/* Shares availability */}
                   <p className="text-[11px] text-warmGray pl-0.5">
                     <span className="font-semibold text-charcoal tabular-nums">

@@ -199,23 +199,74 @@ export function PositionCard({
           </div>
 
           {/* Parimutuel estimated payout for active/pending */}
-          {(position.marketStatus === "active" || position.marketStatus === "pending") && (
-            <div className="mt-3 pt-3 border-t border-[#f0ece7]">
-              <p className="text-xs bg-[#f5efd9] text-[#8a6d30] rounded-lg px-2.5 py-1.5">
-                Est. payout if wins:{" "}
-                <span className="font-bold">
-                  {formatDollars(position.potentialPayoutCents)}
-                </span>
-                {" · "}Est. profit:{" "}
-                <span className="font-bold">
-                  {formatDollars(position.potentialPayoutCents - position.totalCostCents)}
-                </span>
-                <span className="block text-[#a08050] mt-0.5 opacity-75">
-                  Pool-based estimate — grows as more bets come in
-                </span>
-              </p>
-            </div>
-          )}
+          {(position.marketStatus === "active" || position.marketStatus === "pending") &&
+            position.shares > 0 && (() => {
+              // Derive per-share values from existing fields
+              const estPayoutPerShareCents = position.potentialPayoutCents / position.shares;
+              const avgCostPerShareCents = position.avgPriceCents;
+              const estPnLCents = position.potentialPayoutCents - position.totalCostCents;
+              const isThinPool = estPayoutPerShareCents < avgCostPerShareCents;
+
+              return (
+                <div className="mt-3 pt-3 border-t border-[#f0ece7] space-y-2">
+                  <div className="rounded-lg bg-[#f5efd9] px-2.5 py-2.5">
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs mb-2">
+                      <div>
+                        <p className="text-[#a08050]">Est. payout/share</p>
+                        <p className="font-semibold text-[#8a6d30]">
+                          {estPayoutPerShareCents.toFixed(0)}¢
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[#a08050]">Avg cost/share</p>
+                        <p className="font-semibold text-[#8a6d30]">
+                          {avgCostPerShareCents.toFixed(0)}¢
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[#a08050]">Est. total payout</p>
+                        <p className="font-semibold text-[#8a6d30]">
+                          {formatDollars(position.potentialPayoutCents)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[#a08050]">Est. P&amp;L</p>
+                        <p
+                          className={`font-semibold ${
+                            estPnLCents >= 0 ? "text-emerald-600" : "text-[#dc2626]"
+                          }`}
+                        >
+                          {estPnLCents >= 0 ? "+" : ""}
+                          {formatDollars(estPnLCents)}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-[#a08050] opacity-60">
+                      Pool-based estimate — grows as more bets come in
+                    </p>
+                  </div>
+
+                  {isThinPool && (
+                    <div className="rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-2 flex items-start gap-1.5">
+                      <svg
+                        className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-px"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      <p className="text-xs text-amber-700 leading-snug">
+                        The pool&apos;s running thin — rally the group chat for bigger payouts!
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
         </Link>
 
         {/* Sell button — outside Link so it doesn't navigate */}
