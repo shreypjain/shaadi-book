@@ -55,11 +55,10 @@ export async function snapshotMarketPrices(marketId: string): Promise<void> {
 
   if (!market || market.status !== "ACTIVE") return;
 
-  // Fixed b per market shape (admin-overridable via bFloorOverride).
-  // With fixed 100-share supply, b does not change during the market's lifetime.
-  const bOverride =
-    market.bFloorOverride != null ? toNumber(market.bFloorOverride) : 0;
-  const b = bOverride > 0 ? bOverride : defaultB(market.outcomes.length);
+  // Use bParameter if set, otherwise defaultB with the market's maxSharesPerOutcome.
+  const maxShares = toNumber((market as Record<string, unknown>).maxSharesPerOutcome ?? 1000);
+  const bParam = (market as Record<string, unknown>).bParameter;
+  const b = bParam != null ? toNumber(bParam) : defaultB(market.outcomes.length, maxShares);
 
   const q = (market.outcomes as Array<{ sharesSold: unknown }>).map((o) =>
     toNumber(o.sharesSold)
