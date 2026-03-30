@@ -251,15 +251,15 @@ export default function AdminSuggestionsPage() {
       </div>
 
       {/* Filter tabs */}
-      <div className="flex gap-1 border-b border-gray-200">
+      <div className="flex gap-4 border-b border-[rgba(184,134,11,0.12)]">
         {(["PENDING", "APPROVED", "REJECTED", "ALL"] as StatusFilter[]).map((f) => (
           <button
             key={f}
             onClick={() => setStatusFilter(f)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`text-sm pb-2 transition-colors ${
               statusFilter === f
-                ? "border-gray-800 text-gray-900"
-                : "border-transparent text-gray-500 hover:text-gray-700"
+                ? "text-[#2C2C2C] font-semibold border-b-2 border-[#c8a45c]"
+                : "text-[#6B6156] font-medium hover:text-[#2C2C2C]"
             }`}
           >
             {f === "ALL" ? "All" : f.charAt(0) + f.slice(1).toLowerCase()}
