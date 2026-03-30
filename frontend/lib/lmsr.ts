@@ -45,16 +45,72 @@ export function allPrices(q: number[], b: number): number[] {
 }
 
 // ---------------------------------------------------------------------------
-// Adaptive b
+// Default b parameter
 // ---------------------------------------------------------------------------
 
 /**
- * b(t, V) = max(b_floor, 20 + (0.6 × 0.25 × √(dt_ms)) + (0.4 × 0.5 × V))
+ * Sensible default liquidity parameter for a new market.
+ *
+ * Mirrors backend/src/services/lmsr.ts defaultB().
+ * Targets p ≈ 0.95 when the leading outcome holds 80% of maxShares.
+ *
+ *   b = 0.8 × maxShares / ln(19 × (numOutcomes − 1))
+ *
+ * For a binary market with maxShares=100: b ≈ 27.2
+ *
+ * @param numOutcomes - Number of outcomes (≥ 2).
+ * @param maxShares   - Per-outcome share cap (default 100).
  */
-export function adaptiveB(bFloor: number, dtMs: number, volumeDollars: number): number {
-  const timePart = 0.6 * 0.25 * Math.sqrt(dtMs);
-  const volPart = 0.4 * 0.5 * volumeDollars;
-  return Math.max(bFloor, 20 + timePart + volPart);
+export function defaultB(numOutcomes: number, maxShares: number = 100): number {
+  if (numOutcomes < 2) throw new Error("defaultB: numOutcomes must be >= 2");
+  return (0.8 * maxShares) / Math.log(19 * (numOutcomes - 1));
+}
+
+// ---------------------------------------------------------------------------
+// Dollar revenue from selling shares
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute the dollar revenue from selling a given number of shares.
+ *
+ * revenue = C(q_before) − C(q_after)
+ * where q_after[i] = q_before[i] − sharesToSell
+ *
+ * Mirrors backend/src/services/lmsr.ts computeDollarAmountForShares().
+ * Uses float64 (no Decimal.js) — sufficient precision for UI previews.
+ *
+ * @param q            - Current shares-sold vector (before the sale).
+ * @param b            - Liquidity parameter.
+ * @param outcomeIndex - Outcome whose shares are being sold.
+ * @param sharesToSell - Number of shares to sell (must be > 0 and ≤ q[i]).
+ * @returns Dollar amount received (rounded to 4 d.p.).
+ */
+export function computeDollarAmountForShares(
+  q: number[],
+  b: number,
+  outcomeIndex: number,
+  sharesToSell: number
+): number {
+  if (sharesToSell <= 0) {
+    throw new Error("computeDollarAmountForShares: sharesToSell must be > 0");
+  }
+  if (outcomeIndex < 0 || outcomeIndex >= q.length) {
+    throw new Error(
+      `computeDollarAmountForShares: outcomeIndex ${outcomeIndex} out of range`
+    );
+  }
+  const qi = q[outcomeIndex] ?? 0;
+  if (sharesToSell > qi) {
+    throw new Error(
+      `computeDollarAmountForShares: cannot sell ${sharesToSell} shares, only ${qi} owned`
+    );
+  }
+  const cBefore = costFunction(q, b);
+  const qAfter = q.slice();
+  qAfter[outcomeIndex] = qi - sharesToSell;
+  const cAfter = costFunction(qAfter, b);
+  const revenue = cBefore - cAfter;
+  return Math.round(revenue * 10_000) / 10_000;
 }
 
 // ---------------------------------------------------------------------------

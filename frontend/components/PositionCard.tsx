@@ -102,7 +102,7 @@ export function PositionCard({
     position.marketStatus === "active" && position.shares > 0;
 
   const handleSellSuccess = useCallback(
-    (result: { sharesSold: number; netRevenueCents: number }) => {
+    (_result: { shares: number; revenueCents: number }) => {
       setSellOpen(false);
       onSellSuccess?.();
     },

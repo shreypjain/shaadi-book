@@ -16,6 +16,10 @@ export interface OutcomeWithPrice {
   label: string;
   position: number;
   sharesSold: number;
+  /** Maximum shares available for this outcome (fixed-supply cap). */
+  maxShares: number;
+  /** Shares still available to purchase (= maxShares - sharesSold). */
+  sharesRemaining: number;
   isWinner: boolean | null;
   /** Price in [0, 1]. */
   price: number;
@@ -37,6 +41,8 @@ export interface MarketWithPrices {
   openedAt: string | null;
   scheduledOpenAt: string | null;
   bFloorOverride: number | null;
+  /** Maximum shares per outcome for this market. */
+  maxSharesPerOutcome: number;
   createdAt: string;
   resolvedAt: string | null;
   winningOutcomeId: string | null;
