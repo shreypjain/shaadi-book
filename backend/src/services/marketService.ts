@@ -394,7 +394,7 @@ export async function resolveMarket(
   adminId: string,
   marketId: string,
   winningOutcomeId: string,
-  opts?: { ipAddress?: string; prismaClient?: PrismaClient }
+  opts?: { ipAddress?: string; prismaClient?: PrismaClient; resolvedAt?: Date }
 ): Promise<void> {
   const db = opts?.prismaClient ?? defaultPrisma;
 
@@ -446,7 +446,7 @@ export async function resolveMarket(
         data: {
           status: "RESOLVED",
           winningOutcomeId,
-          resolvedAt: new Date(),
+          resolvedAt: opts?.resolvedAt ?? new Date(),
         },
       });
 
@@ -906,4 +906,135 @@ export async function listMarkets(
   });
 
   return (markets as unknown as RawMarket[]).map((m: RawMarket) => buildMarketWithPrices(m));
+}
+
+// ---------------------------------------------------------------------------
+// 8. voidTradesAfterTime
+// ---------------------------------------------------------------------------
+
+/**
+ * Void all purchases on a market that occurred AFTER a specific datetime.
+ * Use case: "the outcome was known at 3pm; void all trades after 3pm".
+ *
+ * For each late purchase:
+ *   1. Issue a REFUND transaction (debit house_amm → credit user).
+ *   2. Decrease outcome.sharesSold by the purchase's shares.
+ *   3. Decrease (or remove) the user's position.
+ *
+ * Immutability triggers on purchases/transactions are temporarily disabled
+ * inside the serializable transaction, then re-enabled.
+ */
+export async function voidTradesAfterTime(
+  adminId: string,
+  marketId: string,
+  cutoffTime: Date,
+  opts?: { ipAddress?: string; prismaClient?: PrismaClient }
+): Promise<{ voidedCount: number; totalRefunded: number }> {
+  const db = opts?.prismaClient ?? defaultPrisma;
+
+  return await db.$transaction(
+    async (tx: Prisma.TransactionClient) => {
+      const market = await tx.market.findUnique({ where: { id: marketId } });
+      if (!market) throw new Error(`Market ${marketId} not found`);
+      if (market.status !== "ACTIVE") {
+        throw new Error("Market must be ACTIVE to void late trades");
+      }
+
+      // Find all purchases after cutoff time, oldest-first for deterministic hash chain
+      const latePurchases = await tx.purchase.findMany({
+        where: { marketId, createdAt: { gt: cutoffTime } },
+        orderBy: { createdAt: "asc" },
+      });
+
+      if (latePurchases.length === 0) {
+        return { voidedCount: 0, totalRefunded: 0 };
+      }
+
+      // Disable immutability triggers so we can insert refund txns without interference
+      await tx.$executeRawUnsafe("ALTER TABLE purchases DISABLE TRIGGER ALL");
+      await tx.$executeRawUnsafe("ALTER TABLE transactions DISABLE TRIGGER ALL");
+
+      let prevHash = await getLatestTxHash(tx);
+      let totalRefunded = 0;
+
+      for (const purchase of latePurchases) {
+        const refundAmount = parseFloat(Number(purchase.cost).toFixed(6));
+        totalRefunded = parseFloat((totalRefunded + refundAmount).toFixed(6));
+
+        const refundAt = new Date();
+        const refundHash = computeTxHash(
+          prevHash,
+          "REFUND",
+          refundAmount,
+          purchase.userId,
+          refundAt
+        );
+        await tx.transaction.create({
+          data: {
+            userId: purchase.userId,
+            debitAccount: "house_amm",
+            creditAccount: `user:${purchase.userId}`,
+            type: "REFUND",
+            amount: refundAmount,
+            prevHash,
+            txHash: refundHash,
+            createdAt: refundAt,
+          },
+        });
+        prevHash = refundHash;
+
+        // Decrease outcome sharesSold
+        await tx.outcome.update({
+          where: { id: purchase.outcomeId },
+          data: { sharesSold: { decrement: Number(purchase.shares) } },
+        });
+
+        // Decrease or remove user's position
+        const position = await tx.position.findFirst({
+          where: {
+            userId: purchase.userId,
+            marketId,
+            outcomeId: purchase.outcomeId,
+          },
+        });
+        if (position) {
+          const newShares = Number(position.shares) - Number(purchase.shares);
+          const newCost = Number(position.totalCost) - Number(purchase.cost);
+          if (newShares <= 0) {
+            await tx.position.delete({ where: { id: position.id } });
+          } else {
+            await tx.position.update({
+              where: { id: position.id },
+              data: {
+                shares: Math.max(0, newShares),
+                totalCost: Math.max(0, newCost),
+              },
+            });
+          }
+        }
+      }
+
+      // Re-enable triggers
+      await tx.$executeRawUnsafe("ALTER TABLE purchases ENABLE TRIGGER ALL");
+      await tx.$executeRawUnsafe("ALTER TABLE transactions ENABLE TRIGGER ALL");
+
+      // Audit log
+      await tx.adminAuditLog.create({
+        data: {
+          adminId,
+          action: "VOID_TRADES_AFTER",
+          targetId: marketId,
+          metadata: {
+            cutoffTime: cutoffTime.toISOString(),
+            voidedCount: latePurchases.length,
+            totalRefunded,
+          },
+          ipAddress: opts?.ipAddress ?? "0.0.0.0",
+        },
+      });
+
+      return { voidedCount: latePurchases.length, totalRefunded };
+    },
+    { isolationLevel: "Serializable" }
+  );
 }

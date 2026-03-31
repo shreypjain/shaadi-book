@@ -257,6 +257,38 @@ export const api = {
     myWatchlist: (): Promise<string[]> =>
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       (_client as any).market.myWatchlist.query() as Promise<string[]>,
+
+    tradeHistory: (input: {
+      marketId: string;
+      cursor?: string;
+      limit?: number;
+    }): Promise<{
+      trades: Array<{
+        id: string;
+        outcomeId: string;
+        outcomeLabel: string;
+        userName: string | null;
+        shares: number;
+        cost: number;
+        avgPrice: number;
+        priceBefore: number;
+        priceAfter: number;
+        createdAt: string;
+      }>;
+      nextCursor?: string;
+    }> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).market.tradeHistory.query(input) as Promise<any>,
+
+    voidTradesAfter: (input: {
+      marketId: string;
+      cutoffTime: string;
+    }): Promise<{ voidedCount: number; totalRefunded: number }> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).market.voidTradesAfter.mutate(input) as Promise<{
+        voidedCount: number;
+        totalRefunded: number;
+      }>,
   },
 
   bets: {
