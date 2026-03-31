@@ -35,7 +35,7 @@ export function BalanceDisplay({
           {country === "IN" && (
             <p className="text-sm text-warmGray mt-1">
               {formatRupees(balanceCents)}{" "}
-              <span className="text-[#c8c8d0]">· ₹93 ≈ $1</span>
+              <span className="text-[#c8c8d0]">· ₹85 ≈ $1</span>
             </p>
           )}
         </>
