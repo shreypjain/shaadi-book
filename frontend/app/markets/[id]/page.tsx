@@ -8,7 +8,7 @@
  * and a mini price history chart (sparkline).
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ProbabilityBar } from "@/components/ProbabilityBar";
 import { BuyForm } from "@/components/BuyForm";
@@ -111,6 +111,24 @@ export default function MarketDetailPage() {
   >({});
   const [isWatching, setIsWatching] = useState(false);
   const [watchLoading, setWatchLoading] = useState(false);
+
+  // Trade history state
+  const [tradeHistoryExpanded, setTradeHistoryExpanded] = useState(false);
+  const [tradeHistory, setTradeHistory] = useState<Array<{
+    id: string;
+    outcomeId: string;
+    outcomeLabel: string;
+    userName: string | null;
+    shares: number;
+    cost: number;
+    priceBefore: number;
+    priceAfter: number;
+    createdAt: string;
+  }>>([]);
+  const [tradeHistoryLoading, setTradeHistoryLoading] = useState(false);
+  const [tradeHistoryCursor, setTradeHistoryCursor] = useState<string | undefined>(undefined);
+  const [tradeHistoryHasMore, setTradeHistoryHasMore] = useState(true);
+  const tradeHistoryLoadedRef = useRef(false);
 
   const refetchBalance = useCallback(async () => {
     try {
@@ -273,6 +291,33 @@ export default function MarketDetailPage() {
       setWatchLoading(false);
     }
   }, [isWatching, watchLoading, marketId]);
+
+  const loadTradeHistory = useCallback(async (cursor?: string) => {
+    if (!marketId || tradeHistoryLoading) return;
+    setTradeHistoryLoading(true);
+    try {
+      const result = await api.market.tradeHistory({ marketId, cursor, limit: 50 });
+      if (cursor) {
+        setTradeHistory((prev) => [...prev, ...result.trades]);
+      } else {
+        setTradeHistory(result.trades);
+      }
+      setTradeHistoryCursor(result.nextCursor);
+      setTradeHistoryHasMore(!!result.nextCursor);
+    } catch {
+      // Non-fatal
+    } finally {
+      setTradeHistoryLoading(false);
+    }
+  }, [marketId, tradeHistoryLoading]);
+
+  const handleExpandTradeHistory = useCallback(() => {
+    if (!tradeHistoryExpanded && !tradeHistoryLoadedRef.current) {
+      tradeHistoryLoadedRef.current = true;
+      void loadTradeHistory();
+    }
+    setTradeHistoryExpanded((v) => !v);
+  }, [tradeHistoryExpanded, loadTradeHistory]);
 
   // -------------------------------------------------------------------------
   // Loading state
@@ -650,6 +695,95 @@ export default function MarketDetailPage() {
             </div>
           </div>
         )}
+
+        {/* Trade History */}
+        <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-[rgba(184,134,11,0.08)] shadow-[0_2px_16px_rgba(139,109,71,0.06)]">
+          <button
+            onClick={handleExpandTradeHistory}
+            className="w-full flex items-center justify-between px-6 py-4 text-left"
+          >
+            <h2 className="font-serif text-xs font-medium text-[#B8860B]/70 uppercase tracking-[0.2em]">
+              Trade History
+            </h2>
+            <svg
+              className={`w-4 h-4 text-warmGray transition-transform ${tradeHistoryExpanded ? "rotate-180" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {tradeHistoryExpanded && (
+            <div className="px-6 pb-5">
+              {tradeHistoryLoading && tradeHistory.length === 0 ? (
+                <p className="text-xs text-warmGray py-2">Loading trade history…</p>
+              ) : tradeHistory.length === 0 ? (
+                <p className="text-xs text-warmGray py-2">No trades yet.</p>
+              ) : (
+                <>
+                  {/* Header row */}
+                  <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-3 text-[10px] font-medium text-warmGray uppercase tracking-wide pb-2 border-b border-[rgba(184,134,11,0.1)] mb-2">
+                    <span>Bettor / Outcome</span>
+                    <span className="text-right">Shares</span>
+                    <span className="text-right">Amount</span>
+                    <span className="text-right">After</span>
+                    <span className="text-right">Time</span>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    {tradeHistory.map((trade) => {
+                      const outcomeIdx = market.outcomes.findIndex(
+                        (o: { id: string }) => o.id === trade.outcomeId
+                      );
+                      const colors = outcomeColor(outcomeIdx >= 0 ? outcomeIdx : 0);
+                      return (
+                        <div
+                          key={trade.id}
+                          className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-3 items-center"
+                        >
+                          <div className="min-w-0">
+                            {trade.userName && (
+                              <span className="text-xs font-semibold text-[#5a3e1b] truncate block max-w-[110px]">
+                                {trade.userName}
+                              </span>
+                            )}
+                            <span
+                              className={`text-[10px] font-medium rounded-full px-1.5 py-0.5 ${colors.light} ${colors.text}`}
+                            >
+                              {trade.outcomeLabel}
+                            </span>
+                          </div>
+                          <span className="text-xs text-warmGray tabular-nums text-right">
+                            {trade.shares.toFixed(2)}
+                          </span>
+                          <span className="text-xs font-medium text-charcoal tabular-nums text-right">
+                            ${trade.cost.toFixed(2)}
+                          </span>
+                          <span className="text-xs text-warmGray tabular-nums text-right">
+                            {Math.round(trade.priceAfter * 100)}¢
+                          </span>
+                          <span className="text-[10px] text-warmGray text-right whitespace-nowrap">
+                            {timeSince(new Date(trade.createdAt))}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {tradeHistoryHasMore && (
+                    <button
+                      onClick={() => void loadTradeHistory(tradeHistoryCursor)}
+                      disabled={tradeHistoryLoading}
+                      className="mt-3 w-full text-xs text-[#B8860B] font-medium hover:text-[#8a6d30] disabled:opacity-50"
+                    >
+                      {tradeHistoryLoading ? "Loading…" : "Load more"}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
       </main>
     </div>
