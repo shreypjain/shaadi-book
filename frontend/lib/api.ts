@@ -280,6 +280,16 @@ export const api = {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       (_client as any).market.tradeHistory.query(input) as Promise<any>,
 
+    previewVoidAfter: (input: {
+      marketId: string;
+      cutoffTime: string;
+    }): Promise<{ tradeCount: number; totalCost: number }> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).market.previewVoidAfter.query(input) as Promise<{
+        tradeCount: number;
+        totalCost: number;
+      }>,
+
     voidTradesAfter: (input: {
       marketId: string;
       cutoffTime: string;
