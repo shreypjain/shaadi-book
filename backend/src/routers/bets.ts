@@ -137,6 +137,8 @@ export const betsRouter = router({
         currentPriceCents,
         currentValueCents,
         potentialPayoutCents,
+        /** Total shares sold on this outcome — used to compute user's % of winnings pool. */
+        outcomeSharesSold: sharesSoldOnOutcome,
         /** ISO timestamp of the user's most recent purchase of this outcome (for sell cooldown). */
         lastPurchaseAt: lastPurchaseAt?.toISOString() ?? null,
       };
