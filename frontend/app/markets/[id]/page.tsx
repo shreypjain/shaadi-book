@@ -8,7 +8,7 @@
  * and a mini price history chart (sparkline).
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ProbabilityBar } from "@/components/ProbabilityBar";
 import { BuyForm } from "@/components/BuyForm";
@@ -31,7 +31,6 @@ import type {
   WsPriceUpdatePayload,
   WsPurchasePayload,
   WsMarketEventPayload,
-  RecentPurchase,
 } from "@/lib/api-types";
 
 // ---------------------------------------------------------------------------
@@ -71,18 +70,23 @@ function Sparkline({ points, color }: SparklineProps) {
 const SPARKLINE_COLORS = ["#3b6fa3", "#d97706", "#0d9488", "#059669", "#7c3aed"];
 
 // ---------------------------------------------------------------------------
-// Activity feed item
+// Positions data types
 // ---------------------------------------------------------------------------
 
-interface ActivityItem {
-  id: string;
-  type: "purchase";
-  outcomeLabel: string;
-  dollarAmount?: number;
-  priceAfterCents: number;
-  timestamp: number;
-  /** Display name of the bettor, or null if unavailable. */
+interface PositionEntry {
+  userId: string;
   userName: string | null;
+  dominantOutcomeId: string;
+  dominantOutcomeLabel: string;
+  netSharesByOutcome: Record<string, { shares: number; label: string }>;
+  totalDeployed: number;
+  costBasis: number;
+  tradeCount: number;
+}
+
+interface PositionsData {
+  positions: PositionEntry[];
+  totalVolume: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,8 +99,9 @@ export default function MarketDetailPage() {
   const marketId = params?.id ?? "";
 
   const [livePrices, setLivePrices] = useState<Record<string, number>>({});
-  const [activityFeed, setActivityFeed] = useState<ActivityItem[]>([]);
   const [priceHistory, setPriceHistory] = useState<Record<string, number[]>>({});
+  const [positionsData, setPositionsData] = useState<PositionsData | null>(null);
+  const [positionsLoading, setPositionsLoading] = useState(false);
 
   const [chartHours, setChartHours] = useState<1 | 2 | 4>(1);
   const [chartData, setChartData] = useState<Record<string, PricePoint[]>>({});
@@ -112,23 +117,7 @@ export default function MarketDetailPage() {
   const [isWatching, setIsWatching] = useState(false);
   const [watchLoading, setWatchLoading] = useState(false);
 
-  // Trade history state
-  const [tradeHistoryExpanded, setTradeHistoryExpanded] = useState(false);
-  const [tradeHistory, setTradeHistory] = useState<Array<{
-    id: string;
-    outcomeId: string;
-    outcomeLabel: string;
-    userName: string | null;
-    shares: number;
-    cost: number;
-    priceBefore: number;
-    priceAfter: number;
-    createdAt: string;
-  }>>([]);
-  const [tradeHistoryLoading, setTradeHistoryLoading] = useState(false);
-  const [tradeHistoryCursor, setTradeHistoryCursor] = useState<string | undefined>(undefined);
-  const [tradeHistoryHasMore, setTradeHistoryHasMore] = useState(true);
-  const tradeHistoryLoadedRef = useRef(false);
+
 
   const refetchBalance = useCallback(async () => {
     try {
@@ -184,18 +173,6 @@ export default function MarketDetailPage() {
       initial[o.id] = [o.priceCents];
     });
     setPriceHistory(initial);
-    if (market.recentPurchases?.length) {
-      setActivityFeed(
-        (market.recentPurchases as RecentPurchase[]).slice(0, 10).map((p) => ({
-          id: p.id,
-          type: "purchase" as const,
-          outcomeLabel: p.outcomeLabel,
-          priceAfterCents: Math.round(p.priceAfter * 100),
-          timestamp: new Date(p.createdAt).getTime(),
-          userName: p.userName ?? null,
-        }))
-      );
-    }
   }, [market]);
 
   // Fetch full price history from the API (re-fetches when marketId or chartHours changes)
@@ -208,6 +185,23 @@ export default function MarketDetailPage() {
         // Non-fatal — chart will show empty state
       });
   }, [marketId, chartHours]);
+
+  const fetchPositions = useCallback(async () => {
+    if (!marketId) return;
+    setPositionsLoading(true);
+    try {
+      const data = await api.market.positions({ marketId });
+      setPositionsData(data);
+    } catch {
+      // Non-fatal
+    } finally {
+      setPositionsLoading(false);
+    }
+  }, [marketId]);
+
+  useEffect(() => {
+    void fetchPositions();
+  }, [fetchPositions]);
 
   // -------------------------------------------------------------------------
   // WebSocket subscriptions
@@ -243,17 +237,9 @@ export default function MarketDetailPage() {
           return next;
         });
       },
-      onPurchase: (payload: WsPurchasePayload) => {
-        const item: ActivityItem = {
-          id: `ws-${payload.timestamp}`,
-          type: "purchase",
-          outcomeLabel: payload.outcomeLabel,
-          dollarAmount: payload.dollarAmount,
-          priceAfterCents: payload.priceAfterCents,
-          timestamp: payload.timestamp,
-          userName: payload.userName ?? null,
-        };
-        setActivityFeed((prev) => [item, ...prev].slice(0, 20));
+      onPurchase: (_payload: WsPurchasePayload) => {
+        // Re-fetch positions so the leaderboard stays live
+        void fetchPositions();
       },
     });
 
@@ -267,12 +253,13 @@ export default function MarketDetailPage() {
       unsubMarket();
       unsubFeed();
     };
-  }, [marketId, refetch]);
+  }, [marketId, refetch, fetchPositions]);
 
   const handleBuySuccess = useCallback(() => {
     void refetch();
     void refetchBalance();
-  }, [refetch, refetchBalance]);
+    void fetchPositions();
+  }, [refetch, refetchBalance, fetchPositions]);
 
   const handleWatchToggle = useCallback(async () => {
     if (watchLoading) return;
@@ -291,33 +278,6 @@ export default function MarketDetailPage() {
       setWatchLoading(false);
     }
   }, [isWatching, watchLoading, marketId]);
-
-  const loadTradeHistory = useCallback(async (cursor?: string) => {
-    if (!marketId || tradeHistoryLoading) return;
-    setTradeHistoryLoading(true);
-    try {
-      const result = await api.market.tradeHistory({ marketId, cursor, limit: 50 });
-      if (cursor) {
-        setTradeHistory((prev) => [...prev, ...result.trades]);
-      } else {
-        setTradeHistory(result.trades);
-      }
-      setTradeHistoryCursor(result.nextCursor);
-      setTradeHistoryHasMore(!!result.nextCursor);
-    } catch {
-      // Non-fatal
-    } finally {
-      setTradeHistoryLoading(false);
-    }
-  }, [marketId, tradeHistoryLoading]);
-
-  const handleExpandTradeHistory = useCallback(() => {
-    if (!tradeHistoryExpanded && !tradeHistoryLoadedRef.current) {
-      tradeHistoryLoadedRef.current = true;
-      void loadTradeHistory();
-    }
-    setTradeHistoryExpanded((v) => !v);
-  }, [tradeHistoryExpanded, loadTradeHistory]);
 
   // -------------------------------------------------------------------------
   // Loading state
@@ -645,142 +605,116 @@ export default function MarketDetailPage() {
           );
         })()}
 
-        {/* Recent activity feed */}
-        {activityFeed.length > 0 && (
-          <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-[rgba(184,134,11,0.08)] px-6 py-5 shadow-[0_2px_16px_rgba(139,109,71,0.06)]">
-            <h2 className="font-serif text-xs font-medium text-[#B8860B]/70 uppercase tracking-[0.2em] mb-3">
-              Recent Activity
-            </h2>
-            <div className="flex flex-col gap-2">
-              {activityFeed.map((item) => {
-                const outcomeIdx = market.outcomes.findIndex(
-                  (o) => o.label === item.outcomeLabel
-                );
-                const colors = outcomeColor(outcomeIdx >= 0 ? outcomeIdx : 0);
-                return (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-                      {item.userName && (
-                        <span className="text-xs font-semibold text-[#5a3e1b] truncate max-w-[100px]">
-                          {item.userName}
+        {/* Positions leaderboard */}
+        <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-[rgba(184,134,11,0.08)] px-6 py-5 shadow-[0_2px_16px_rgba(139,109,71,0.06)]">
+          <h2 className="font-serif text-xs font-medium text-[#B8860B]/70 uppercase tracking-[0.2em] mb-3">
+            Positions
+          </h2>
+          {positionsLoading && !positionsData ? (
+            <p className="text-xs text-warmGray">Loading positions…</p>
+          ) : !positionsData || positionsData.positions.length === 0 ? (
+            <p className="text-xs text-warmGray">No positions yet.</p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {[...positionsData.positions]
+                .sort((a, b) => b.totalDeployed - a.totalDeployed)
+                .map((pos, rank) => {
+                  const outcomeIdx = market.outcomes.findIndex(
+                    (o: { id: string }) => o.id === pos.dominantOutcomeId
+                  );
+                  const colors = outcomeColor(outcomeIdx >= 0 ? outcomeIdx : 0);
+
+                  // Current value: sum shares * currentPrice (priceCents / 100)
+                  let currentValue = 0;
+                  for (const [outcomeId, { shares }] of Object.entries(
+                    pos.netSharesByOutcome
+                  )) {
+                    const livePriceCents = livePrices[outcomeId];
+                    const priceCents =
+                      livePriceCents !== undefined
+                        ? livePriceCents
+                        : (market.outcomes.find(
+                            (o: { id: string }) => o.id === outcomeId
+                          )?.priceCents ?? 0);
+                    currentValue += shares * (priceCents / 100);
+                  }
+                  const pnl = currentValue - pos.costBasis;
+                  const pnlPositive = pnl >= 0;
+
+                  // Avatar: up to 2 initials from name
+                  const initials = (pos.userName ?? "?")
+                    .split(" ")
+                    .map((w: string) => w[0] ?? "")
+                    .join("")
+                    .slice(0, 2)
+                    .toUpperCase();
+
+                  const volumePct =
+                    positionsData.totalVolume > 0
+                      ? Math.max(
+                          2,
+                          (pos.totalDeployed / positionsData.totalVolume) * 100
+                        )
+                      : 2;
+
+                  return (
+                    <div key={pos.userId}>
+                      <div className="flex items-center gap-2.5">
+                        {/* Rank */}
+                        <span className="text-xs text-warmGray w-4 text-center shrink-0">
+                          {rank + 1}
                         </span>
-                      )}
-                      <span className="text-xs text-warmGray shrink-0">
-                        {item.userName && item.dollarAmount != null
-                          ? `bet $${item.dollarAmount.toFixed(0)} on`
-                          : item.userName
-                          ? "bet on"
-                          : item.dollarAmount != null
-                          ? `$${item.dollarAmount.toFixed(0)} on`
-                          : ""}
-                      </span>
-                      <span
-                        className={`text-xs font-semibold rounded-full px-2 py-0.5 ${colors.light} ${colors.text} shrink-0`}
-                      >
-                        {item.outcomeLabel}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-warmGray shrink-0">
-                      <span className="font-medium text-warmGray">
-                        → {item.priceAfterCents}¢
-                      </span>
-                      <span>{timeSince(new Date(item.timestamp))}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
-        {/* Trade History */}
-        <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-[rgba(184,134,11,0.08)] shadow-[0_2px_16px_rgba(139,109,71,0.06)]">
-          <button
-            onClick={handleExpandTradeHistory}
-            className="w-full flex items-center justify-between px-6 py-4 text-left"
-          >
-            <h2 className="font-serif text-xs font-medium text-[#B8860B]/70 uppercase tracking-[0.2em]">
-              Trade History
-            </h2>
-            <svg
-              className={`w-4 h-4 text-warmGray transition-transform ${tradeHistoryExpanded ? "rotate-180" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-
-          {tradeHistoryExpanded && (
-            <div className="px-6 pb-5">
-              {tradeHistoryLoading && tradeHistory.length === 0 ? (
-                <p className="text-xs text-warmGray py-2">Loading trade history…</p>
-              ) : tradeHistory.length === 0 ? (
-                <p className="text-xs text-warmGray py-2">No trades yet.</p>
-              ) : (
-                <>
-                  {/* Header row */}
-                  <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-3 text-[10px] font-medium text-warmGray uppercase tracking-wide pb-2 border-b border-[rgba(184,134,11,0.1)] mb-2">
-                    <span>Bettor / Outcome</span>
-                    <span className="text-right">Shares</span>
-                    <span className="text-right">Amount</span>
-                    <span className="text-right">After</span>
-                    <span className="text-right">Time</span>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    {tradeHistory.map((trade) => {
-                      const outcomeIdx = market.outcomes.findIndex(
-                        (o: { id: string }) => o.id === trade.outcomeId
-                      );
-                      const colors = outcomeColor(outcomeIdx >= 0 ? outcomeIdx : 0);
-                      return (
+                        {/* Avatar */}
                         <div
-                          key={trade.id}
-                          className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-3 items-center"
+                          className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${colors.light} ${colors.text}`}
                         >
-                          <div className="min-w-0">
-                            {trade.userName && (
-                              <span className="text-xs font-semibold text-[#5a3e1b] truncate block max-w-[110px]">
-                                {trade.userName}
-                              </span>
-                            )}
+                          {initials}
+                        </div>
+
+                        {/* Name + outcome pill + trade count */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs font-semibold text-[#5a3e1b] truncate max-w-[90px]">
+                              {pos.userName}
+                            </span>
                             <span
-                              className={`text-[10px] font-medium rounded-full px-1.5 py-0.5 ${colors.light} ${colors.text}`}
+                              className={`text-xs font-semibold rounded-full px-2 py-0.5 ${colors.light} ${colors.text}`}
                             >
-                              {trade.outcomeLabel}
+                              {pos.dominantOutcomeLabel}
+                            </span>
+                            <span className="text-xs text-warmGray">
+                              ({pos.tradeCount}{" "}
+                              {pos.tradeCount === 1 ? "trade" : "trades"})
                             </span>
                           </div>
-                          <span className="text-xs text-warmGray tabular-nums text-right">
-                            {trade.shares.toFixed(2)}
-                          </span>
-                          <span className="text-xs font-medium text-charcoal tabular-nums text-right">
-                            ${trade.cost.toFixed(2)}
-                          </span>
-                          <span className="text-xs text-warmGray tabular-nums text-right">
-                            {Math.round(trade.priceAfter * 100)}¢
-                          </span>
-                          <span className="text-[10px] text-warmGray text-right whitespace-nowrap">
-                            {timeSince(new Date(trade.createdAt))}
-                          </span>
                         </div>
-                      );
-                    })}
-                  </div>
-                  {tradeHistoryHasMore && (
-                    <button
-                      onClick={() => void loadTradeHistory(tradeHistoryCursor)}
-                      disabled={tradeHistoryLoading}
-                      className="mt-3 w-full text-xs text-[#B8860B] font-medium hover:text-[#8a6d30] disabled:opacity-50"
-                    >
-                      {tradeHistoryLoading ? "Loading…" : "Load more"}
-                    </button>
-                  )}
-                </>
-              )}
+
+                        {/* Right: deployed + P&L */}
+                        <div className="text-right shrink-0">
+                          <p className="text-xs font-medium text-charcoal tabular-nums">
+                            ${pos.totalDeployed.toFixed(2)}
+                          </p>
+                          <p
+                            className={`text-xs tabular-nums ${
+                              pnlPositive ? "text-emerald-600" : "text-[#dc2626]"
+                            }`}
+                          >
+                            {pnlPositive ? "+" : ""}${pnl.toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Volume share bar */}
+                      <div className="h-1 rounded-full bg-[#EDE8E0] mt-1.5 ml-[2.75rem]">
+                        <div
+                          className={`h-1 rounded-full ${colors.bar}`}
+                          style={{ width: `${volumePct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
           )}
         </div>

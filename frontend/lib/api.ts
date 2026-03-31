@@ -289,6 +289,24 @@ export const api = {
         voidedCount: number;
         totalRefunded: number;
       }>,
+
+    positions: (input: {
+      marketId: string;
+    }): Promise<{
+      positions: Array<{
+        userId: string;
+        userName: string | null;
+        dominantOutcomeId: string;
+        dominantOutcomeLabel: string;
+        netSharesByOutcome: Record<string, { shares: number; label: string }>;
+        totalDeployed: number;
+        costBasis: number;
+        tradeCount: number;
+      }>;
+      totalVolume: number;
+    }> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).market.positions.query(input) as Promise<any>,
   },
 
   bets: {
