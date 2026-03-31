@@ -32,6 +32,7 @@ import {
   notifyMarketResolved,
   scheduleMarketOpen,
 } from "../services/notificationService.js";
+import { notifyMarketActivity } from "../services/smsNotifier.js";
 import { seedMarket, DEFAULT_SEED_CENTS } from "../services/houseSeeding.js";
 import { prisma } from "../db.js";
 
@@ -104,14 +105,25 @@ export const marketRouter = router({
         familySide: FamilySideSchema.optional(),
       })
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const filters: ListMarketsFilters = {
         status: input.status,
         eventTag: input.eventTag,
         familySide: input.familySide,
       };
       const markets = await listMarkets(filters);
-      return markets;
+
+      // Attach isWatching per market when the caller is authenticated
+      if (ctx.userId) {
+        const watchRows = await prisma.marketWatch.findMany({
+          where: { userId: ctx.userId },
+          select: { marketId: true },
+        });
+        const watchedIds = new Set(watchRows.map((w: { marketId: string }) => w.marketId));
+        return markets.map((m) => ({ ...m, isWatching: watchedIds.has(m.id) }));
+      }
+
+      return markets.map((m) => ({ ...m, isWatching: false }));
     }),
 
   /**
@@ -119,7 +131,7 @@ export const marketRouter = router({
    */
   getById: publicProcedure
     .input(z.object({ id: z.string().uuid() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const market = await getMarketWithPrices(input.id);
       if (!market) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Market not found" });
@@ -142,8 +154,19 @@ export const marketRouter = router({
         },
       });
 
+      // Check if the authenticated caller is watching this market
+      let isWatching = false;
+      if (ctx.userId) {
+        const watch = await prisma.marketWatch.findUnique({
+          where: { userId_marketId: { userId: ctx.userId, marketId: input.id } },
+          select: { id: true },
+        });
+        isWatching = watch !== null;
+      }
+
       return {
         ...market,
+        isWatching,
         recentPurchases: recentPurchases.map((p: typeof recentPurchases[number]) => ({
           id: p.id,
           outcomeId: p.outcome.id,
@@ -205,7 +228,17 @@ export const marketRouter = router({
         });
       }
 
+      // Auto-watch: upsert a MarketWatch entry for the buyer (fire-and-forget)
+      prisma.marketWatch.upsert({
+        where: { userId_marketId: { userId, marketId } },
+        create: { userId, marketId },
+        update: {},
+      }).catch((err: unknown) => {
+        console.warn("[market.buy] Auto-watch upsert failed (non-fatal):", err);
+      });
+
       // Broadcast via WebSocket (fire-and-forget)
+      let buyerName: string | null = null;
       try {
         const io = getIOSafe();
         if (io) {
@@ -225,12 +258,13 @@ export const marketRouter = router({
             where: { id: userId },
             select: { name: true },
           });
+          buyerName = buyer?.name ?? null;
 
           broadcastPurchase(io, marketId, {
             outcomeLabel: result.outcomeLabel,
             dollarAmount: dollarAmountCents / 100,
             priceAfterCents: result.priceAfterCents,
-            userName: buyer?.name ?? null,
+            userName: buyerName,
           });
 
           const newBalanceCents = await getUserBalance(userId);
@@ -239,6 +273,15 @@ export const marketRouter = router({
       } catch (wsErr) {
         console.warn("[market.buy] WebSocket broadcast failed (non-fatal):", wsErr);
       }
+
+      // Targeted SMS notifications to watchers/holders (fire-and-forget)
+      notifyMarketActivity(
+        userId,
+        marketId,
+        buyerName ?? "Someone",
+        result.outcomeLabel,
+        dollarAmountCents / 100
+      );
 
       return result;
     }),
@@ -516,5 +559,69 @@ export const marketRouter = router({
       }
 
       return { success: true, marketId: input.marketId };
+    }),
+
+  // ---------------------------------------------------------------------------
+  // Watchlist endpoints
+  // ---------------------------------------------------------------------------
+
+  /**
+   * market.watch — authenticated
+   * Add a market to the caller's watchlist.
+   */
+  watch: protectedProcedure
+    .input(z.object({ marketId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const { userId } = ctx;
+      await prisma.marketWatch.upsert({
+        where: { userId_marketId: { userId, marketId: input.marketId } },
+        create: { userId, marketId: input.marketId },
+        update: {},
+      });
+      return { watching: true };
+    }),
+
+  /**
+   * market.unwatch — authenticated
+   * Remove a market from the caller's watchlist.
+   */
+  unwatch: protectedProcedure
+    .input(z.object({ marketId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const { userId } = ctx;
+      await prisma.marketWatch.deleteMany({
+        where: { userId, marketId: input.marketId },
+      });
+      return { watching: false };
+    }),
+
+  /**
+   * market.isWatching — authenticated
+   * Returns whether the caller is watching a given market.
+   */
+  isWatching: protectedProcedure
+    .input(z.object({ marketId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const { userId } = ctx;
+      const watch = await prisma.marketWatch.findUnique({
+        where: { userId_marketId: { userId, marketId: input.marketId } },
+        select: { id: true },
+      });
+      return { watching: watch !== null };
+    }),
+
+  /**
+   * market.myWatchlist — authenticated
+   * Returns the list of market IDs the caller is watching.
+   */
+  myWatchlist: protectedProcedure
+    .query(async ({ ctx }) => {
+      const { userId } = ctx;
+      const watches = await prisma.marketWatch.findMany({
+        where: { userId },
+        select: { marketId: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+      });
+      return watches.map((w: { marketId: string }) => w.marketId);
     }),
 });

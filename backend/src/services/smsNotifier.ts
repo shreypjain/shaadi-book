@@ -188,6 +188,137 @@ export async function sendPeriodicUpdate(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// notifyMarketActivity
+// ---------------------------------------------------------------------------
+
+/**
+ * Fire-and-forget: notify all users watching this market OR holding positions in it
+ * when a new bet is placed. Excludes the actor (the person who just bet).
+ *
+ * Rate limited to ~1 msg/sec.
+ */
+export function notifyMarketActivity(
+  actorUserId: string,
+  marketId: string,
+  actorName: string,
+  outcomeLabel: string,
+  dollarAmount: number
+): void {
+  void (async () => {
+    const accountSid = process.env["TWILIO_ACCOUNT_SID"];
+    const authToken = process.env["TWILIO_AUTH_TOKEN"];
+    const fromPhone = process.env["TWILIO_PHONE_NUMBER"];
+
+    if (!accountSid || !authToken || !fromPhone) {
+      console.log("[smsNotifier] Twilio env vars not configured — skipping notifyMarketActivity");
+      return;
+    }
+
+    // Fetch market question for the message
+    let marketQuestion: string;
+    try {
+      const market = await prisma.market.findUnique({
+        where: { id: marketId },
+        select: { question: true },
+      });
+      if (!market) {
+        console.warn("[smsNotifier] notifyMarketActivity: market not found:", marketId);
+        return;
+      }
+      marketQuestion = market.question;
+    } catch (err) {
+      console.error("[smsNotifier] notifyMarketActivity: failed to fetch market:", err);
+      return;
+    }
+
+    // Find all users watching this market OR holding positions in it
+    let recipientIds: string[];
+    try {
+      const [watchers, positionHolders] = await Promise.all([
+        prisma.marketWatch.findMany({
+          where: { marketId },
+          select: { userId: true },
+        }),
+        prisma.position.findMany({
+          where: { marketId },
+          select: { userId: true },
+          distinct: ["userId"],
+        }),
+      ]);
+
+      const allIds = new Set([
+        ...watchers.map((w: { userId: string }) => w.userId),
+        ...positionHolders.map((p: { userId: string }) => p.userId),
+      ]);
+      // Exclude the actor
+      allIds.delete(actorUserId);
+      recipientIds = Array.from(allIds);
+    } catch (err) {
+      console.error("[smsNotifier] notifyMarketActivity: failed to fetch recipients:", err);
+      return;
+    }
+
+    if (recipientIds.length === 0) {
+      console.log("[smsNotifier] notifyMarketActivity: no recipients — skipping");
+      return;
+    }
+
+    // Fetch phone numbers for recipients
+    let recipients: Array<{ phone: string }>;
+    try {
+      recipients = await prisma.user.findMany({
+        where: { id: { in: recipientIds } },
+        select: { phone: true },
+      });
+    } catch (err) {
+      console.error("[smsNotifier] notifyMarketActivity: failed to fetch phones:", err);
+      return;
+    }
+
+    const amountStr = dollarAmount % 1 === 0
+      ? `$${dollarAmount.toFixed(0)}`
+      : `$${dollarAmount.toFixed(2)}`;
+    const message =
+      `Shaadi Book | ${actorName} just bet ${amountStr} on "${outcomeLabel}" in ` +
+      `"${marketQuestion}". Check it out: markets.parshandspoorthi.com/markets/${marketId}`;
+
+    console.log(
+      `[smsNotifier] notifyMarketActivity: sending to ${recipients.length} recipients for market ${marketId}`
+    );
+
+    const client = twilio(accountSid, authToken);
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (let i = 0; i < recipients.length; i++) {
+      const recipient = recipients[i]!;
+      try {
+        await client.messages.create({
+          to: recipient.phone,
+          from: fromPhone,
+          body: message,
+        });
+        successCount++;
+      } catch (err) {
+        failureCount++;
+        console.error(`[smsNotifier] notifyMarketActivity: failed to send to ${recipient.phone}:`, err);
+      }
+
+      // Rate limit: ~1 message per second
+      if (i < recipients.length - 1) {
+        await sleep(1000);
+      }
+    }
+
+    console.log(
+      `[smsNotifier] notifyMarketActivity complete — ${successCount} sent, ${failureCount} failed`
+    );
+  })().catch((err) => {
+    console.error("[smsNotifier] notifyMarketActivity unhandled error:", err);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // startPeriodicNotifications
 // ---------------------------------------------------------------------------
 
