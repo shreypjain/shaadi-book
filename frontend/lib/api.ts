@@ -301,7 +301,7 @@ export function formatDollars(cents: number): string {
 /** Format cents as "₹X" (approximate INR for display only) */
 export function formatRupees(cents: number): string {
   const dollars = cents / 100;
-  const rupees = Math.round(dollars * INR_PER_USD);
+  const rupees = Math.round(dollars * 93);
   return `≈ ₹${rupees.toLocaleString("en-IN")}`;
 }
 
