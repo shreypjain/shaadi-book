@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
-import { api } from "@/lib/api";
+import { api, usdCentsToInrDisplay } from "@/lib/api";
 import { StripePaymentForm } from "./StripePaymentForm";
 
 const PRESETS = [
@@ -17,6 +17,8 @@ type Step = "select-amount" | "payment" | "success";
 
 interface DepositButtonProps {
   onSuccess?: () => void;
+  /** User's country — determines currency and payment methods shown. */
+  country?: "US" | "IN";
 }
 
 /**
@@ -28,7 +30,8 @@ interface DepositButtonProps {
  *  3. Renders the Stripe Payment Element inside an <Elements> provider.
  *  4. On success: shows a confirmation state, then calls onSuccess().
  */
-export function DepositButton({ onSuccess }: DepositButtonProps) {
+export function DepositButton({ onSuccess, country }: DepositButtonProps) {
+  const isIndia = country === "IN";
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>("select-amount");
 
@@ -127,7 +130,9 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
                   Add Credits
                 </h2>
                 <p className="text-xs text-warmGray mb-5">
-                  Charged in USD via Stripe (card, bank, or Apple Pay)
+                  {isIndia
+                    ? "Charged in INR via UPI or card · Powered by Stripe"
+                    : "Charged in USD via Stripe (card, bank, or Apple Pay)"}
                 </p>
 
                 {/* Preset amounts */}
@@ -147,6 +152,11 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
                         }`}
                     >
                       {p.label}
+                      {isIndia && (
+                        <span className="block text-[10px] font-normal text-warmGray mt-0.5">
+                          ≈{usdCentsToInrDisplay(p.cents)}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -190,7 +200,9 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
                     ? "Setting up payment…"
                     : `Continue with ${
                         isValidAmount && effectiveCents
-                          ? `$${(effectiveCents / 100).toFixed(2)}`
+                          ? isIndia
+                            ? `≈${usdCentsToInrDisplay(effectiveCents)}`
+                            : `$${(effectiveCents / 100).toFixed(2)}`
                           : ""
                       } →`}
                 </button>
@@ -216,7 +228,9 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
                     </h2>
                     <p className="text-xs text-warmGray mt-0.5">
                       {isValidAmount && effectiveCents
-                        ? `$${(effectiveCents / 100).toFixed(2)}`
+                        ? isIndia
+                          ? `≈${usdCentsToInrDisplay(effectiveCents)}`
+                          : `$${(effectiveCents / 100).toFixed(2)}`
                         : ""}{" "}
                       · Powered by Stripe
                     </p>
@@ -245,6 +259,7 @@ export function DepositButton({ onSuccess }: DepositButtonProps) {
                 >
                   <StripePaymentForm
                     amountCents={effectiveCents ?? 0}
+                    currency={isIndia ? "inr" : "usd"}
                     onSuccess={handlePaymentSuccess}
                     onCancel={() => setStep("select-amount")}
                   />
