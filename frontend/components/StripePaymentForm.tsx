@@ -2,9 +2,12 @@
 
 import { useState } from "react";
 import { useStripe, useElements, PaymentElement } from "@stripe/react-stripe-js";
+import { INR_PER_USD } from "@/lib/api";
 
 interface StripePaymentFormProps {
   amountCents: number;
+  /** Payment currency. "inr" shows ₹ symbol and uses INR_PER_USD for amount. */
+  currency?: "usd" | "inr";
   onSuccess: () => void;
   onCancel: () => void;
 }
@@ -21,6 +24,7 @@ interface StripePaymentFormProps {
  */
 export function StripePaymentForm({
   amountCents,
+  currency = "usd",
   onSuccess,
   onCancel,
 }: StripePaymentFormProps) {
@@ -60,7 +64,10 @@ export function StripePaymentForm({
     onSuccess();
   }
 
-  const formattedAmount = `$${(amountCents / 100).toFixed(2)}`;
+  const formattedAmount =
+    currency === "inr"
+      ? `₹${Math.round((amountCents / 100) * INR_PER_USD).toLocaleString("en-IN")}`
+      : `$${(amountCents / 100).toFixed(2)}`;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
