@@ -650,6 +650,110 @@ export const marketRouter = router({
       return { success: true, marketId: input.marketId };
     }),
 
+  /**
+   * market.positions — public
+   *
+   * Returns all user positions for a market, aggregated from the purchases table.
+   * Each entry has the user's name, net shares per outcome (sum of purchase shares),
+   * total deployed, cost basis, dominant outcome (most shares), and trade count.
+   * House/system accounts (name = "House") are filtered out.
+   */
+  positions: publicProcedure
+    .input(z.object({ marketId: z.string().uuid() }))
+    .query(async ({ input }) => {
+      // Fetch all purchases for this market with user and outcome info.
+      // Purchase records are always buys — sales are tracked in the transactions
+      // table and do NOT create Purchase rows, so summing all purchases gives the
+      // correct gross position (as intended by the spec).
+      const purchases = await prisma.purchase.findMany({
+        where: { marketId: input.marketId },
+        select: {
+          userId: true,
+          outcomeId: true,
+          shares: true,
+          cost: true,
+          user: { select: { name: true } },
+          outcome: { select: { id: true, label: true } },
+        },
+      });
+
+      // Aggregate by userId, grouping shares and cost per outcomeId
+      const userMap = new Map<
+        string,
+        {
+          userId: string;
+          userName: string | null;
+          netSharesByOutcome: Record<string, { shares: number; label: string }>;
+          totalDeployed: number;
+          costBasis: number;
+          tradeCount: number;
+        }
+      >();
+
+      for (const p of purchases) {
+        // Filter out house/system accounts
+        if (!p.user.name || p.user.name === "House") continue;
+
+        const userId = p.userId;
+        if (!userMap.has(userId)) {
+          userMap.set(userId, {
+            userId,
+            userName: p.user.name,
+            netSharesByOutcome: {},
+            totalDeployed: 0,
+            costBasis: 0,
+            tradeCount: 0,
+          });
+        }
+
+        const entry = userMap.get(userId)!;
+        const shares = Number(p.shares);
+        const cost = Number(p.cost);
+
+        // Accumulate shares per outcome
+        if (!entry.netSharesByOutcome[p.outcomeId]) {
+          entry.netSharesByOutcome[p.outcomeId] = { shares: 0, label: p.outcome.label };
+        }
+        entry.netSharesByOutcome[p.outcomeId]!.shares += shares;
+        entry.totalDeployed += cost;
+        entry.costBasis += cost;
+        entry.tradeCount += 1;
+      }
+
+      // Build result with dominant outcome per user
+      const positions = Array.from(userMap.values()).map((entry) => {
+        let dominantOutcomeId = "";
+        let dominantOutcomeLabel = "";
+        let maxShares = -1;
+
+        for (const [outcomeId, { shares, label }] of Object.entries(
+          entry.netSharesByOutcome
+        )) {
+          if (shares > maxShares) {
+            maxShares = shares;
+            dominantOutcomeId = outcomeId;
+            dominantOutcomeLabel = label;
+          }
+        }
+
+        return {
+          userId: entry.userId,
+          userName: entry.userName,
+          dominantOutcomeId,
+          dominantOutcomeLabel,
+          netSharesByOutcome: entry.netSharesByOutcome,
+          totalDeployed: entry.totalDeployed,
+          costBasis: entry.costBasis,
+          tradeCount: entry.tradeCount,
+        };
+      });
+
+      // Total volume = sum of all purchase costs across all users
+      const totalVolume = positions.reduce((sum, p) => sum + p.totalDeployed, 0);
+
+      return { positions, totalVolume };
+    }),
+
   // ---------------------------------------------------------------------------
   // Watchlist endpoints
   // ---------------------------------------------------------------------------
