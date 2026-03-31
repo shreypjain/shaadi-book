@@ -105,6 +105,10 @@ export default function MarketDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [balanceCents, setBalanceCents] = useState<number | undefined>(undefined);
+  /** Map of outcomeId → { shares, outcomeSharesSold } for the current user */
+  const [myOutcomeShares, setMyOutcomeShares] = useState<
+    Record<string, { shares: number; outcomeSharesSold: number }>
+  >({});
 
   const refetchBalance = useCallback(async () => {
     try {
@@ -132,6 +136,24 @@ export default function MarketDetailPage() {
     void refetch();
     void refetchBalance();
   }, [refetch, refetchBalance]);
+
+  // Fetch user positions to display ownership % per outcome
+  useEffect(() => {
+    api.bets.myPositions().then((positions) => {
+      const map: Record<string, { shares: number; outcomeSharesSold: number }> = {};
+      for (const pos of positions) {
+        if (pos.marketId === marketId && pos.shares > 0) {
+          map[pos.outcomeId] = {
+            shares: pos.shares,
+            outcomeSharesSold: pos.outcomeSharesSold,
+          };
+        }
+      }
+      setMyOutcomeShares(map);
+    }).catch(() => {
+      // Non-fatal — ownership % is best-effort
+    });
+  }, [marketId]);
 
   useEffect(() => {
     if (!market) return;
@@ -406,6 +428,22 @@ export default function MarketDetailPage() {
                         </span>
                       </>
                     )}
+                    {(() => {
+                      const myPos = myOutcomeShares[outcome.id];
+                      if (!myPos || myPos.shares <= 0) return null;
+                      const pct = myPos.outcomeSharesSold > 0
+                        ? ((myPos.shares / myPos.outcomeSharesSold) * 100).toFixed(1)
+                        : null;
+                      if (!pct) return null;
+                      return (
+                        <>
+                          {" | "}
+                          <span className="text-[#8a6d30] font-semibold">
+                            your share: {pct}%
+                          </span>
+                        </>
+                      );
+                    })()}
                   </p>
                   {/* Shares availability */}
                   <p className="text-[11px] text-warmGray pl-0.5">
