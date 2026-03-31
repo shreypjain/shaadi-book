@@ -14,6 +14,8 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { router, protectedProcedure, adminProcedure } from "../trpc.js";
 import { prisma } from "../db.js";
+import { createMarket, getMarketWithPrices } from "../services/marketService.js";
+import { seedMarket, DEFAULT_SEED_CENTS } from "../services/houseSeeding.js";
 
 // ---------------------------------------------------------------------------
 // Input schemas
@@ -140,7 +142,7 @@ export const suggestRouter = router({
    */
   adminReview: adminProcedure
     .input(adminReviewInput)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const existing = await prisma.marketSuggestion.findUnique({
         where: { id: input.suggestionId },
       });
@@ -166,6 +168,33 @@ export const suggestRouter = router({
           adminNotes: input.adminNotes?.trim() ?? null,
         },
       });
+
+      // Auto-create the market when a suggestion is approved.
+      // Failures are caught and logged — the approval itself must not roll back.
+      if (input.status === "APPROVED") {
+        try {
+          const marketId = await createMarket(
+            ctx.userId,
+            updated.questionText,
+            updated.outcomes as string[]
+          );
+
+          // Seed $20/outcome (house liquidity) — fire-and-forget, errors are non-fatal.
+          const market = await getMarketWithPrices(marketId);
+          if (market) {
+            const outcomeIds = market.outcomes.map((o) => o.id);
+            seedMarket(marketId, outcomeIds, DEFAULT_SEED_CENTS).catch((err: unknown) => {
+              console.error("[suggest.adminReview] House seeding failed:", err);
+            });
+          }
+        } catch (err) {
+          console.error(
+            "[suggest.adminReview] Auto-create market failed for suggestion",
+            input.suggestionId,
+            err
+          );
+        }
+      }
 
       return serializeSuggestion(updated);
     }),
