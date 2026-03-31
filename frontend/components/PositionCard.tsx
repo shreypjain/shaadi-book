@@ -249,6 +249,14 @@ export function PositionCard({
                           {formatDollars(estPnLCents)}
                         </p>
                       </div>
+                      <div>
+                        <p className="text-[#a08050]">% of winnings</p>
+                        <p className="font-semibold text-[#8a6d30]">
+                          {position.outcomeSharesSold > 0
+                            ? ((position.shares / position.outcomeSharesSold) * 100).toFixed(1) + "%"
+                            : "—"}
+                        </p>
+                      </div>
                     </div>
                     <p className="text-[10px] text-[#a08050] opacity-60">
                       Pool-based estimate — grows as more bets come in
