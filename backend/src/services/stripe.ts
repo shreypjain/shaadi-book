@@ -3,9 +3,13 @@
  *
  * Handles all Stripe-related operations:
  *  - createPaymentIntent: Creates a Stripe PaymentIntent for inline Payment Element.
+ *    Automatically routes Indian users (country="IN") to INR + UPI, US users to USD.
  *  - handlePaymentIntentSucceeded: Idempotent handler for payment_intent.succeeded webhook.
  *    Credits user balance via ledger DEPOSIT transaction.
  *  - estimateStripeFee: Pure helper — computes the estimated Stripe fee in cents.
+ *
+ * Internal ledger always stores amounts in USD cents. INR conversion happens only at
+ * the Stripe payment boundary using the fixed INR_PER_USD rate.
  *
  * PRD §7.2, Appendix A.1
  */
@@ -14,6 +18,28 @@ import Stripe from "stripe";
 import { Decimal } from "decimal.js";
 import { prisma } from "../db.js";
 import { computeHash, getLastHash } from "./hashChain.js";
+
+// ---------------------------------------------------------------------------
+// Currency conversion constants
+// ---------------------------------------------------------------------------
+
+/**
+ * Fixed exchange rate used at the Stripe payment boundary.
+ * Internal ledger stays in USD cents — this rate converts only when creating
+ * a PaymentIntent in INR for Indian users.
+ */
+export const INR_PER_USD = 85;
+
+/**
+ * Convert USD cents to INR paise for Stripe PaymentIntent amounts.
+ * Stripe requires integer amounts in the smallest currency unit (paise for INR).
+ *
+ * @param usdCents - Amount in USD cents (e.g. 1000 = $10.00)
+ * @returns Amount in INR paise (e.g. 85000 = ₹850.00)
+ */
+export function usdCentsToInrPaise(usdCents: number): number {
+  return Math.round(usdCents * INR_PER_USD);
+}
 
 // ---------------------------------------------------------------------------
 // Fee helpers
@@ -51,9 +77,13 @@ export function createStripeClient(): Stripe {
 /**
  * Create a Stripe PaymentIntent for a guest deposit.
  *
- * Uses automatic_payment_methods so Apple Pay, Google Pay, and cards are
- * all handled without extra configuration. The client completes payment
- * via the Stripe.js Payment Element — no redirect required.
+ * Routing by user country:
+ *   - US (or unknown): USD, automatic_payment_methods (card, Apple Pay, Google Pay)
+ *   - IN: INR, payment_method_types ["upi", "card"] — amount converted via INR_PER_USD
+ *
+ * The original USD cents amount is stored in metadata.originalUsdCents so that
+ * handlePaymentIntentSucceeded can always credit the correct USD amount regardless
+ * of which currency the PaymentIntent was denominated in.
  */
 export async function createPaymentIntent(
   amountCents: number,
@@ -61,12 +91,30 @@ export async function createPaymentIntent(
 ): Promise<{ clientSecret: string; paymentIntentId: string }> {
   const stripe = createStripeClient();
 
-  const paymentIntent = await stripe.paymentIntents.create({
-    amount: amountCents,
-    currency: "usd",
-    automatic_payment_methods: { enabled: true },
-    metadata: { userId },
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { country: true },
   });
+
+  const isIndia = user?.country === "IN";
+
+  const paymentIntent = await stripe.paymentIntents.create(
+    isIndia
+      ? {
+          // INR PaymentIntent — amount is in paise, UPI + card enabled
+          amount: usdCentsToInrPaise(amountCents),
+          currency: "inr",
+          payment_method_types: ["upi", "card"],
+          metadata: { userId, originalUsdCents: String(amountCents) },
+        }
+      : {
+          // USD PaymentIntent — amount is in cents, all automatic methods
+          amount: amountCents,
+          currency: "usd",
+          automatic_payment_methods: { enabled: true },
+          metadata: { userId, originalUsdCents: String(amountCents) },
+        }
+  );
 
   if (!paymentIntent.client_secret) {
     throw new Error("Stripe PaymentIntent did not return a client_secret");
@@ -94,8 +142,15 @@ export async function handlePaymentIntentSucceeded(
   paymentIntent: Stripe.PaymentIntent
 ): Promise<void> {
   const userId = paymentIntent.metadata["userId"];
-  const amountCents = paymentIntent.amount;
   const paymentIntentId = paymentIntent.id;
+
+  // Use originalUsdCents from metadata when available (handles INR PaymentIntents
+  // where paymentIntent.amount is in paise, not USD cents).
+  // Legacy PaymentIntents without this field are assumed to be USD cents.
+  const rawOriginal = paymentIntent.metadata["originalUsdCents"];
+  const amountCents = rawOriginal
+    ? parseInt(rawOriginal, 10)
+    : paymentIntent.amount;
 
   if (!userId) {
     throw new Error(
