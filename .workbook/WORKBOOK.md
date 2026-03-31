@@ -18,6 +18,7 @@
 - E2E Playwright tests (redo with test user bypass)
 
 ## Recently Completed
+- [2026-03-31] feat/trade-history-admin-void — Full trade log (paginated), admin time-based voiding, custom resolution timestamp
 - [2026-03-30] Portal modals to document.body — fixes stacking context bug on deposit/suggest modals
 - [2026-03-30] Deposit modal redesign — centered overlay, opaque white bg, gold theme, scrollable
 - [2026-03-30] Responsive fixes — line-clamp on cards, flex-wrap on pills, input sizing
