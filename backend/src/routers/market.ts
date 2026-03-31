@@ -653,34 +653,31 @@ export const marketRouter = router({
   /**
    * market.positions — public
    *
-   * Returns all user positions for a market, aggregated from the Position table.
-   * Each entry has the user's name, net shares per outcome, total deployed, cost basis,
-   * dominant outcome (most shares), and trade count.
-   * House/system accounts (null name) are filtered out.
+   * Returns all user positions for a market, aggregated from the purchases table.
+   * Each entry has the user's name, net shares per outcome (sum of purchase shares),
+   * total deployed, cost basis, dominant outcome (most shares), and trade count.
+   * House/system accounts (name = "House") are filtered out.
    */
   positions: publicProcedure
     .input(z.object({ marketId: z.string().uuid() }))
     .query(async ({ input }) => {
-      // Fetch all non-zero positions for this market
-      const rawPositions = await prisma.position.findMany({
+      // Fetch all purchases for this market with user and outcome info.
+      // Purchase records are always buys — sales are tracked in the transactions
+      // table and do NOT create Purchase rows, so summing all purchases gives the
+      // correct gross position (as intended by the spec).
+      const purchases = await prisma.purchase.findMany({
         where: { marketId: input.marketId },
-        include: {
+        select: {
+          userId: true,
+          outcomeId: true,
+          shares: true,
+          cost: true,
           user: { select: { name: true } },
           outcome: { select: { id: true, label: true } },
         },
       });
 
-      // Trade counts per user for this market
-      const tradeCounts = await prisma.purchase.groupBy({
-        by: ["userId"],
-        where: { marketId: input.marketId },
-        _count: { id: true },
-      });
-      const tradeCountMap = new Map(
-        tradeCounts.map((t: { userId: string; _count: { id: number } }) => [t.userId, t._count.id])
-      );
-
-      // Aggregate by userId
+      // Aggregate by userId, grouping shares and cost per outcomeId
       const userMap = new Map<
         string,
         {
@@ -689,39 +686,41 @@ export const marketRouter = router({
           netSharesByOutcome: Record<string, { shares: number; label: string }>;
           totalDeployed: number;
           costBasis: number;
+          tradeCount: number;
         }
       >();
 
-      for (const pos of rawPositions) {
-        // Filter out house/system accounts (null or empty name)
-        if (!pos.user.name) continue;
-        // Filter out zero-share positions
-        const shares = Number(pos.shares);
-        if (shares <= 0) continue;
+      for (const p of purchases) {
+        // Filter out house/system accounts
+        if (!p.user.name || p.user.name === "House") continue;
 
-        const userId = pos.userId;
+        const userId = p.userId;
         if (!userMap.has(userId)) {
           userMap.set(userId, {
             userId,
-            userName: pos.user.name,
+            userName: p.user.name,
             netSharesByOutcome: {},
             totalDeployed: 0,
             costBasis: 0,
+            tradeCount: 0,
           });
         }
 
         const entry = userMap.get(userId)!;
-        const cost = Number(pos.totalCost);
+        const shares = Number(p.shares);
+        const cost = Number(p.cost);
 
-        entry.netSharesByOutcome[pos.outcomeId] = {
-          shares,
-          label: pos.outcome.label,
-        };
+        // Accumulate shares per outcome
+        if (!entry.netSharesByOutcome[p.outcomeId]) {
+          entry.netSharesByOutcome[p.outcomeId] = { shares: 0, label: p.outcome.label };
+        }
+        entry.netSharesByOutcome[p.outcomeId]!.shares += shares;
         entry.totalDeployed += cost;
         entry.costBasis += cost;
+        entry.tradeCount += 1;
       }
 
-      // Build result array with dominant outcome per user
+      // Build result with dominant outcome per user
       const positions = Array.from(userMap.values()).map((entry) => {
         let dominantOutcomeId = "";
         let dominantOutcomeLabel = "";
@@ -745,16 +744,12 @@ export const marketRouter = router({
           netSharesByOutcome: entry.netSharesByOutcome,
           totalDeployed: entry.totalDeployed,
           costBasis: entry.costBasis,
-          tradeCount: tradeCountMap.get(entry.userId) ?? 0,
+          tradeCount: entry.tradeCount,
         };
       });
 
-      // Total volume: sum of all purchase costs for this market
-      const totalVolumeAgg = await prisma.purchase.aggregate({
-        where: { marketId: input.marketId },
-        _sum: { cost: true },
-      });
-      const totalVolume = Number(totalVolumeAgg._sum.cost ?? 0);
+      // Total volume = sum of all purchase costs across all users
+      const totalVolume = positions.reduce((sum, p) => sum + p.totalDeployed, 0);
 
       return { positions, totalVolume };
     }),
