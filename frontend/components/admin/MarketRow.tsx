@@ -87,6 +87,23 @@ export default function MarketRow({ market, onChanged }: Props) {
     }
   }
 
+  async function handlePreviewVoidAfter(cutoff: string) {
+    if (!cutoff) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const preview = await api.market.previewVoidAfter({
+        marketId: market.id,
+        cutoffTime: new Date(cutoff).toISOString(),
+      });
+      setVoidAfterPreviewCount(preview.tradeCount);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Preview failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleVoidAfter() {
     if (!voidAfterCutoff) {
       setError("Select a cutoff date/time first.");
@@ -303,14 +320,28 @@ export default function MarketRow({ market, onChanged }: Props) {
                       }}
                       className="rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none"
                     />
+                    <button
+                      onClick={() => void handlePreviewVoidAfter(voidAfterCutoff)}
+                      disabled={loading || !voidAfterCutoff}
+                      className="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-warmGray hover:bg-gray-50 disabled:opacity-50 min-h-0 min-w-0 h-auto"
+                    >
+                      {loading ? "…" : "Preview"}
+                    </button>
                   </div>
+                  {voidAfterPreviewCount !== null && (
+                    <p className="text-xs font-medium text-amber-700">
+                      {voidAfterPreviewCount === 0
+                        ? "No trades found after this time."
+                        : `${voidAfterPreviewCount} trade${voidAfterPreviewCount !== 1 ? "s" : ""} would be voided and refunded.`}
+                    </p>
+                  )}
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <button
                       onClick={handleVoidAfter}
-                      disabled={loading || !voidAfterCutoff}
+                      disabled={loading || !voidAfterCutoff || voidAfterPreviewCount === null || voidAfterPreviewCount === 0}
                       className="rounded bg-amber-600 px-2 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50 min-h-0 min-w-0 h-auto"
                     >
-                      {loading ? "…" : "Confirm void"}
+                      {loading ? "…" : `Confirm void${voidAfterPreviewCount !== null && voidAfterPreviewCount > 0 ? ` (${voidAfterPreviewCount})` : ""}`}
                     </button>
                     <button
                       onClick={() => { setConfirming(null); setVoidAfterCutoff(""); setVoidAfterPreviewCount(null); }}
