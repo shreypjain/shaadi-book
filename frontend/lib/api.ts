@@ -285,6 +285,13 @@ export const api = {
 // Formatting helpers (used across multiple components)
 // ---------------------------------------------------------------------------
 
+/**
+ * Fixed exchange rate used at the Stripe payment boundary for INR deposits.
+ * Must match the backend constant in backend/src/services/stripe.ts.
+ * When an Indian user deposits ₹850 via UPI, the ledger records $10 (1000 cents).
+ */
+export const INR_PER_USD = 85;
+
 /** Format cents as "$X.XX" */
 export function formatDollars(cents: number): string {
   const sign = cents < 0 ? "-" : "";
@@ -296,4 +303,14 @@ export function formatRupees(cents: number): string {
   const dollars = cents / 100;
   const rupees = Math.round(dollars * 93);
   return `≈ ₹${rupees.toLocaleString("en-IN")}`;
+}
+
+/**
+ * Convert a USD cents amount to the INR rupee display string for deposits.
+ * Uses INR_PER_USD (85) — the same rate applied at the Stripe payment boundary.
+ * e.g. usdCentsToInrDisplay(1000) → "₹850"
+ */
+export function usdCentsToInrDisplay(usdCents: number): string {
+  const rupees = Math.round((usdCents / 100) * INR_PER_USD);
+  return `₹${rupees.toLocaleString("en-IN")}`;
 }

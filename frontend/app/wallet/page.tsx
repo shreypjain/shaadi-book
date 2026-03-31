@@ -153,7 +153,14 @@ function WalletPage() {
 
           {/* Action buttons */}
           <div className="flex gap-3 pb-6">
-            <DepositButton onSuccess={handleDepositSuccess} />
+            <DepositButton
+              onSuccess={handleDepositSuccess}
+              country={
+                storedUser?.country === "IN" || storedUser?.country === "US"
+                  ? storedUser.country
+                  : undefined
+              }
+            />
             <button
               onClick={() => setShowWithdrawal((v) => !v)}
               className="flex-1 rounded-xl border border-[rgba(184,134,11,0.20)] px-5 py-3

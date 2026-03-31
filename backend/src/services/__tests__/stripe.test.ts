@@ -43,6 +43,7 @@ const {
   mockTxCreate,
   mockGetLastHash,
   mockComputeHash,
+  mockUserFindUnique,
 } = vi.hoisted(() => ({
   mockPaymentIntentsCreate: vi.fn(),
   mockTransactionFindFirst: vi.fn(),
@@ -50,6 +51,7 @@ const {
   mockTxCreate: vi.fn(),
   mockGetLastHash: vi.fn(),
   mockComputeHash: vi.fn(),
+  mockUserFindUnique: vi.fn(),
 }));
 
 // ---------------------------------------------------------------------------
@@ -73,6 +75,9 @@ vi.mock("../../db.js", () => ({
   prisma: {
     transaction: {
       findFirst: mockTransactionFindFirst,
+    },
+    user: {
+      findUnique: mockUserFindUnique,
     },
     $transaction: mockPrismaTransaction,
   },
@@ -122,6 +127,9 @@ beforeEach(() => {
   process.env["STRIPE_SECRET_KEY"] = "sk_test_dummy";
 
   vi.clearAllMocks();
+
+  // Default: user lookup returns US country
+  mockUserFindUnique.mockResolvedValue({ country: "US" });
 
   // Default hash chain stubs (applied after clearAllMocks)
   mockGetLastHash.mockResolvedValue("0".repeat(64));
@@ -184,7 +192,7 @@ describe("createPaymentIntent", () => {
       amount: 2500,
       currency: "usd",
       automatic_payment_methods: { enabled: true },
-      metadata: { userId: "user-123" },
+      metadata: { userId: "user-123", originalUsdCents: "2500" },
     });
   });
 
@@ -221,6 +229,23 @@ describe("createPaymentIntent", () => {
     await expect(createPaymentIntent(2500, "user-123")).rejects.toThrow(
       "Stripe API error"
     );
+  });
+
+  it("creates INR PaymentIntent with UPI for Indian users", async () => {
+    mockUserFindUnique.mockResolvedValueOnce({ country: "IN" });
+    mockPaymentIntentsCreate.mockResolvedValueOnce({
+      id: "pi_inr_001",
+      client_secret: "pi_inr_001_secret",
+    });
+
+    await createPaymentIntent(1000, "user-in-123"); // $10 = 1000 USD cents
+
+    expect(mockPaymentIntentsCreate).toHaveBeenCalledWith({
+      amount: 85000, // 1000 * 85 = 85000 paise = ₹850
+      currency: "inr",
+      payment_method_types: ["upi", "card"],
+      metadata: { userId: "user-in-123", originalUsdCents: "1000" },
+    });
   });
 });
 
@@ -275,6 +300,24 @@ describe("handlePaymentIntentSucceeded", () => {
       data: Record<string, unknown>;
     };
     expect(Number(data["amount"])).toBe(25);
+  });
+
+  it("uses originalUsdCents from metadata for INR PaymentIntents", async () => {
+    mockTransactionFindFirst.mockResolvedValueOnce(null);
+
+    // INR PI: amount is 85000 paise (₹850), but originalUsdCents = 1000 ($10)
+    await handlePaymentIntentSucceeded(
+      makePaymentIntent({
+        amount: 85000,
+        metadata: { userId: "user-in", originalUsdCents: "1000" },
+      } as Partial<Stripe.PaymentIntent>)
+    );
+
+    const { data } = mockTxCreate.mock.calls[0]?.[0] as {
+      data: Record<string, unknown>;
+    };
+    // Should credit $10 (1000 cents / 100), NOT ₹850
+    expect(Number(data["amount"])).toBe(10);
   });
 
   it("stores paymentIntentId as stripeSessionId for idempotency", async () => {
