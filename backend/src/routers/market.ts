@@ -22,6 +22,7 @@ import {
   pauseMarket,
   resumeMarket,
   voidMarket,
+  voidTradesAfterTime,
   getMarketWithPrices,
   listMarkets,
   openMarket,
@@ -472,6 +473,92 @@ export const marketRouter = router({
     }),
 
   /**
+   * market.tradeHistory — public, paginated
+   *
+   * Returns all purchases for a market (newest-first) with user name,
+   * outcome label, shares, cost, priceBefore, priceAfter, and timestamp.
+   * Supports cursor-based pagination via the `cursor` field (purchase ID).
+   */
+  tradeHistory: publicProcedure
+    .input(
+      z.object({
+        marketId: z.string().uuid(),
+        cursor: z.string().uuid().optional(),
+        limit: z.number().int().min(1).max(100).default(50),
+      })
+    )
+    .query(async ({ input }) => {
+      const purchases = await prisma.purchase.findMany({
+        where: { marketId: input.marketId },
+        orderBy: { createdAt: "desc" },
+        take: input.limit + 1,
+        ...(input.cursor
+          ? { cursor: { id: input.cursor }, skip: 1 }
+          : {}),
+        select: {
+          id: true,
+          shares: true,
+          cost: true,
+          avgPrice: true,
+          priceBefore: true,
+          priceAfter: true,
+          createdAt: true,
+          outcome: { select: { id: true, label: true } },
+          user: { select: { name: true } },
+        },
+      });
+
+      let nextCursor: string | undefined;
+      if (purchases.length > input.limit) {
+        const extra = purchases.pop();
+        nextCursor = extra?.id;
+      }
+
+      return {
+        trades: purchases.map((p: typeof purchases[number]) => ({
+          id: p.id,
+          outcomeId: p.outcome.id,
+          outcomeLabel: p.outcome.label,
+          userName: p.user?.name ?? null,
+          shares: Number(p.shares),
+          cost: Number(p.cost),
+          avgPrice: Number(p.avgPrice),
+          priceBefore: Number(p.priceBefore),
+          priceAfter: Number(p.priceAfter),
+          createdAt: p.createdAt,
+        })),
+        nextCursor,
+      };
+    }),
+
+  /**
+   * market.voidTradesAfter — admin only
+   *
+   * Voids all trades on an ACTIVE market that occurred AFTER `cutoffTime`.
+   * Issues REFUND transactions, decrements outcome sharesSold, removes positions.
+   */
+  voidTradesAfter: adminProcedure
+    .input(
+      z.object({
+        marketId: z.string().uuid(),
+        cutoffTime: z.string().datetime(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const ipAddress = ctx.req.ip ?? ctx.req.socket.remoteAddress ?? "0.0.0.0";
+      const cutoffDate = new Date(input.cutoffTime);
+
+      const result = await voidTradesAfterTime(
+        ctx.userId!,
+        input.marketId,
+        cutoffDate,
+        { ipAddress }
+      );
+
+      return result;
+    }),
+
+  /**
    * market.resolve — admin only
    */
   resolve: adminProcedure
@@ -479,6 +566,7 @@ export const marketRouter = router({
       z.object({
         marketId: z.string().uuid(),
         winningOutcomeId: z.string().uuid(),
+        resolvedAt: z.string().datetime().optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -486,6 +574,7 @@ export const marketRouter = router({
 
       await resolveMarket(ctx.userId!, input.marketId, input.winningOutcomeId, {
         ipAddress,
+        resolvedAt: input.resolvedAt ? new Date(input.resolvedAt) : undefined,
       });
 
       const market = await getMarketWithPrices(input.marketId);
