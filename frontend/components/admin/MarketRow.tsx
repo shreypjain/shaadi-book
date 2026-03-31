@@ -13,6 +13,7 @@
 
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { api } from "@/lib/api";
 
 type MarketStatus = "PENDING" | "ACTIVE" | "PAUSED" | "RESOLVED" | "VOIDED";
 
@@ -44,9 +45,15 @@ const STATUS_COLORS: Record<string, string> = {
 export default function MarketRow({ market, onChanged }: Props) {
   const status = market.status as MarketStatus;
   const [resolveOutcomeId, setResolveOutcomeId] = useState<string>("");
-  const [confirming, setConfirming] = useState<null | "resolve" | "pause" | "resume" | "void">(null);
+  const [resolveCustomTime, setResolveCustomTime] = useState<string>("");
+  const [confirming, setConfirming] = useState<null | "resolve" | "pause" | "resume" | "void" | "voidAfter">(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Void-late-trades state
+  const [voidAfterCutoff, setVoidAfterCutoff] = useState<string>("");
+  const [voidAfterPreviewCount, setVoidAfterPreviewCount] = useState<number | null>(null);
+  const [voidAfterResult, setVoidAfterResult] = useState<{ voidedCount: number; totalRefunded: number } | null>(null);
 
   async function handleAction(
     action: "resolve" | "pause" | "resume" | "void"
@@ -62,6 +69,7 @@ export default function MarketRow({ market, onChanged }: Props) {
         await trpc.market.resolve.mutate({
           marketId: market.id,
           winningOutcomeId: resolveOutcomeId,
+          ...(resolveCustomTime ? { resolvedAt: new Date(resolveCustomTime).toISOString() } : {}),
         });
       } else if (action === "pause") {
         await trpc.market.pause.mutate({ marketId: market.id });
@@ -74,6 +82,28 @@ export default function MarketRow({ market, onChanged }: Props) {
       onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVoidAfter() {
+    if (!voidAfterCutoff) {
+      setError("Select a cutoff date/time first.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await api.market.voidTradesAfter({
+        marketId: market.id,
+        cutoffTime: new Date(voidAfterCutoff).toISOString(),
+      });
+      setVoidAfterResult(result);
+      setConfirming(null);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Void failed");
     } finally {
       setLoading(false);
     }
@@ -132,6 +162,13 @@ export default function MarketRow({ market, onChanged }: Props) {
         <p className="text-xs text-red-600">{error}</p>
       )}
 
+      {/* Void-after success */}
+      {voidAfterResult && (
+        <p className="text-xs text-amber-700">
+          Voided {voidAfterResult.voidedCount} trade{voidAfterResult.voidedCount !== 1 ? "s" : ""} · refunded ${voidAfterResult.totalRefunded.toFixed(2)}
+        </p>
+      )}
+
       {/* Actions — only for actionable statuses */}
       {(status === "ACTIVE" || status === "PAUSED" || status === "PENDING") && (
         <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -139,32 +176,45 @@ export default function MarketRow({ market, onChanged }: Props) {
             <>
               {/* Resolve */}
               {confirming === "resolve" ? (
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <select
-                    value={resolveOutcomeId}
-                    onChange={(e) => setResolveOutcomeId(e.target.value)}
-                    className="rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none"
-                  >
-                    <option value="">— pick winner —</option>
-                    {market.outcomes.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => handleAction("resolve")}
-                    disabled={loading}
-                    className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50 min-h-0 min-w-0 h-auto"
-                  >
-                    {loading ? "…" : "Confirm"}
-                  </button>
-                  <button
-                    onClick={() => setConfirming(null)}
-                    className="text-xs text-warmGray hover:text-charcoal min-h-0 min-w-0 h-auto"
-                  >
-                    Cancel
-                  </button>
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <select
+                      value={resolveOutcomeId}
+                      onChange={(e) => setResolveOutcomeId(e.target.value)}
+                      className="rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none"
+                    >
+                      <option value="">— pick winner —</option>
+                      {market.outcomes.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => handleAction("resolve")}
+                      disabled={loading}
+                      className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50 min-h-0 min-w-0 h-auto"
+                    >
+                      {loading ? "…" : "Confirm"}
+                    </button>
+                    <button
+                      onClick={() => setConfirming(null)}
+                      className="text-xs text-warmGray hover:text-charcoal min-h-0 min-w-0 h-auto"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <label className="text-[10px] text-warmGray">
+                      Resolution time (optional, defaults to now):
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={resolveCustomTime}
+                      onChange={(e) => setResolveCustomTime(e.target.value)}
+                      className="rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none"
+                    />
+                  </div>
                 </div>
               ) : (
                 <button
@@ -230,6 +280,52 @@ export default function MarketRow({ market, onChanged }: Props) {
                   className="rounded border border-green-300 px-3 py-1 text-xs font-medium text-green-700 hover:bg-green-50 min-h-0 min-w-0 h-auto"
                 >
                   Resume
+                </button>
+              )}
+            </>
+          )}
+
+          {/* Void late trades — only for ACTIVE markets */}
+          {status === "ACTIVE" && (
+            <>
+              {confirming === "voidAfter" ? (
+                <div className="flex flex-col gap-1.5 w-full">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <label className="text-xs text-warmGray">
+                      Void all trades after:
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={voidAfterCutoff}
+                      onChange={(e) => {
+                        setVoidAfterCutoff(e.target.value);
+                        setVoidAfterPreviewCount(null);
+                      }}
+                      className="rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      onClick={handleVoidAfter}
+                      disabled={loading || !voidAfterCutoff}
+                      className="rounded bg-amber-600 px-2 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50 min-h-0 min-w-0 h-auto"
+                    >
+                      {loading ? "…" : "Confirm void"}
+                    </button>
+                    <button
+                      onClick={() => { setConfirming(null); setVoidAfterCutoff(""); setVoidAfterPreviewCount(null); }}
+                      className="text-xs text-warmGray hover:text-charcoal min-h-0 min-w-0 h-auto"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirming("voidAfter")}
+                  className="rounded border border-amber-300 px-3 py-1 text-xs font-medium text-amber-700 hover:bg-amber-50 min-h-0 min-w-0 h-auto"
+                >
+                  Void late trades
                 </button>
               )}
             </>
