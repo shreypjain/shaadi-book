@@ -68,6 +68,8 @@ export interface PositionItem {
   currentPriceCents: number;
   currentValueCents: number;
   potentialPayoutCents: number;
+  /** Total shares sold on this outcome — used to compute user's % of winnings pool. */
+  outcomeSharesSold: number;
   /** ISO timestamp of the user's most recent purchase of this outcome (for 30-min sell cooldown). */
   lastPurchaseAt: string | null;
 }
