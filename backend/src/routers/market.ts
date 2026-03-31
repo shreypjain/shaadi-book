@@ -532,6 +532,35 @@ export const marketRouter = router({
     }),
 
   /**
+   * market.previewVoidAfter — admin only
+   *
+   * Returns the count of purchases (and total cost) that would be voided
+   * by a voidTradesAfter call with the given cutoff. Read-only — no mutations.
+   */
+  previewVoidAfter: adminProcedure
+    .input(
+      z.object({
+        marketId: z.string().uuid(),
+        cutoffTime: z.string().datetime(),
+      })
+    )
+    .query(async ({ input }) => {
+      const cutoffDate = new Date(input.cutoffTime);
+      const agg = await prisma.purchase.aggregate({
+        where: {
+          marketId: input.marketId,
+          createdAt: { gt: cutoffDate },
+        },
+        _count: { id: true },
+        _sum: { cost: true },
+      });
+      return {
+        tradeCount: agg._count.id,
+        totalCost: Number(agg._sum.cost ?? 0),
+      };
+    }),
+
+  /**
    * market.voidTradesAfter — admin only
    *
    * Voids all trades on an ACTIVE market that occurred AFTER `cutoffTime`.
