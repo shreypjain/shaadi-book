@@ -91,6 +91,7 @@ model User {
   withdrawalRequests  WithdrawalRequest[] @relation("WithdrawalUser")
   withdrawalApprovals WithdrawalRequest[] @relation("WithdrawalAdmin")
   marketSuggestions   MarketSuggestion[]  @relation("SuggestionUser")
+  marketWatches       MarketWatch[]
 
   @@map("users")
 }
@@ -127,6 +128,7 @@ model Market {
   purchases      Purchase[]
   winningOutcome Outcome?        @relation("MarketWinner", fields: [winningOutcomeId], references: [id])
   priceSnapshots PriceSnapshot[]
+  watchers       MarketWatch[]
 
   @@map("markets")
 }
@@ -278,6 +280,20 @@ model WithdrawalRequest {
   admin User? @relation("WithdrawalAdmin", fields: [adminId], references: [id])
 
   @@map("withdrawal_requests")
+}
+
+/// A user's watchlist entry — they want to be notified of activity in this market.
+model MarketWatch {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  marketId  String   @map("market_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id])
+  market Market @relation(fields: [marketId], references: [id])
+
+  @@unique([userId, marketId])
+  @@map("market_watches")
 }
 
 /// A guest-submitted suggestion for a new prediction market question.

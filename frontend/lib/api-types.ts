@@ -63,6 +63,8 @@ export interface MarketWithPrices {
   customTags: string[];
   /** Number of unique non-house bettors in this market. */
   uniqueBettorCount: number;
+  /** Whether the authenticated caller is watching this market. Always false for unauthenticated requests. */
+  isWatching: boolean;
 }
 
 // ---------------------------------------------------------------------------

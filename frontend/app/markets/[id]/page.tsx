@@ -109,6 +109,8 @@ export default function MarketDetailPage() {
   const [myOutcomeShares, setMyOutcomeShares] = useState<
     Record<string, { shares: number; outcomeSharesSold: number }>
   >({});
+  const [isWatching, setIsWatching] = useState(false);
+  const [watchLoading, setWatchLoading] = useState(false);
 
   const refetchBalance = useCallback(async () => {
     try {
@@ -157,6 +159,8 @@ export default function MarketDetailPage() {
 
   useEffect(() => {
     if (!market) return;
+    // Sync isWatching from market data
+    setIsWatching(!!market.isWatching);
     const initial: Record<string, number[]> = {};
     market.outcomes.forEach((o: { id: string; priceCents: number }) => {
       initial[o.id] = [o.priceCents];
@@ -252,6 +256,24 @@ export default function MarketDetailPage() {
     void refetchBalance();
   }, [refetch, refetchBalance]);
 
+  const handleWatchToggle = useCallback(async () => {
+    if (watchLoading) return;
+    setWatchLoading(true);
+    try {
+      if (isWatching) {
+        await api.market.unwatch({ marketId });
+        setIsWatching(false);
+      } else {
+        await api.market.watch({ marketId });
+        setIsWatching(true);
+      }
+    } catch {
+      // Non-fatal — may be unauthenticated
+    } finally {
+      setWatchLoading(false);
+    }
+  }, [isWatching, watchLoading, marketId]);
+
   // -------------------------------------------------------------------------
   // Loading state
   // -------------------------------------------------------------------------
@@ -339,6 +361,27 @@ export default function MarketDetailPage() {
               Resolved
             </span>
           )}
+          {/* Watch/Unwatch toggle */}
+          <button
+            onClick={() => void handleWatchToggle()}
+            disabled={watchLoading}
+            aria-label={isWatching ? "Unwatch market" : "Watch market"}
+            title={isWatching ? "Unwatch" : "Watch"}
+            className="p-1.5 rounded-lg hover:bg-[#EDE8E0]/60 transition-colors disabled:opacity-50"
+          >
+            {isWatching ? (
+              /* Eye icon — filled gold when watching */
+              <svg className="w-5 h-5 text-[#B8860B]" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" />
+              </svg>
+            ) : (
+              /* Eye-off icon — gold outline when not watching */
+              <svg className="w-5 h-5 text-[#B8860B]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
+                <line x1="1" y1="1" x2="23" y2="23" strokeLinecap="round" />
+              </svg>
+            )}
+          </button>
         </div>
       </header>
 

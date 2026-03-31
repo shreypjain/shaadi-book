@@ -241,6 +241,22 @@ export const api = {
       (_client as any).market.priceHistory.query(input) as Promise<
         Record<string, Array<{ priceCents: number; time: string }>>
       >,
+
+    watch: (input: { marketId: string }): Promise<{ watching: boolean }> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).market.watch.mutate(input) as Promise<{ watching: boolean }>,
+
+    unwatch: (input: { marketId: string }): Promise<{ watching: boolean }> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).market.unwatch.mutate(input) as Promise<{ watching: boolean }>,
+
+    isWatching: (input: { marketId: string }): Promise<{ watching: boolean }> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).market.isWatching.query(input) as Promise<{ watching: boolean }>,
+
+    myWatchlist: (): Promise<string[]> =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (_client as any).market.myWatchlist.query() as Promise<string[]>,
   },
 
   bets: {
