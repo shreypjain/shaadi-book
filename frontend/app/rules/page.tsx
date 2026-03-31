@@ -62,9 +62,11 @@ export default function RulesPage() {
             <RuleItem
               text={
                 <>
-                  <Highlight>$200 max bet per market (to protect from shovers).</Highlight> No
-                  selling (similar in principle to no divorce). You're locked in until
-                  resolution.
+                  <Highlight>$200 max bet per market (to protect from shovers).</Highlight> You
+                  can sell shares back to the market at the current price — with a{" "}
+                  <Highlight>10% fee on proceeds</Highlight> and a{" "}
+                  <Highlight>30-minute cooldown</Highlight> after purchase. No flipping
+                  immediately after buying.
                 </>
               }
             />
@@ -131,14 +133,13 @@ export default function RulesPage() {
                 reprices continuously, with no manual intervention.
               </p>
               <p className="text-sm text-warmGray">
-                When you enter a dollar amount, the engine runs a{" "}
+                When you enter a dollar amount, the engine uses a{" "}
                 <span className="font-semibold text-charcoal">
-                  binary search
+                  closed-form analytical solution
                 </span>{" "}
-                over share counts to find the exact quantity that costs
-                that amount under the current cost function — no
-                closed-form inverse, just fast iteration inside a
-                single Postgres transaction with row-level locks.
+                to compute the exact share quantity — derived directly
+                from the cost function algebra, inside a single Postgres
+                transaction with row-level locks.
               </p>
             </div>
 
@@ -153,82 +154,19 @@ export default function RulesPage() {
                 Yes → price jumps to <Highlight>88¢</Highlight>. Guest B
                 bets $10 on No → settles back to{" "}
                 <Highlight>78¢</Highlight>. Every buy moves the market
-                in real time. These values could be correct, but we have
-                interrnal values pre-tuned for the `b` parameter to price
-                things as dramatically as we'd like.
+                 in real time.
               </p>
             </div>
 
-            <p>
-              Liquidity adjusts dynamically via the{" "}
+            <p className="text-sm text-warmGray">
+              Each market has a{" "}
               <span className="font-semibold text-charcoal">
-                adaptive b parameter
-              </span>
-              . The two dominant factors are{" "}
-              <span className="font-semibold text-charcoal">
-                time since market open
+                fixed liquidity parameter (b)
               </span>{" "}
-              and{" "}
-              <span className="font-semibold text-charcoal">
-                total market volume
-              </span>{" "}
-              — both cause b to grow over time, meaning the market hardens
-              and individual bets move prices less. Early bets swing prices
-              hard (first-mover advantage); late bets barely nudge them.
-              Plus a few more features under the hood.
-            </p>
-
-            {/* b table */}
-            <div className="overflow-x-auto -mx-1">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-[rgba(184,134,11,0.12)]">
-                    <th className="text-left py-1.5 px-2 text-warmGray font-medium">
-                      Market age
-                    </th>
-                    <th className="text-left py-1.5 px-2 text-warmGray font-medium">
-                      Volume
-                    </th>
-                    <th className="text-left py-1.5 px-2 text-warmGray font-medium">
-                      $50 bet moves 50¢ to…
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="text-warmGray">
-                  <tr className="border-b border-[#f0ece7]">
-                    <td className="py-1.5 px-2">0 sec</td>
-                    <td className="py-1.5 px-2">$0</td>
-                    <td className="py-1.5 px-2 font-semibold text-[#c8a45c]">
-                      96¢ (first mover massively rewarded)
-                    </td>
-                  </tr>
-                  <tr className="border-b border-[#f0ece7]">
-                    <td className="py-1.5 px-2">30 sec</td>
-                    <td className="py-1.5 px-2">$100</td>
-                    <td className="py-1.5 px-2 font-semibold text-charcoal">
-                      77¢
-                    </td>
-                  </tr>
-                  <tr className="border-b border-[#f0ece7]">
-                    <td className="py-1.5 px-2">5 min</td>
-                    <td className="py-1.5 px-2">$500</td>
-                    <td className="py-1.5 px-2 font-semibold text-charcoal">
-                      61¢
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-1.5 px-2">30 min</td>
-                    <td className="py-1.5 px-2">$2,000</td>
-                    <td className="py-1.5 px-2 font-semibold text-charcoal">
-                      54¢ (hardened)
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <p className="text-xs text-warmGray">
-              tl;dr — be early and be right (in this case) to win big.
+              set at creation based on the number of outcomes and max shares
+              per outcome. A higher b means individual bets move prices less;
+              a lower b means prices are more volatile. Early bets still swing
+              prices harder than later ones as shares get bought up.
             </p>
 
             {/* Strategy note */}
@@ -274,7 +212,8 @@ export default function RulesPage() {
                 text={
                   <>
                     <Highlight>10% of your profit</Highlight> goes to
-                    charity when you cash out. The couple hasn&apos;t
+                    charity — collected externally via Venmo after the
+                    wedding, not deducted in-app. The couple hasn&apos;t
                     chosen the cause yet. You&apos;re basically a
                     quantitative philanthropist.
                   </>
@@ -336,6 +275,16 @@ export default function RulesPage() {
             />
             <RuleItem
               text="Have fun. Feel free to game the system to win back your Air India flight ticket. This is a wedding, not a hedge fund."
+            />
+            <RuleItem
+              text={
+                <>
+                  You can sell shares back to the market at any time{" "}
+                  <Highlight>(30-minute cooldown after buying, 10% fee on proceeds)</Highlight>.
+                  Change your mind, lock in a gain, or cut a loss — the market
+                  will take the other side.
+                </>
+              }
             />
             <RuleItem
               text="This is for charity and entertainment. Winning feels like a music video. Losing still helped a good cause."
