@@ -16,6 +16,20 @@ import { router, protectedProcedure, adminProcedure } from "../trpc.js";
 import { prisma } from "../db.js";
 import { createMarket, getMarketWithPrices } from "../services/marketService.js";
 import { seedMarket, DEFAULT_SEED_CENTS } from "../services/houseSeeding.js";
+import { notifyNewMarket } from "../services/notificationService.js";
+
+// ---------------------------------------------------------------------------
+// Safe IO helper — WebSocket server may not be initialised in tests
+// ---------------------------------------------------------------------------
+
+function getIOSafe() {
+  try {
+    const { getIO } = require("../ws/index.js") as typeof import("../ws/index.js");
+    return getIO();
+  } catch {
+    return undefined;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Input schemas
@@ -174,17 +188,23 @@ export const suggestRouter = router({
       if (input.status === "APPROVED") {
         try {
           const marketId = await createMarket(
-            ctx.userId,
+            ctx.userId!,
             updated.questionText,
             updated.outcomes as string[]
           );
 
-          // Seed $20/outcome (house liquidity) — fire-and-forget, errors are non-fatal.
           const market = await getMarketWithPrices(marketId);
           if (market) {
+            // Seed $20/outcome (house liquidity) — fire-and-forget, errors are non-fatal.
             const outcomeIds = market.outcomes.map((o) => o.id);
             seedMarket(marketId, outcomeIds, DEFAULT_SEED_CENTS).catch((err: unknown) => {
               console.error("[suggest.adminReview] House seeding failed:", err);
+            });
+
+            // Notify guests via WebSocket + SMS (same as market.create)
+            const io = getIOSafe();
+            notifyNewMarket(market, io).catch((err: unknown) => {
+              console.error("[suggest.adminReview] Notification failed:", err);
             });
           }
         } catch (err) {
