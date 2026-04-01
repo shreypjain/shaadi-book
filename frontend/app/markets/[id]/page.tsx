@@ -87,6 +87,7 @@ interface PositionEntry {
 interface PositionsData {
   positions: PositionEntry[];
   totalVolume: number;
+  outcomeVolumes: Record<string, { label: string; totalBet: number }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -616,6 +617,26 @@ export default function MarketDetailPage() {
             <p className="text-xs text-warmGray">No positions yet.</p>
           ) : (
             <div className="flex flex-col gap-3">
+              {/* Outcome volume summary */}
+              <div className="flex flex-wrap gap-3 mb-1 pb-3 border-b border-[rgba(184,134,11,0.1)]">
+                {(market.outcomes as Array<{ id: string; label: string }>).map((o, idx) => {
+                  const colors = outcomeColor(idx);
+                  const vol = positionsData.outcomeVolumes[o.id];
+                  return (
+                    <div key={o.id} className="flex items-center gap-1.5">
+                      <span
+                        className={`text-xs font-semibold rounded-full px-2 py-0.5 ${colors.light} ${colors.text}`}
+                      >
+                        {o.label}
+                      </span>
+                      <span className="text-xs font-medium text-charcoal tabular-nums">
+                        ${vol ? vol.totalBet.toFixed(0) : "0"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
               {[...positionsData.positions]
                 .sort((a, b) => b.totalDeployed - a.totalDeployed)
                 .map((pos, rank) => {
