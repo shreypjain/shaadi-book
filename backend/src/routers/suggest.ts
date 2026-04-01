@@ -174,7 +174,7 @@ export const suggestRouter = router({
       if (input.status === "APPROVED") {
         try {
           const marketId = await createMarket(
-            ctx.userId,
+            ctx.userId!,
             updated.questionText,
             updated.outcomes as string[]
           );
