@@ -158,6 +158,8 @@ export interface MarketSuggestionItem {
   updatedAt: string;
   userName?: string;
   userPhone?: string;
+  /** Present on the submit response when the market was auto-created. */
+  marketId?: string;
 }
 
 export const api = {

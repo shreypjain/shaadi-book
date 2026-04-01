@@ -32,6 +32,7 @@ export function SuggestMarketModal({ isOpen, onClose }: Props) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [createdMarketId, setCreatedMarketId] = useState<string | null>(null);
 
   const firstInputRef = useRef<HTMLInputElement>(null);
 
@@ -40,6 +41,7 @@ export function SuggestMarketModal({ isOpen, onClose }: Props) {
     if (isOpen) {
       setIsSuccess(false);
       setError(null);
+      setCreatedMarketId(null);
       setTimeout(() => firstInputRef.current?.focus(), 50);
     }
   }, [isOpen]);
@@ -97,11 +99,12 @@ export function SuggestMarketModal({ isOpen, onClose }: Props) {
 
     setIsLoading(true);
     try {
-      await api.suggest.submit({
+      const result = await api.suggest.submit({
         questionText: trimmedQuestion,
         outcomes: trimmedOutcomes,
         description: trimmedDesc || undefined,
       });
+      setCreatedMarketId(result.marketId ?? null);
       setIsSuccess(true);
       // Reset form
       setQuestionText("");
@@ -187,26 +190,36 @@ export function SuggestMarketModal({ isOpen, onClose }: Props) {
                 </div>
                 <div>
                   <p className="text-base font-semibold text-charcoal">
-                    Suggestion submitted!
+                    Your market is now live!
                   </p>
                   <p className="text-sm text-warmGray mt-1 max-w-xs">
-                    The admins will review your idea and let you know. Check "My Suggestions" to track the status.
+                    Your market has been created and is ready for bets. Start betting now!
                   </p>
                 </div>
                 <div className="mt-2 flex flex-col items-center gap-2">
+                  {createdMarketId ? (
+                    <Link
+                      href={`/markets/${createdMarketId}`}
+                      onClick={handleClose}
+                      className="rounded-xl bg-[#1e3a5f] text-white font-semibold text-sm px-6 py-2.5 hover:bg-[#162d4a] transition-colors"
+                    >
+                      Go to Market →
+                    </Link>
+                  ) : (
+                    <Link
+                      href="/"
+                      onClick={handleClose}
+                      className="rounded-xl bg-[#1e3a5f] text-white font-semibold text-sm px-6 py-2.5 hover:bg-[#162d4a] transition-colors"
+                    >
+                      View Markets →
+                    </Link>
+                  )}
                   <button
                     onClick={handleClose}
-                    className="rounded-xl bg-[#1e3a5f] text-white font-semibold text-sm px-6 py-2.5 hover:bg-[#162d4a] transition-colors"
+                    className="text-xs text-warmGray hover:text-charcoal transition-colors"
                   >
-                    Done
+                    Close
                   </button>
-                  <Link
-                    href="/suggestions"
-                    onClick={handleClose}
-                    className="text-xs text-[#c8a45c] hover:text-[#a8843c] underline transition-colors"
-                  >
-                    View my suggestions →
-                  </Link>
                 </div>
               </div>
             ) : (
