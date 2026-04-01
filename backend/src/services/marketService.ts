@@ -179,7 +179,7 @@ function toNum(v: { toNumber(): number } | number): number {
 
 function buildMarketWithPrices(market: RawMarket): MarketWithPrices {
   const numOutcomes = market.outcomes.length;
-  const maxSharesPerOutcome = market.maxSharesPerOutcome ?? 100;
+  const maxSharesPerOutcome = market.maxSharesPerOutcome ?? 1000;
 
   // Use market.bParameter if explicitly set; otherwise calculate via defaultB.
   const b = market.bParameter != null
@@ -281,7 +281,7 @@ export async function createMarket(
   const db = opts?.prismaClient ?? defaultPrisma;
   const isImmediate = !opts?.scheduledOpenAt;
   const now = new Date();
-  const maxSharesPerOutcome = opts?.maxSharesPerOutcome ?? 100;
+  const maxSharesPerOutcome = opts?.maxSharesPerOutcome ?? 1000;
 
   const marketId = await db.$transaction(async (tx: Prisma.TransactionClient) => {
     const market = await tx.market.create({
