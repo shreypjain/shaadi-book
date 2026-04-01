@@ -690,8 +690,19 @@ export const marketRouter = router({
         }
       >();
 
+      // Per-outcome volume (includes all purchases, including House seeding)
+      const outcomeVolumes: Record<string, { label: string; totalBet: number }> = {};
+
       for (const p of purchases) {
-        // Filter out house/system accounts
+        const cost = Number(p.cost);
+
+        // Accumulate per-outcome volume for ALL purchases (including House)
+        if (!outcomeVolumes[p.outcomeId]) {
+          outcomeVolumes[p.outcomeId] = { label: p.outcome.label, totalBet: 0 };
+        }
+        outcomeVolumes[p.outcomeId]!.totalBet += cost;
+
+        // Filter out house/system accounts for the user positions list
         if (!p.user.name || p.user.name === "House") continue;
 
         const userId = p.userId;
@@ -708,7 +719,6 @@ export const marketRouter = router({
 
         const entry = userMap.get(userId)!;
         const shares = Number(p.shares);
-        const cost = Number(p.cost);
 
         // Accumulate shares per outcome
         if (!entry.netSharesByOutcome[p.outcomeId]) {
@@ -751,7 +761,7 @@ export const marketRouter = router({
       // Total volume = sum of all purchase costs across all users
       const totalVolume = positions.reduce((sum, p) => sum + p.totalDeployed, 0);
 
-      return { positions, totalVolume };
+      return { positions, totalVolume, outcomeVolumes };
     }),
 
   // ---------------------------------------------------------------------------

@@ -304,6 +304,7 @@ export const api = {
         tradeCount: number;
       }>;
       totalVolume: number;
+      outcomeVolumes: Record<string, { label: string; totalBet: number }>;
     }> =>
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       (_client as any).market.positions.query(input) as Promise<any>,
