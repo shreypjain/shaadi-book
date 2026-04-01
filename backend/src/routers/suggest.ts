@@ -16,6 +16,7 @@ import { router, protectedProcedure, adminProcedure } from "../trpc.js";
 import { prisma } from "../db.js";
 import { createMarket, getMarketWithPrices } from "../services/marketService.js";
 import { seedMarket, DEFAULT_SEED_CENTS } from "../services/houseSeeding.js";
+import { notifyNewMarket } from "../services/notificationService.js";
 
 // ---------------------------------------------------------------------------
 // Input schemas
@@ -88,17 +89,54 @@ export const suggestRouter = router({
   submit: protectedProcedure
     .input(submitInput)
     .mutation(async ({ ctx, input }) => {
+      // Auto-approve all guest suggestions — no admin review step needed.
       const suggestion = await prisma.marketSuggestion.create({
         data: {
-          userId: ctx.userId,
+          userId: ctx.userId!,
           questionText: input.questionText.trim(),
           outcomes: input.outcomes.map((o) => o.trim()),
           description: input.description?.trim() ?? null,
-          status: "PENDING",
+          status: "APPROVED",
         },
       });
 
-      return serializeSuggestion(suggestion);
+      // Auto-create the market immediately.
+      // createMarket is awaited so we can return the marketId to the caller.
+      // Seeding and notification are fire-and-forget (non-fatal errors).
+      let marketId: string | undefined;
+      try {
+        marketId = await createMarket(
+          ctx.userId!,
+          suggestion.questionText,
+          suggestion.outcomes as string[]
+        );
+
+        // Fire-and-forget: seed house liquidity + send notifications
+        void (async () => {
+          try {
+            const market = await getMarketWithPrices(marketId!);
+            if (market) {
+              const outcomeIds = market.outcomes.map((o) => o.id);
+              await seedMarket(marketId!, outcomeIds, DEFAULT_SEED_CENTS);
+            }
+          } catch (err) {
+            console.error("[suggest.submit] House seeding failed:", err);
+          }
+          try {
+            await notifyNewMarket({ id: marketId!, question: suggestion.questionText });
+          } catch (err) {
+            console.error("[suggest.submit] Notification failed:", err);
+          }
+        })();
+      } catch (err) {
+        console.error(
+          "[suggest.submit] Auto-create market failed for suggestion",
+          suggestion.id,
+          err
+        );
+      }
+
+      return { ...serializeSuggestion(suggestion), marketId };
     }),
 
   /**
@@ -154,10 +192,10 @@ export const suggestRouter = router({
         });
       }
 
-      if (existing.status !== "PENDING") {
+      if (existing.status === "REJECTED") {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: `Suggestion is already ${existing.status.toLowerCase()}`,
+          message: "Suggestion is already rejected",
         });
       }
 
