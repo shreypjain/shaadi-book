@@ -16,6 +16,7 @@ import { router, protectedProcedure, adminProcedure } from "../trpc.js";
 import { prisma } from "../db.js";
 import { createMarket, getMarketWithPrices } from "../services/marketService.js";
 import { seedMarket, DEFAULT_SEED_CENTS } from "../services/houseSeeding.js";
+import { notifyNewMarket } from "../services/notificationService.js";
 
 // ---------------------------------------------------------------------------
 // Input schemas
@@ -88,15 +89,40 @@ export const suggestRouter = router({
   submit: protectedProcedure
     .input(submitInput)
     .mutation(async ({ ctx, input }) => {
+      const trimmedOutcomes = input.outcomes.map((o) => o.trim());
+
       const suggestion = await prisma.marketSuggestion.create({
         data: {
           userId: ctx.userId,
           questionText: input.questionText.trim(),
-          outcomes: input.outcomes.map((o) => o.trim()),
+          outcomes: trimmedOutcomes,
           description: input.description?.trim() ?? null,
-          status: "PENDING",
+          status: "APPROVED",
         },
       });
+
+      // Auto-create the market immediately — failures are non-fatal
+      try {
+        const marketId = await createMarket(
+          ctx.userId!,
+          suggestion.questionText,
+          trimmedOutcomes
+        );
+
+        const market = await getMarketWithPrices(marketId);
+        if (market) {
+          const outcomeIds = market.outcomes.map((o) => o.id);
+          seedMarket(marketId, outcomeIds, DEFAULT_SEED_CENTS).catch((err: unknown) => {
+            console.error("[suggest.submit] House seeding failed:", err);
+          });
+
+          notifyNewMarket(market).catch((err: unknown) => {
+            console.error("[suggest.submit] Notification failed:", err);
+          });
+        }
+      } catch (err) {
+        console.error("[suggest.submit] Auto-create market failed:", err);
+      }
 
       return serializeSuggestion(suggestion);
     }),

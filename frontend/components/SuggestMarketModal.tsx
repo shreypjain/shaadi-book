@@ -187,10 +187,10 @@ export function SuggestMarketModal({ isOpen, onClose }: Props) {
                 </div>
                 <div>
                   <p className="text-base font-semibold text-charcoal">
-                    Suggestion submitted!
+                    Your market is live!
                   </p>
                   <p className="text-sm text-warmGray mt-1 max-w-xs">
-                    The admins will review your idea and let you know. Check "My Suggestions" to track the status.
+                    Your market has been created and is open for betting. Go find it on the home page!
                   </p>
                 </div>
                 <div className="mt-2 flex flex-col items-center gap-2">
