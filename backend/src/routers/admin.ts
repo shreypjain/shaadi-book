@@ -17,7 +17,8 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { router, adminProcedure } from "../trpc.js";
-import { runReconciliation, getTotalDeposits } from "../services/ledger.js";
+import { runReconciliation, getTotalDeposits, appendTransaction } from "../services/ledger.js";
+import { HOUSE_PHONE } from "../services/houseSeeding.js";
 import { verifyChainIntegrity } from "../services/hashChainVerifier.js";
 import { getRecentAuditLog } from "../services/auditLog.js";
 import { prisma } from "../db.js";
@@ -240,6 +241,50 @@ export const adminRouter = router({
   // -------------------------------------------------------------------------
   // admin.listWithdrawals — all withdrawal requests
   // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // admin.creditHouse — add internal credits to the House account
+  // -------------------------------------------------------------------------
+  creditHouse: adminProcedure
+    .input(
+      z.object({
+        /** Amount in USD cents to credit the House account. */
+        amountCents: z
+          .number()
+          .int()
+          .min(100, "Minimum $1.00")
+          .max(1_000_000, "Maximum $10,000.00"),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const houseUser = await prisma.user.findUnique({
+        where: { phone: HOUSE_PHONE },
+        select: { id: true },
+      });
+
+      if (!houseUser) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "House account not found",
+        });
+      }
+
+      const amountDollars = input.amountCents / 100;
+
+      const tx = await appendTransaction({
+        userId: houseUser.id,
+        debitAccount: "house_internal",
+        creditAccount: `user:${houseUser.id}`,
+        type: "DEPOSIT",
+        amount: amountDollars,
+      });
+
+      return {
+        transactionId: tx.id,
+        amountCents: input.amountCents,
+        houseUserId: houseUser.id,
+      };
+    }),
+
   listWithdrawals: adminProcedure.query(async () => {
     const withdrawals = await prisma.withdrawalRequest.findMany({
       orderBy: { createdAt: "desc" },

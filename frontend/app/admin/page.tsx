@@ -43,6 +43,11 @@ export default function AdminDashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // House credit state
+  const [creditAmount, setCreditAmount] = useState("");
+  const [crediting, setCrediting] = useState(false);
+  const [creditMsg, setCreditMsg] = useState<string | null>(null);
+
   async function load() {
     setLoading(true);
     setError(null);
@@ -151,6 +156,56 @@ export default function AdminDashboardPage() {
             </table>
           </div>
         )}
+      </section>
+
+      {/* House credit */}
+      <section>
+        <h2 className="text-sm font-semibold text-charcoal mb-3">
+          House Credits
+        </h2>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-warmGray text-sm">$</span>
+            <input
+              type="number"
+              min="1"
+              max="10000"
+              step="1"
+              placeholder="Amount"
+              value={creditAmount}
+              onChange={(e) => { setCreditAmount(e.target.value); setCreditMsg(null); }}
+              className="w-32 pl-7 pr-3 py-2 border border-[rgba(184,134,11,0.12)] rounded-lg text-sm
+                         focus:outline-none focus:border-gold transition text-charcoal bg-white"
+            />
+          </div>
+          <button
+            disabled={crediting || !creditAmount || Number(creditAmount) < 1}
+            onClick={async () => {
+              setCrediting(true);
+              setCreditMsg(null);
+              try {
+                const cents = Math.round(Number(creditAmount) * 100);
+                await trpc.admin.creditHouse.mutate({ amountCents: cents });
+                setCreditMsg(`Credited $${Number(creditAmount).toFixed(2)} to House`);
+                setCreditAmount("");
+                void load();
+              } catch (err) {
+                setCreditMsg(err instanceof Error ? err.message : "Failed");
+              } finally {
+                setCrediting(false);
+              }
+            }}
+            className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white
+                       disabled:opacity-50 hover:bg-[#2a4d7a] transition"
+          >
+            {crediting ? "Crediting…" : "Add to House"}
+          </button>
+          {creditMsg && (
+            <span className={`text-xs ${creditMsg.startsWith("Credited") ? "text-emerald-600" : "text-red-600"}`}>
+              {creditMsg}
+            </span>
+          )}
+        </div>
       </section>
 
       {/* Quick links */}
