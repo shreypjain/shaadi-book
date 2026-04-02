@@ -24,7 +24,7 @@ import {
   computeDollarAmountForShares,
   price,
 } from "./lmsr.js";
-import { computeHash } from "./hashChain.js";
+import { computeHash, getLastHash } from "./hashChain.js";
 import { recordPurchaseSnapshots } from "./priceSnapshot.js";
 import { HOUSE_PHONE } from "./houseSeeding.js";
 
@@ -355,10 +355,38 @@ export async function buyShares(
       const balanceDollars = toNumber(balanceResult[0]?.balance ?? 0);
 
       if (balanceDollars < dollarAmount) {
-        throw new PurchaseError(
-          "INSUFFICIENT_BALANCE",
-          `Insufficient balance: have $${balanceDollars.toFixed(2)}, need $${dollarAmount.toFixed(2)}`
-        );
+        // Auto-refill House account if bypassCap is set (House-only)
+        if (options?.bypassCap) {
+          const shortfall = dollarAmount - balanceDollars;
+          const refillAmount = new Decimal(shortfall).toDecimalPlaces(6, Decimal.ROUND_UP);
+          const refillPrevHash = await getLastHash(tx);
+          const refillAt = new Date();
+          const refillHash = computeHash(
+            refillPrevHash,
+            "DEPOSIT",
+            refillAmount.toFixed(6),
+            userId,
+            refillAt.toISOString()
+          );
+          await tx.transaction.create({
+            data: {
+              userId,
+              debitAccount: "house_internal",
+              creditAccount: userAccount,
+              type: "DEPOSIT",
+              amount: refillAmount,
+              prevHash: refillPrevHash,
+              txHash: refillHash,
+              createdAt: refillAt,
+            },
+          });
+          console.log(`[purchaseEngine] Auto-refilled House $${refillAmount.toFixed(2)}`);
+        } else {
+          throw new PurchaseError(
+            "INSUFFICIENT_BALANCE",
+            `Insufficient balance: have $${balanceDollars.toFixed(2)}, need $${dollarAmount.toFixed(2)}`
+          );
+        }
       }
 
       // -----------------------------------------------------------------------
