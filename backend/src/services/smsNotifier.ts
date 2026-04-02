@@ -34,6 +34,29 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Filter out fake/test phone numbers that will always fail. */
+function isRealPhone(phone: string): boolean {
+  // Filter +1000000000X pattern (test seeds) and obviously invalid numbers
+  return !phone.startsWith("+100000");
+}
+
+/**
+ * Pick the best outbound number for a given recipient.
+ *
+ * Uses TWILIO_TOLLFREE_NUMBER (if set) for US numbers — toll-free has
+ * much better A2P deliverability than local numbers on US carriers.
+ * Falls back to TWILIO_PHONE_NUMBER for non-US or if toll-free is unset.
+ */
+function pickFromNumber(toPhone: string): string {
+  const tollFree = process.env["TWILIO_TOLLFREE_NUMBER"];
+  const local = process.env["TWILIO_PHONE_NUMBER"] ?? "";
+
+  if (tollFree && toPhone.startsWith("+1")) {
+    return tollFree;
+  }
+  return local;
+}
+
 // ---------------------------------------------------------------------------
 // sendSmsToAll
 // ---------------------------------------------------------------------------
@@ -43,6 +66,9 @@ function sleep(ms: number): Promise<void> {
  *
  * Rate limited to ~1 msg/sec.  Individual send failures are caught and
  * logged so a bad number never aborts the rest of the batch.
+ *
+ * Skips fake/test phone numbers. Uses toll-free number for US recipients
+ * when TWILIO_TOLLFREE_NUMBER is set (better carrier deliverability).
  */
 export async function sendSmsToAll(message: string): Promise<void> {
   const accountSid = process.env["TWILIO_ACCOUNT_SID"];
@@ -54,20 +80,27 @@ export async function sendSmsToAll(message: string): Promise<void> {
     return;
   }
 
-  let users: Array<{ phone: string }>;
+  let allUsers: Array<{ phone: string }>;
   try {
-    users = await prisma.user.findMany({ select: { phone: true } });
+    allUsers = await prisma.user.findMany({ select: { phone: true } });
   } catch (err) {
     console.error("[smsNotifier] Failed to fetch users for SMS batch:", err);
     return;
   }
 
+  // Filter out fake/test phone numbers
+  const users = allUsers.filter((u) => isRealPhone(u.phone));
+  const skipped = allUsers.length - users.length;
+
   if (users.length === 0) {
-    console.log("[smsNotifier] No registered users — nothing to send");
+    console.log("[smsNotifier] No real registered users — nothing to send");
     return;
   }
 
-  console.log(`[smsNotifier] Starting SMS batch to ${users.length} users`);
+  console.log(
+    `[smsNotifier] Starting SMS batch to ${users.length} users` +
+      (skipped > 0 ? ` (${skipped} fake numbers skipped)` : "")
+  );
 
   const client = twilio(accountSid, authToken);
   let successCount = 0;
@@ -75,17 +108,24 @@ export async function sendSmsToAll(message: string): Promise<void> {
 
   for (let i = 0; i < users.length; i++) {
     const user = users[i]!;
+    const from = pickFromNumber(user.phone);
     try {
-      await client.messages.create({
+      const msg = await client.messages.create({
         to: user.phone,
-        from: fromPhone,
+        from,
         body: message,
       });
       successCount++;
-      console.log(`[smsNotifier] Sent (${i + 1}/${users.length}) → ${user.phone}`);
-    } catch (err) {
+      console.log(
+        `[smsNotifier] Queued (${i + 1}/${users.length}) → ${user.phone} ` +
+          `[sid=${msg.sid}, from=${from}]`
+      );
+    } catch (err: unknown) {
       failureCount++;
-      console.error(`[smsNotifier] Failed to send to ${user.phone}:`, err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(
+        `[smsNotifier] Failed to send to ${user.phone} [from=${from}]: ${errMsg}`
+      );
     }
 
     // Rate limit: ~1 message per second (skip delay after the last item)
@@ -95,7 +135,7 @@ export async function sendSmsToAll(message: string): Promise<void> {
   }
 
   console.log(
-    `[smsNotifier] Batch complete — ${successCount} sent, ${failureCount} failed`
+    `[smsNotifier] Batch complete — ${successCount} queued, ${failureCount} failed`
   );
 }
 
@@ -263,15 +303,21 @@ export function notifyMarketActivity(
       return;
     }
 
-    // Fetch phone numbers for recipients
+    // Fetch phone numbers for recipients, filter out fake numbers
     let recipients: Array<{ phone: string }>;
     try {
-      recipients = await prisma.user.findMany({
+      const allRecipients = await prisma.user.findMany({
         where: { id: { in: recipientIds } },
         select: { phone: true },
       });
+      recipients = allRecipients.filter((r) => isRealPhone(r.phone));
     } catch (err) {
       console.error("[smsNotifier] notifyMarketActivity: failed to fetch phones:", err);
+      return;
+    }
+
+    if (recipients.length === 0) {
+      console.log("[smsNotifier] notifyMarketActivity: no real recipients after filtering — skipping");
       return;
     }
 
@@ -292,16 +338,23 @@ export function notifyMarketActivity(
 
     for (let i = 0; i < recipients.length; i++) {
       const recipient = recipients[i]!;
+      const from = pickFromNumber(recipient.phone);
       try {
-        await client.messages.create({
+        const msg = await client.messages.create({
           to: recipient.phone,
-          from: fromPhone,
+          from,
           body: message,
         });
         successCount++;
-      } catch (err) {
+        console.log(
+          `[smsNotifier] notifyMarketActivity: queued → ${recipient.phone} [sid=${msg.sid}, from=${from}]`
+        );
+      } catch (err: unknown) {
         failureCount++;
-        console.error(`[smsNotifier] notifyMarketActivity: failed to send to ${recipient.phone}:`, err);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error(
+          `[smsNotifier] notifyMarketActivity: failed to send to ${recipient.phone} [from=${from}]: ${errMsg}`
+        );
       }
 
       // Rate limit: ~1 message per second
@@ -311,7 +364,7 @@ export function notifyMarketActivity(
     }
 
     console.log(
-      `[smsNotifier] notifyMarketActivity complete — ${successCount} sent, ${failureCount} failed`
+      `[smsNotifier] notifyMarketActivity complete — ${successCount} queued, ${failureCount} failed`
     );
   })().catch((err) => {
     console.error("[smsNotifier] notifyMarketActivity unhandled error:", err);
@@ -329,13 +382,23 @@ export function notifyMarketActivity(
  * Controlled by the ENABLE_SMS_NOTIFICATIONS env var in index.ts — this
  * function itself does not check that flag.
  *
+ * Fires the first update 60 seconds after startup (so deploys don't wait
+ * a full interval), then repeats on the given interval.
+ *
  * @param intervalMs — Interval in ms (e.g. 5 * 60 * 60 * 1000 for 5 hours)
  */
 export function startPeriodicNotifications(intervalMs: number): void {
-  const minutes = Math.round(intervalMs / 60_000);
+  const hours = (intervalMs / 3_600_000).toFixed(1);
   console.log(
-    `[smsNotifier] Periodic notifications started — interval: ${minutes} min`
+    `[smsNotifier] Periodic notifications started — interval: ${hours}h, first update in 60s`
   );
+
+  // Fire first update 60s after startup so we don't wait a full interval
+  setTimeout(() => {
+    void sendPeriodicUpdate().catch((err) => {
+      console.error("[smsNotifier] sendPeriodicUpdate (initial) error:", err);
+    });
+  }, 60_000);
 
   setInterval(() => {
     void sendPeriodicUpdate().catch((err) => {

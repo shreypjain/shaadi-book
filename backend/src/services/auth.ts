@@ -44,12 +44,17 @@ export function createTwilioClient(): ReturnType<typeof twilio> {
 }
 
 // ---------------------------------------------------------------------------
-// OTP — send
+// OTP — send via Twilio Verify
 // ---------------------------------------------------------------------------
 
 /**
  * Send an OTP to the given E.164 phone number via Twilio Verify.
- * Returns 'pending' on success (per Twilio API).
+ *
+ * We use Verify (not Messages API) because US carriers block A2P SMS from
+ * unregistered local numbers (error 30034). Verify uses Twilio's
+ * pre-approved short codes that bypass carrier filtering.
+ *
+ * Cost: $0.05/verification.
  */
 export async function sendOTP(phone: string): Promise<"pending"> {
   const serviceSid = process.env["TWILIO_VERIFY_SERVICE_SID"];
@@ -60,6 +65,7 @@ export async function sendOTP(phone: string): Promise<"pending"> {
   const verification = await client.verify.v2
     .services(serviceSid)
     .verifications.create({ to: phone, channel: "sms" });
+  console.log(`[auth] OTP sent via Twilio Verify to ${phone}`);
   return verification.status as "pending";
 }
 
@@ -83,7 +89,9 @@ export async function verifyOTP(
   const check = await client.verify.v2
     .services(serviceSid)
     .verificationChecks.create({ to: phone, code });
-  return check.status === "approved";
+  const approved = check.status === "approved";
+  console.log(`[auth] OTP verify for ${phone}: ${approved ? "approved" : "rejected"}`);
+  return approved;
 }
 
 // ---------------------------------------------------------------------------

@@ -5,8 +5,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Must be hoisted above any import that uses twilio.
 // ---------------------------------------------------------------------------
 
-const mockVerificationsCreate = vi.fn();
-const mockVerificationChecksCreate = vi.fn();
+const { mockVerificationsCreate, mockVerificationChecksCreate } = vi.hoisted(() => ({
+  mockVerificationsCreate: vi.fn(),
+  mockVerificationChecksCreate: vi.fn(),
+}));
 
 vi.mock("twilio", () => {
   const mockServicesFn = (_sid: string) => ({
