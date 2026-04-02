@@ -58,6 +58,14 @@ function pickFromNumber(toPhone: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Global SMS gate — all functions check this before sending
+// ---------------------------------------------------------------------------
+
+function isSmsEnabled(): boolean {
+  return process.env["ENABLE_SMS_NOTIFICATIONS"] === "true";
+}
+
+// ---------------------------------------------------------------------------
 // sendSmsToAll
 // ---------------------------------------------------------------------------
 
@@ -71,6 +79,11 @@ function pickFromNumber(toPhone: string): string {
  * when TWILIO_TOLLFREE_NUMBER is set (better carrier deliverability).
  */
 export async function sendSmsToAll(message: string): Promise<void> {
+  if (!isSmsEnabled()) {
+    console.log("[smsNotifier] SMS disabled — skipping sendSmsToAll");
+    return;
+  }
+
   const accountSid = process.env["TWILIO_ACCOUNT_SID"];
   const authToken = process.env["TWILIO_AUTH_TOKEN"];
   const fromPhone = process.env["TWILIO_PHONE_NUMBER"];
@@ -150,6 +163,8 @@ export async function sendSmsToAll(message: string): Promise<void> {
  * The SMS batch continues running in the background.
  */
 export function notifyNewMarket(question: string): void {
+  if (!isSmsEnabled()) return;
+
   const message =
     `Shaadi Book | New market: "${question}" — Place your bet at markets.parshandspoorthi.com`;
   console.log(`[smsNotifier] New market notification queued: "${question}"`);
@@ -245,6 +260,8 @@ export function notifyMarketActivity(
   dollarAmount: number
 ): void {
   void (async () => {
+    if (!isSmsEnabled()) return;
+
     const accountSid = process.env["TWILIO_ACCOUNT_SID"];
     const authToken = process.env["TWILIO_AUTH_TOKEN"];
     const fromPhone = process.env["TWILIO_PHONE_NUMBER"];
