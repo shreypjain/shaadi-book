@@ -93,6 +93,7 @@ model User {
   withdrawalApprovals WithdrawalRequest[] @relation("WithdrawalAdmin")
   marketSuggestions   MarketSuggestion[]  @relation("SuggestionUser")
   marketWatches       MarketWatch[]
+  pushSubscriptions   PushSubscription[]
 
   @@map("users")
 }
@@ -295,6 +296,25 @@ model MarketWatch {
 
   @@unique([userId, marketId])
   @@map("market_watches")
+}
+
+/// A Web Push subscription for browser push notifications.
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  /// The push service endpoint URL (e.g. fcm.googleapis.com/...).
+  endpoint  String
+  /// Base64-encoded P-256 public key for payload encryption.
+  p256dh    String
+  /// Base64-encoded auth secret.
+  auth      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  /// One subscription per endpoint (browser may re-subscribe with same endpoint).
+  @@unique([endpoint])
+  @@map("push_subscriptions")
 }
 
 /// A guest-submitted suggestion for a new prediction market question.

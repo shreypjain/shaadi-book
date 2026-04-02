@@ -5,6 +5,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 import { BottomNav } from "@/components/BottomNav";
 import { UserMenu } from "@/components/UserMenu";
+import { PushNotifications } from "@/components/PushNotifications";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -78,6 +79,8 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${cormorant.variable}`}>
       <body className="min-h-screen bg-ivory text-charcoal font-sans">
         <Providers>
+          {/* Push notification opt-in banner */}
+          <PushNotifications />
           {/* Auth-aware user menu — hidden on /login */}
           <UserMenu />
           {children}
