@@ -4,17 +4,40 @@ import { useState, useEffect, useCallback } from "react";
 import { getToken, getStoredUser } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 
+// ---------------------------------------------------------------------------
+// iOS detection helpers
+// ---------------------------------------------------------------------------
+
+function isIOS(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function isStandalone(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    ("standalone" in window.navigator && (window.navigator as any).standalone === true) ||
+    window.matchMedia("(display-mode: standalone)").matches
+  );
+}
+
+function isIOSChrome(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return isIOS() && /CriOS/.test(navigator.userAgent);
+}
+
 /**
  * /notifications — Notification preferences page.
  *
  * Lets users:
- *   1. Enable/disable browser push notifications
+ *   1. Enable/disable browser push notifications (with iOS-specific guidance)
  *   2. Opt in to SMS notifications (consent for toll-free messaging)
  */
 export default function NotificationsPage() {
   const router = useRouter();
   const [pushStatus, setPushStatus] = useState<
-    "loading" | "unsupported" | "denied" | "enabled" | "disabled"
+    "loading" | "unsupported" | "denied" | "enabled" | "disabled" | "ios-need-safari" | "ios-need-homescreen"
   >("loading");
   const [smsOptedIn, setSmsOptedIn] = useState(false);
   const [smsLoading, setSmsLoading] = useState(false);
@@ -26,13 +49,29 @@ export default function NotificationsPage() {
       return;
     }
 
+    // iOS Chrome → must use Safari
+    if (isIOSChrome()) {
+      setPushStatus("ios-need-safari");
+      setSmsOptedIn(localStorage.getItem("sms-opted-in") === "true");
+      return;
+    }
+
+    // iOS Safari not added to home screen
+    if (isIOS() && !isStandalone()) {
+      setPushStatus("ios-need-homescreen");
+      setSmsOptedIn(localStorage.getItem("sms-opted-in") === "true");
+      return;
+    }
+
     if (!("Notification" in window) || !("serviceWorker" in navigator)) {
       setPushStatus("unsupported");
+      setSmsOptedIn(localStorage.getItem("sms-opted-in") === "true");
       return;
     }
 
     if (Notification.permission === "denied") {
       setPushStatus("denied");
+      setSmsOptedIn(localStorage.getItem("sms-opted-in") === "true");
       return;
     }
 
@@ -160,10 +199,32 @@ export default function NotificationsPage() {
           <div className="text-sm text-charcoal/40">Loading...</div>
         )}
 
+        {pushStatus === "ios-need-safari" && (
+          <div className="text-sm text-amber-700 bg-amber-50 rounded-lg p-3">
+            <p className="font-medium">Chrome on iPhone doesn&apos;t support push</p>
+            <p className="mt-1 text-amber-600">
+              Open this page in <strong>Safari</strong>, then tap{" "}
+              <strong>Share</strong> (the box with arrow) &gt;{" "}
+              <strong>Add to Home Screen</strong>. Open from there to enable notifications.
+            </p>
+          </div>
+        )}
+
+        {pushStatus === "ios-need-homescreen" && (
+          <div className="text-sm text-amber-700 bg-amber-50 rounded-lg p-3">
+            <p className="font-medium">Add to Home Screen to enable push</p>
+            <p className="mt-1 text-amber-600">
+              Tap the <strong>Share</strong> button (box with arrow at the bottom),
+              then <strong>Add to Home Screen</strong>. Open Shaadi Book from your
+              home screen to enable push notifications.
+            </p>
+          </div>
+        )}
+
         {pushStatus === "unsupported" && (
           <div className="text-sm text-red-600">
-            Push notifications are not supported on this browser. Try Chrome or
-            Safari on iOS 16.4+.
+            Push notifications are not supported on this browser. Try Chrome on
+            desktop/Android, or Safari on iPhone (add to Home Screen first).
           </div>
         )}
 
