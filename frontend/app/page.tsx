@@ -136,12 +136,17 @@ export default function MarketFeedPage() {
   // Sorted markets: ACTIVE first, then PAUSED, then RESOLVED
   // -------------------------------------------------------------------------
 
+  const [archiveExpanded, setArchiveExpanded] = useState(false);
+
   const sortedMarkets = [...(markets ?? [])].sort((a, b) => {
     const order = { ACTIVE: 0, PENDING: 1, PAUSED: 2, RESOLVED: 3, VOIDED: 4 };
     const ao = order[a.status as keyof typeof order] ?? 5;
     const bo = order[b.status as keyof typeof order] ?? 5;
     return ao !== bo ? ao - bo : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
+
+  const liveMarkets = sortedMarkets.filter((m) => ["ACTIVE", "PENDING", "PAUSED"].includes(m.status));
+  const archivedMarkets = sortedMarkets.filter((m) => ["RESOLVED", "VOIDED"].includes(m.status));
 
   // -------------------------------------------------------------------------
   // Filter helpers
@@ -350,7 +355,7 @@ export default function MarketFeedPage() {
         )}
 
         {/* Empty state */}
-        {!isLoading && !error && sortedMarkets.length === 0 && (
+        {!isLoading && !error && liveMarkets.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <div className="w-16 h-16 rounded-full bg-gold-pale flex items-center justify-center">
               <svg className="w-8 h-8 text-gold/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -362,22 +367,26 @@ export default function MarketFeedPage() {
               <p className="font-semibold text-charcoal">
                 {activeEventTag || activeFamilySide
                   ? "No markets match this filter"
+                  : archivedMarkets.length > 0
+                  ? "All markets have been resolved"
                   : "No markets yet"}
               </p>
               <p className="text-sm text-warmGray mt-1">
                 {activeEventTag || activeFamilySide
                   ? "Try a different event or clear the filter."
+                  : archivedMarkets.length > 0
+                  ? "Check the archive below for results."
                   : "Check back when the celebration starts."}
               </p>
             </div>
           </div>
         )}
 
-        {/* Market cards */}
-        {!isLoading && !error && sortedMarkets.length > 0 && (
+        {/* Live market cards */}
+        {!isLoading && !error && liveMarkets.length > 0 && (
           <div className="flex flex-col gap-3 animate-fade-in">
             {/* Section label for active markets */}
-            {sortedMarkets.some((m) => m.status === "ACTIVE") && (
+            {liveMarkets.some((m) => m.status === "ACTIVE") && (
               <div className="flex items-center gap-2 px-1 pt-1">
                 <span className="h-1.5 w-1.5 rounded-full bg-[#B8860B] animate-pulse-gold" />
                 <span className="font-serif text-xs font-medium tracking-[0.2em] uppercase"
@@ -387,13 +396,53 @@ export default function MarketFeedPage() {
               </div>
             )}
 
-            {sortedMarkets.map((market) => (
+            {liveMarkets.map((market) => (
               <MarketCard
                 key={market.id}
                 market={market}
                 livePrices={livePrices[market.id]}
               />
             ))}
+          </div>
+        )}
+
+        {/* Archive section */}
+        {!isLoading && !error && archivedMarkets.length > 0 && (
+          <div className="mt-6">
+            <button
+              onClick={() => setArchiveExpanded((v) => !v)}
+              className="w-full flex items-center justify-between px-1 py-2"
+            >
+              <div className="flex items-center gap-2">
+                <span className="font-serif text-xs font-medium tracking-[0.2em] uppercase"
+                  style={{ color: "rgba(184,134,11,0.70)" }}>
+                  Archive
+                </span>
+                <span className="text-xs text-warmGray">
+                  ({archivedMarkets.length})
+                </span>
+              </div>
+              <svg
+                className={`w-4 h-4 text-warmGray transition-transform ${archiveExpanded ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {archiveExpanded && (
+              <div className="flex flex-col gap-3 mt-2">
+                {archivedMarkets.map((market) => (
+                  <MarketCard
+                    key={market.id}
+                    market={market}
+                    livePrices={livePrices[market.id]}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )}
       </main>
