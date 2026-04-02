@@ -3,13 +3,12 @@
 /**
  * Market Feed — app/page.tsx
  *
- * Lists active markets as cards with real-time price updates via Socket.io.
- * Pull-to-refresh reloads the market list.
- * NEW badge for markets < 5 min old, Low Activity badge for 30+ min stale.
- * Filter tabs by wedding event or family side.
+ * Redesigned for 10+ markets: hero card for the hottest market,
+ * compact card list below, sort pills (Hot, Popular, Newest, Closing Soon).
+ * Pull-to-refresh, real-time price updates, filter tabs by event/family.
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { MarketCard } from "@/components/MarketCard";
 import { SuggestMarketModal } from "@/components/SuggestMarketModal";
 import { api } from "@/lib/api";
@@ -20,6 +19,14 @@ import { EVENT_TAGS, FAMILY_SIDES, type EventTag, type FamilySide } from "@/lib/
 
 type LivePrices = Record<string, Record<string, number>>;
 type FilterMode = "event" | "family";
+type SortMode = "hot" | "popular" | "newest" | "closing";
+
+const SORT_OPTIONS: { key: SortMode; label: string }[] = [
+  { key: "hot", label: "Hot" },
+  { key: "popular", label: "Popular" },
+  { key: "newest", label: "Newest" },
+  { key: "closing", label: "Closing Soon" },
+];
 
 export default function MarketFeedPage() {
   const [livePrices, setLivePrices] = useState<LivePrices>({});
@@ -32,10 +39,11 @@ export default function MarketFeedPage() {
   const [showSuggestModal, setShowSuggestModal] = useState(false);
   const isLoggedIn = typeof window !== "undefined" ? !!getStoredUser() : false;
 
-  // Active filter state
+  // Filter & sort state
   const [filterMode, setFilterMode] = useState<FilterMode>("event");
   const [activeEventTag, setActiveEventTag] = useState<EventTag | null>(null);
   const [activeFamilySide, setActiveFamilySide] = useState<FamilySide | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>("hot");
 
   const refetch = useCallback(async () => {
     try {
@@ -56,9 +64,9 @@ export default function MarketFeedPage() {
     void refetch();
   }, [refetch]);
 
-  // -------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
   // WebSocket: global feed + per-market price subscriptions
-  // -------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
 
   useEffect(() => {
     ensureConnected();
@@ -107,9 +115,9 @@ export default function MarketFeedPage() {
     };
   }, [markets]);
 
-  // -------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
   // Pull-to-refresh
-  // -------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartY.current = e.touches[0]?.clientY ?? 0;
@@ -132,25 +140,59 @@ export default function MarketFeedPage() {
     setPullY(0);
   }, [pullY, refetch]);
 
-  // -------------------------------------------------------------------------
-  // Sorted markets: ACTIVE first, then PAUSED, then RESOLVED
-  // -------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Sorting & grouping
+  // ---------------------------------------------------------------------------
 
   const [archiveExpanded, setArchiveExpanded] = useState(false);
 
-  const sortedMarkets = [...(markets ?? [])].sort((a, b) => {
-    const order = { ACTIVE: 0, PENDING: 1, PAUSED: 2, RESOLVED: 3, VOIDED: 4 };
-    const ao = order[a.status as keyof typeof order] ?? 5;
-    const bo = order[b.status as keyof typeof order] ?? 5;
-    return ao !== bo ? ao - bo : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-  });
+  const allMarkets = markets ?? [];
+  const liveMarkets = allMarkets.filter((m) =>
+    ["ACTIVE", "PENDING", "PAUSED"].includes(m.status)
+  );
+  const archivedMarkets = allMarkets.filter((m) =>
+    ["RESOLVED", "VOIDED"].includes(m.status)
+  );
 
-  const liveMarkets = sortedMarkets.filter((m) => ["ACTIVE", "PENDING", "PAUSED"].includes(m.status));
-  const archivedMarkets = sortedMarkets.filter((m) => ["RESOLVED", "VOIDED"].includes(m.status));
+  // Sort live markets by selected mode
+  const sortedLiveMarkets = useMemo(() => {
+    const items = [...liveMarkets];
+    switch (sortMode) {
+      case "hot":
+        // Score: volume * recency. Higher volume + more recent = hotter
+        return items.sort((a, b) => {
+          const recencyA = a.openedAt ? Date.now() - new Date(a.openedAt).getTime() : Infinity;
+          const recencyB = b.openedAt ? Date.now() - new Date(b.openedAt).getTime() : Infinity;
+          const scoreA = Math.log((a.totalVolume || 0) + 1) + Math.max(0, 10 - recencyA / 3_600_000);
+          const scoreB = Math.log((b.totalVolume || 0) + 1) + Math.max(0, 10 - recencyB / 3_600_000);
+          return scoreB - scoreA;
+        });
+      case "popular":
+        return items.sort((a, b) => (b.uniqueBettorCount ?? 0) - (a.uniqueBettorCount ?? 0));
+      case "newest":
+        return items.sort((a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      case "closing":
+        // Markets with resolvedAt or scheduledOpenAt sooner come first
+        // For now, sort by creation date ascending (oldest first = likely closing soonest)
+        return items.sort((a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+      default:
+        return items;
+    }
+  }, [liveMarkets, sortMode]);
 
-  // -------------------------------------------------------------------------
+  // Hero = first market in hot sort (highest score)
+  const heroMarket = sortedLiveMarkets.length >= 3 ? sortedLiveMarkets[0] : null;
+  const remainingMarkets = heroMarket
+    ? sortedLiveMarkets.slice(1)
+    : sortedLiveMarkets;
+
+  // ---------------------------------------------------------------------------
   // Filter helpers
-  // -------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
 
   function selectEventTag(tag: EventTag) {
     setActiveEventTag((prev) => (prev === tag ? null : tag));
@@ -162,9 +204,9 @@ export default function MarketFeedPage() {
     setActiveEventTag(null);
   }
 
-  // -------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
   // Render
-  // -------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
 
   return (
     <>
@@ -326,14 +368,38 @@ export default function MarketFeedPage() {
       </header>
 
       <main className="max-w-lg mx-auto px-4 py-4 pb-24">
+        {/* Sort pills */}
+        {!isLoading && !error && liveMarkets.length > 0 && (
+          <div className="flex gap-2 mb-4 overflow-x-auto scrollbar-none">
+            {SORT_OPTIONS.map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => setSortMode(opt.key)}
+                className={`shrink-0 rounded-full px-3.5 py-1 text-xs font-medium transition-all duration-200 ${
+                  sortMode === opt.key
+                    ? "bg-charcoal text-white shadow-sm"
+                    : "bg-[#F5F1EB] text-[#6B6156] hover:bg-[#EDE8E0]"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Loading skeleton */}
         {isLoading && (
           <div className="flex flex-col gap-3">
-            {[1, 2, 3].map((n) => (
-              <div key={n} className="rounded-xl border border-[rgba(184,134,11,0.12)] bg-ivory-card p-5 animate-pulse">
-                <div className="h-4 bg-gold-light rounded w-3/4 mb-3" />
-                <div className="h-2 bg-gold-light/60 rounded w-full mb-2" />
-                <div className="h-2 bg-gold-light/60 rounded w-5/6" />
+            {[1, 2, 3, 4, 5].map((n) => (
+              <div key={n} className="rounded-xl border border-[rgba(184,134,11,0.12)] bg-ivory-card p-4 animate-pulse">
+                <div className="flex items-start gap-3">
+                  <div className="flex-1">
+                    <div className="h-4 bg-gold-light rounded w-3/4 mb-2" />
+                    <div className="h-1.5 bg-gold-light/60 rounded w-full mb-2" />
+                    <div className="h-3 bg-gold-light/40 rounded w-1/2" />
+                  </div>
+                  <div className="h-8 w-10 bg-gold-light/60 rounded" />
+                </div>
               </div>
             ))}
           </div>
@@ -382,21 +448,38 @@ export default function MarketFeedPage() {
           </div>
         )}
 
-        {/* Live market cards */}
-        {!isLoading && !error && liveMarkets.length > 0 && (
-          <div className="flex flex-col gap-3 animate-fade-in">
-            {/* Section label for active markets */}
-            {liveMarkets.some((m) => m.status === "ACTIVE") && (
-              <div className="flex items-center gap-2 px-1 pt-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#B8860B] animate-pulse-gold" />
+        {/* Live markets */}
+        {!isLoading && !error && sortedLiveMarkets.length > 0 && (
+          <div className="flex flex-col gap-2.5 animate-fade-in">
+            {/* Section label */}
+            <div className="flex items-center justify-between px-0.5 mb-0.5">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#B8860B]/50 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#B8860B]" />
+                </span>
                 <span className="font-serif text-xs font-medium tracking-[0.2em] uppercase"
                   style={{ color: "rgba(184,134,11,0.70)" }}>
                   Live Markets
                 </span>
               </div>
+              <span className="text-[11px] text-[#8B7355]/50">
+                {sortedLiveMarkets.length} market{sortedLiveMarkets.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+
+            {/* Hero card */}
+            {heroMarket && (
+              <MarketCard
+                key={heroMarket.id}
+                market={heroMarket}
+                livePrices={livePrices[heroMarket.id]}
+                hero
+              />
             )}
 
-            {liveMarkets.map((market) => (
+            {/* Compact cards */}
+            {remainingMarkets.map((market) => (
               <MarketCard
                 key={market.id}
                 market={market}
@@ -433,7 +516,7 @@ export default function MarketFeedPage() {
             </button>
 
             {archiveExpanded && (
-              <div className="flex flex-col gap-3 mt-2">
+              <div className="flex flex-col gap-2.5 mt-2">
                 {archivedMarkets.map((market) => (
                   <MarketCard
                     key={market.id}
