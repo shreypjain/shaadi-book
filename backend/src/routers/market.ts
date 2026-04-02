@@ -34,6 +34,7 @@ import {
   scheduleMarketOpen,
 } from "../services/notificationService.js";
 import { notifyMarketActivity } from "../services/smsNotifier.js";
+import { notifyMarketActivityPush } from "../services/pushNotifier.js";
 import { seedMarket, DEFAULT_SEED_CENTS } from "../services/houseSeeding.js";
 import { prisma } from "../db.js";
 
@@ -277,6 +278,15 @@ export const marketRouter = router({
 
       // Targeted SMS notifications to watchers/holders (fire-and-forget)
       notifyMarketActivity(
+        userId,
+        marketId,
+        buyerName ?? "Someone",
+        result.outcomeLabel,
+        dollarAmountCents / 100
+      );
+
+      // Targeted push notifications to watchers/holders (fire-and-forget)
+      notifyMarketActivityPush(
         userId,
         marketId,
         buyerName ?? "Someone",

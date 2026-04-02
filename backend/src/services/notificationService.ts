@@ -22,6 +22,7 @@ import {
   broadcastMarketNotification,
 } from "../ws/broadcaster.js";
 import { notifyNewMarket as smsSendNewMarket } from "./smsNotifier.js";
+import { notifyNewMarketPush } from "./pushNotifier.js";
 
 // ---------------------------------------------------------------------------
 // Public notification functions
@@ -57,6 +58,9 @@ export async function notifyNewMarket(
 
   // SMS all registered users — fire-and-forget via smsNotifier (rate-limited, non-blocking)
   smsSendNewMarket(market.question);
+
+  // Push notification to all subscribed browsers
+  notifyNewMarketPush(market.question);
 }
 
 /**

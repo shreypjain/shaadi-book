@@ -17,10 +17,12 @@ import { betsRouter } from "./routers/bets.js";
 import { leaderboardRouter } from "./routers/leaderboard.js";
 import { walletRouter } from "./routers/wallet.js";
 import { suggestRouter } from "./routers/suggest.js";
+import { pushRouter } from "./routers/push.js";
 import webhookRouter from "./routes/webhooks.js";
 import smsRouter from "./routes/sms.js";
 import { startIntegrityMonitor } from "./services/hashChainVerifier.js";
 import { startPeriodicNotifications } from "./services/smsNotifier.js";
+import { startPeriodicPushUpdates } from "./services/pushNotifier.js";
 import { startPriceSnapshotJob } from "./services/priceSnapshot.js";
 
 // ---------------------------------------------------------------------------
@@ -100,6 +102,7 @@ const appRouter = router({
   leaderboard: leaderboardRouter,
   wallet: walletRouter,
   suggest: suggestRouter,
+  push: pushRouter,
 });
 
 export type AppRouter = typeof appRouter;
@@ -139,6 +142,10 @@ createWebSocketServer(httpServer)
     if (process.env["ENABLE_SMS_NOTIFICATIONS"] === "true") {
       startPeriodicNotifications(5 * 60 * 60 * 1000); // every 5 hours
     }
+
+    // Start periodic push notification updates (every 5 hours, same cadence as SMS).
+    // Always enabled when VAPID keys are set — no separate env flag needed.
+    startPeriodicPushUpdates(5 * 60 * 60 * 1000);
   })
   .catch((err: unknown) => {
     console.error("[server] Failed to start WebSocket server:", err);
