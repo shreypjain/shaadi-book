@@ -181,6 +181,7 @@ export async function seedMarket(
             outcomeId,
             shares: sharesPerOutcome,
             cost: costPerOutcome,
+            avgPrice: costPerOutcome.div(sharesPerOutcome),
             priceBefore: new Decimal(1 / n),
             priceAfter: new Decimal(1 / n), // Same price — equal seeding
           },
