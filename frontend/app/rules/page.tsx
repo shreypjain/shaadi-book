@@ -62,11 +62,13 @@ export default function RulesPage() {
             <RuleItem
               text={
                 <>
-                  <Highlight>$200 max bet per market (to protect from shovers).</Highlight> You
-                  can sell shares back to the market at the current price — with a{" "}
+                  <Highlight>$200 max per user, per market</Highlight> — that&apos;s your
+                  total spend across all trades in that market combined, not per
+                  individual trade. You can sell shares back at the current market
+                  price (based on live odds) — with a{" "}
                   <Highlight>10% fee on proceeds</Highlight> and a{" "}
-                  <Highlight>30-minute cooldown</Highlight> after purchase. No flipping
-                  immediately after buying.
+                  <Highlight>30-minute cooldown</Highlight> after your last buy. Lock in
+                  gains or cut losses before resolution.
                 </>
               }
             />
@@ -169,6 +171,16 @@ export default function RulesPage() {
               prices harder than later ones as shares get bought up.
             </p>
 
+            <p className="text-sm text-warmGray">
+              Each market is also{" "}
+              <span className="font-semibold text-charcoal">
+                seeded with $20 per outcome by the House
+              </span>{" "}
+              at creation — so prices start balanced and there&apos;s always
+              enough liquidity for your first trade to execute cleanly. You&apos;re
+              not the first one in a cold pool.
+            </p>
+
             {/* Strategy note */}
             <div className="rounded-lg bg-[#1a1a2e] p-4 flex flex-col gap-1.5">
               <p className="text-xs font-semibold text-[#c8a45c] uppercase tracking-wider">
@@ -205,6 +217,24 @@ export default function RulesPage() {
                     . If the pool is thin, you might get less than $1.00.
                     If few people picked your side, we'll have to start calculating MOIC.
                     Losing shares pay $0.00.
+                  </>
+                }
+              />
+              <RuleItem
+                text={
+                  <>
+                    <Highlight>If nobody bet on the winning outcome</Highlight>,
+                    everyone gets a full refund — no one loses money on a
+                    market that had no takers.
+                  </>
+                }
+              />
+              <RuleItem
+                text={
+                  <>
+                    Any surplus left in the pool after paying out winners{" "}
+                    <Highlight>stays with the House</Highlight>. The House never
+                    loses money — it&apos;s what keeps the whole system solvent.
                   </>
                 }
               />
@@ -271,10 +301,30 @@ export default function RulesPage() {
               }
             />
             <RuleItem
-              text="Markets are resolved by admin decree. No appeals, no arbitration, no crying (unless you bet on it)."
+              text={
+                <>
+                  A market needs{" "}
+                  <Highlight>at least 5 different people</Highlight> to have
+                  placed bets before it can be resolved. Thin markets with one
+                  whale don&apos;t pay out.
+                </>
+              }
             />
             <RuleItem
-              text="Have fun. Feel free to game the system to win back your Air India flight ticket. This is a wedding, not a hedge fund."
+              text={
+                <>
+                  Markets have four states:{" "}
+                  <Highlight>Active</Highlight> (open for trading),{" "}
+                  <Highlight>Paused</Highlight> (temporarily closed by admin),{" "}
+                  <Highlight>Resolved</Highlight> (winner picked, payouts
+                  distributed), or{" "}
+                  <Highlight>Voided</Highlight> (cancelled — everyone gets a
+                  full refund).
+                </>
+              }
+            />
+            <RuleItem
+              text="Markets are resolved by admin decree. No appeals, no arbitration, no crying (unless you bet on it)."
             />
             <RuleItem
               text={
@@ -285,6 +335,9 @@ export default function RulesPage() {
                   will take the other side.
                 </>
               }
+            />
+            <RuleItem
+              text="Have fun. Feel free to game the system to win back your Air India flight ticket. This is a wedding, not a hedge fund."
             />
             <RuleItem
               text="This is for charity and entertainment. Winning feels like a music video. Losing still helped a good cause."
