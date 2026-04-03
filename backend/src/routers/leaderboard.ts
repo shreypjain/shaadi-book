@@ -59,6 +59,7 @@ export const leaderboardRouter = router({
       LEFT JOIN payout_sums ps ON ps.user_id = u.id
       LEFT JOIN cost_sums   cs ON cs.user_id = u.id
       WHERE u.phone != ${HOUSE_PHONE}
+        AND u.phone NOT LIKE '+100000%'
         AND (
           COALESCE(ps.total_payouts, 0) > 0
           OR COALESCE(cs.total_costs, 0) > 0
