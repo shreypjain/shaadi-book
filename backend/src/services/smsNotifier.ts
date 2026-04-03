@@ -34,10 +34,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Filter out fake/test phone numbers that will always fail. */
-function isRealPhone(phone: string): boolean {
-  // Filter +1000000000X pattern (test seeds) and obviously invalid numbers
-  return !phone.startsWith("+100000");
+/** Filter out fake/test phone numbers and non-US numbers. */
+function isSendablePhone(phone: string): boolean {
+  // Filter +1000000000X pattern (test seeds)
+  if (phone.startsWith("+100000")) return false;
+  // Only send to US numbers (+1) — international SMS is too expensive
+  if (!phone.startsWith("+1")) return false;
+  return true;
 }
 
 /**
@@ -102,17 +105,17 @@ export async function sendSmsToAll(message: string): Promise<void> {
   }
 
   // Filter out fake/test phone numbers
-  const users = allUsers.filter((u) => isRealPhone(u.phone));
+  const users = allUsers.filter((u) => isSendablePhone(u.phone));
   const skipped = allUsers.length - users.length;
 
   if (users.length === 0) {
-    console.log("[smsNotifier] No real registered users — nothing to send");
+    console.log("[smsNotifier] No sendable US numbers — nothing to send");
     return;
   }
 
   console.log(
     `[smsNotifier] Starting SMS batch to ${users.length} users` +
-      (skipped > 0 ? ` (${skipped} fake numbers skipped)` : "")
+      (skipped > 0 ? ` (${skipped} non-US/fake numbers skipped)` : "")
   );
 
   const client = twilio(accountSid, authToken);
@@ -327,14 +330,14 @@ export function notifyMarketActivity(
         where: { id: { in: recipientIds } },
         select: { phone: true },
       });
-      recipients = allRecipients.filter((r) => isRealPhone(r.phone));
+      recipients = allRecipients.filter((r) => isSendablePhone(r.phone));
     } catch (err) {
       console.error("[smsNotifier] notifyMarketActivity: failed to fetch phones:", err);
       return;
     }
 
     if (recipients.length === 0) {
-      console.log("[smsNotifier] notifyMarketActivity: no real recipients after filtering — skipping");
+      console.log("[smsNotifier] notifyMarketActivity: no US recipients after filtering — skipping");
       return;
     }
 
