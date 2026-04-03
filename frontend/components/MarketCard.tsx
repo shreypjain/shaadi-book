@@ -18,6 +18,7 @@ import {
   timeSince,
   formatVolume,
   isNewMarket,
+  outcomeColor,
 } from "@/lib/utils";
 import { api } from "@/lib/api";
 import type { MarketWithPrices } from "@/lib/api-types";
@@ -210,29 +211,27 @@ export function MarketCard({ market, livePrices, hero = false }: MarketCardProps
             </div>
           )}
 
-          {/* Multi-outcome: show top 2 outcomes inline */}
+          {/* Multi-outcome: show ALL outcomes inline */}
           {!isBinary && (
             <div className="mb-2 space-y-1">
-              {sorted.slice(0, 2).map((o) => (
-                <div key={o.id} className="flex items-center gap-2">
-                  <span className="text-xs text-charcoal truncate w-20">{o.label}</span>
-                  <div className="flex-1 h-1 rounded-full bg-[#EDE8E0] overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${Math.max(2, o.displayPrice)}%`,
-                        background: "linear-gradient(90deg, #B8860B 0%, #D4A847 100%)",
-                      }}
-                    />
+              {sorted.map((o) => {
+                const origIdx = outcomesWithPrices.findIndex((op) => op.id === o.id);
+                const color = outcomeColor(origIdx);
+                return (
+                  <div key={o.id} className="flex items-center gap-2">
+                    <span className="text-xs text-charcoal truncate w-20">{o.label}</span>
+                    <div className="flex-1 h-1 rounded-full bg-[#EDE8E0] overflow-hidden">
+                      <div
+                        className={cn("h-full rounded-full transition-all duration-500", color.bar)}
+                        style={{ width: `${Math.max(2, o.displayPrice)}%` }}
+                      />
+                    </div>
+                    <span className="text-xs font-semibold tabular-nums text-[#B8860B] w-8 text-right">
+                      {Math.round(o.displayPrice)}&#162;
+                    </span>
                   </div>
-                  <span className="text-xs font-semibold tabular-nums text-[#B8860B] w-8 text-right">
-                    {Math.round(o.displayPrice)}&#162;
-                  </span>
-                </div>
-              ))}
-              {sorted.length > 2 && (
-                <span className="text-[10px] text-[#8B7355]/50">+{sorted.length - 2} more</span>
-              )}
+                );
+              })}
             </div>
           )}
 
