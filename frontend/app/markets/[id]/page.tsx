@@ -337,6 +337,8 @@ export default function MarketDetailPage() {
   const openedAt = market.openedAt ? new Date(market.openedAt) : null;
   const isActive = market.status === "ACTIVE";
   const isResolved = market.status === "RESOLVED";
+  const isPending = market.status === "PENDING";
+  const scheduledAt = market.scheduledOpenAt ? new Date(market.scheduledOpenAt) : null;
   const winningOutcomeId = market.winningOutcomeId;
 
   return (
@@ -360,6 +362,11 @@ export default function MarketDetailPage() {
             <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               Live
+            </span>
+          )}
+          {isPending && (
+            <span className="text-xs font-semibold text-[#B8860B] rounded-full bg-[#FFF8E7] px-2 py-0.5">
+              Coming Soon
             </span>
           )}
           {isResolved && (
@@ -531,6 +538,29 @@ export default function MarketDetailPage() {
           />
         </div>
 
+        {/* Pending market banner */}
+        {isPending && (
+          <div className="rounded-2xl bg-[#FFF8E7] border border-[#B8860B]/15 px-6 py-5 shadow-[0_2px_16px_rgba(139,109,71,0.06)]">
+            <div className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-[#B8860B] flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <p className="text-sm font-semibold text-[#8B7355]">
+                  {scheduledAt
+                    ? `Betting opens ${scheduledAt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} at ${scheduledAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`
+                    : "This market hasn\u2019t opened yet"}
+                </p>
+                <p className="text-xs text-[#8B7355]/70 mt-1">
+                  {scheduledAt
+                    ? "You\u2019ll be able to place bets once the market goes live. Check back then!"
+                    : "The host will open this market soon. Stay tuned!"}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Buy form */}
         {isActive && (
           <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-[rgba(184,134,11,0.08)] px-6 py-5 shadow-[0_2px_16px_rgba(139,109,71,0.06)]">
@@ -693,17 +723,29 @@ export default function MarketDetailPage() {
                           {initials}
                         </div>
 
-                        {/* Name + outcome pill + trade count */}
+                        {/* Name + outcome pills + trade count */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-xs font-semibold text-[#5a3e1b] truncate max-w-[90px]">
                               {pos.userName}
                             </span>
-                            <span
-                              className={`text-xs font-semibold rounded-full px-2 py-0.5 ${colors.light} ${colors.text}`}
-                            >
-                              {pos.dominantOutcomeLabel}
-                            </span>
+                            {Object.entries(pos.netSharesByOutcome)
+                              .filter(([, { shares }]) => shares > 0)
+                              .sort(([, a], [, b]) => b.shares - a.shares)
+                              .map(([outcomeId, { shares, label }]) => {
+                                const oIdx = market.outcomes.findIndex(
+                                  (o: { id: string }) => o.id === outcomeId
+                                );
+                                const oColors = outcomeColor(oIdx >= 0 ? oIdx : 0);
+                                return (
+                                  <span
+                                    key={outcomeId}
+                                    className={`text-xs font-semibold rounded-full px-2 py-0.5 ${oColors.light} ${oColors.text}`}
+                                  >
+                                    {label} {shares.toFixed(1)}
+                                  </span>
+                                );
+                              })}
                             <span className="text-xs text-warmGray">
                               ({pos.tradeCount}{" "}
                               {pos.tradeCount === 1 ? "trade" : "trades"})
