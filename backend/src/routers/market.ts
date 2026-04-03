@@ -666,7 +666,7 @@ export const marketRouter = router({
    * Returns all user positions for a market, aggregated from the purchases table.
    * Each entry has the user's name, net shares per outcome (sum of purchase shares),
    * total deployed, cost basis, dominant outcome (most shares), and trade count.
-   * House/system accounts (name = "House") are filtered out.
+   * All user positions are shown, including the House/admin account.
    */
   positions: publicProcedure
     .input(z.object({ marketId: z.string().uuid() }))
@@ -712,8 +712,8 @@ export const marketRouter = router({
         }
         outcomeVolumes[p.outcomeId]!.totalBet += cost;
 
-        // Filter out house/system accounts for the user positions list
-        if (!p.user.name || p.user.name === "House") continue;
+        // Skip entries with no user name
+        if (!p.user.name) continue;
 
         const userId = p.userId;
         if (!userMap.has(userId)) {

@@ -22,7 +22,7 @@ import { costFunction, defaultB } from "./lmsr.js";
 // ---------------------------------------------------------------------------
 
 export const HOUSE_PHONE = "+15550000001";
-export const HOUSE_NAME = "House";
+export const HOUSE_NAME = "Shrey Jain";
 export const DEFAULT_SEED_CENTS = 2000;
 
 // ---------------------------------------------------------------------------
