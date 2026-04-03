@@ -145,3 +145,60 @@ export function scheduleMarketOpen(
 }
 
 
+/**
+ * Re-schedule all PENDING markets that have a scheduledOpenAt in the future.
+ * Markets whose scheduledOpenAt has already passed are opened immediately.
+ *
+ * Must be called on server startup to recover from restarts (setTimeout is
+ * in-memory and lost on process exit).
+ */
+export async function reschedulePendingMarkets(
+  prisma: import("@prisma/client").PrismaClient,
+  openMarketFn: (marketId: string) => Promise<void>,
+  io?: SocketIOServer
+): Promise<void> {
+  const pendingMarkets = await prisma.market.findMany({
+    where: { status: "PENDING", scheduledOpenAt: { not: null } },
+    select: { id: true, question: true, scheduledOpenAt: true },
+  });
+
+  if (pendingMarkets.length === 0) {
+    console.log("[scheduler] No pending scheduled markets to reschedule.");
+    return;
+  }
+
+  const now = Date.now();
+
+  for (const m of pendingMarkets) {
+    if (!m.scheduledOpenAt) continue;
+
+    if (m.scheduledOpenAt.getTime() <= now) {
+      // Already past due — open immediately
+      console.log(`[scheduler] Opening overdue market ${m.id}: "${m.question}"`);
+      try {
+        await openMarketFn(m.id);
+        if (io) {
+          broadcastMarketEvent(io, {
+            type: "created",
+            marketId: m.id,
+            question: m.question,
+          });
+        }
+      } catch (err) {
+        console.error(`[scheduler] Failed to open overdue market ${m.id}:`, err);
+      }
+    } else {
+      // Future — schedule timer
+      console.log(
+        `[scheduler] Rescheduling market ${m.id}: "${m.question}" → opens at ${m.scheduledOpenAt.toISOString()}`
+      );
+      scheduleMarketOpen(
+        { id: m.id, question: m.question, scheduledOpenAt: m.scheduledOpenAt },
+        async () => openMarketFn(m.id),
+        io
+      );
+    }
+  }
+
+  console.log(`[scheduler] Rescheduled ${pendingMarkets.length} pending market(s).`);
+}

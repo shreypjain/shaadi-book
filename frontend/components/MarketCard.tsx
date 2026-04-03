@@ -61,6 +61,8 @@ export function MarketCard({ market, livePrices, hero = false }: MarketCardProps
   const showNew = isNewMarket(openedAt);
   const isResolved = market.status === "RESOLVED";
   const isPaused = market.status === "PAUSED";
+  const isPending = market.status === "PENDING";
+  const scheduledAt = market.scheduledOpenAt ? new Date(market.scheduledOpenAt) : null;
 
   // Find the leading outcome (highest price) for prominent display
   const outcomesWithPrices = market.outcomes.map((o) => ({
@@ -74,11 +76,28 @@ export function MarketCard({ market, livePrices, hero = false }: MarketCardProps
   // For binary markets, show both sides compactly
   const isBinary = market.outcomes.length === 2;
 
+  // Format scheduled open time for pending markets
+  function formatScheduledTime(d: Date): string {
+    const now = new Date();
+    const diffMs = d.getTime() - now.getTime();
+    if (diffMs <= 0) return "Opening soon";
+    const diffMin = Math.floor(diffMs / 60_000);
+    if (diffMin < 60) return `Opens in ${diffMin}m`;
+    const diffHrs = Math.floor(diffMin / 60);
+    if (diffHrs < 24) return `Opens in ${diffHrs}h`;
+    return `Opens ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`;
+  }
+
   // Status badge
   const statusBadge = isResolved
     ? { label: "Resolved", style: "bg-[#F0EDE8] text-[#8B7355]" }
     : isPaused
     ? { label: "Paused", style: "bg-[#F0EDE8] text-[#8B7355]" }
+    : isPending
+    ? {
+        label: scheduledAt ? formatScheduledTime(scheduledAt) : "Coming Soon",
+        style: "bg-[#FFF8E7] text-[#B8860B] border-[#B8860B]/20",
+      }
     : showNew
     ? { label: "New", style: "bg-[#FFF8E7] text-[#B8860B] border-[#B8860B]/20" }
     : null;

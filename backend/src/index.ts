@@ -24,6 +24,9 @@ import { startIntegrityMonitor } from "./services/hashChainVerifier.js";
 import { startPeriodicNotifications } from "./services/smsNotifier.js";
 import { startPeriodicPushUpdates } from "./services/pushNotifier.js";
 import { startPriceSnapshotJob } from "./services/priceSnapshot.js";
+import { reschedulePendingMarkets } from "./services/notificationService.js";
+import { openMarket } from "./services/marketService.js";
+import { prisma } from "./db.js";
 
 // ---------------------------------------------------------------------------
 // App
@@ -124,7 +127,7 @@ const httpServer = http.createServer(app);
 
 // createWebSocketServer is async (Redis adapter setup)
 createWebSocketServer(httpServer)
-  .then(() => {
+  .then((io) => {
     httpServer.listen(PORT, "0.0.0.0", () => {
       console.log(`[server] Backend running on http://localhost:${PORT}`);
       console.log(`[server] Health: http://localhost:${PORT}/health`);
@@ -146,6 +149,11 @@ createWebSocketServer(httpServer)
     // Start periodic push notification updates (every 5 hours, same cadence as SMS).
     // Always enabled when VAPID keys are set — no separate env flag needed.
     startPeriodicPushUpdates(5 * 60 * 60 * 1000);
+
+    // Reschedule pending markets that have a scheduledOpenAt (survives restarts).
+    reschedulePendingMarkets(prisma, openMarket, io).catch((err: unknown) => {
+      console.error("[server] Failed to reschedule pending markets:", err);
+    });
   })
   .catch((err: unknown) => {
     console.error("[server] Failed to start WebSocket server:", err);
