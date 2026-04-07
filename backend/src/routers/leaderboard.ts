@@ -38,7 +38,7 @@ export const leaderboardRouter = router({
           t.user_id,
           COALESCE(SUM(t.amount), 0) AS total_payouts
         FROM transactions t
-        WHERE t.type = 'PAYOUT'
+        WHERE t.type IN ('PAYOUT', 'REFUND')
           AND t.credit_account LIKE 'user:%'
         GROUP BY t.user_id
       ),
