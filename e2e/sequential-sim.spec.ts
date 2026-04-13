@@ -54,10 +54,10 @@ test.describe.serial("Sequential 10-User Simulation", () => {
 
     // Get admin
     const adminId = execSync(
-      `psql -t -A postgres://shreyjain@localhost:5432/shaadi_book -c "SELECT id FROM users WHERE phone = '+15550000001' LIMIT 1"`,
+      `psql -t -A postgres://localhost:5432/shaadi_book -c "SELECT id FROM users WHERE phone = '+15550000000' LIMIT 1"`,
       { encoding: "utf-8" }
     ).trim();
-    adminToken = jwt.sign({ userId: adminId, role: "ADMIN", phone: "+15550000001" }, JWT_SECRET, { expiresIn: "1h" });
+    adminToken = jwt.sign({ userId: adminId, role: "ADMIN", phone: "+15550000000" }, JWT_SECRET, { expiresIn: "1h" });
 
     // Create 10 users + deposits with proper hash chain
     let prevHash = "0".repeat(64);
@@ -65,7 +65,7 @@ test.describe.serial("Sequential 10-User Simulation", () => {
       const userId = `c0000000-0000-0000-0000-00000000000${i}`;
       const phone = `+1555100000${i}`;
       execSync(
-        `psql -t -A postgres://shreyjain@localhost:5432/shaadi_book -c "INSERT INTO users (id, name, phone, country, role, created_at) VALUES ('${userId}', '${USERS[i]}', '${phone}', 'US', 'GUEST', NOW()) ON CONFLICT (phone) DO NOTHING"`,
+        `psql -t -A postgres://localhost:5432/shaadi_book -c "INSERT INTO users (id, name, phone, country, role, created_at) VALUES ('${userId}', '${USERS[i]}', '${phone}', 'US', 'GUEST', NOW()) ON CONFLICT (phone) DO NOTHING"`,
         { encoding: "utf-8" }
       );
 
@@ -73,7 +73,7 @@ test.describe.serial("Sequential 10-User Simulation", () => {
       const now = new Date().toISOString();
       const txHash = crypto.createHash("sha256").update(`${prevHash}|DEPOSIT|50.000000|${userId}|${now}`).digest("hex");
       execSync(
-        `psql -t -A postgres://shreyjain@localhost:5432/shaadi_book -c "INSERT INTO transactions (id, user_id, debit_account, credit_account, type, amount, prev_hash, tx_hash, stripe_session_id, created_at) VALUES (gen_random_uuid(), '${userId}', 'stripe', 'user:${userId}', 'DEPOSIT', 50.000000, '${prevHash}', '${txHash}', 'seq_${i}', '${now}')"`,
+        `psql -t -A postgres://localhost:5432/shaadi_book -c "INSERT INTO transactions (id, user_id, debit_account, credit_account, type, amount, prev_hash, tx_hash, stripe_session_id, created_at) VALUES (gen_random_uuid(), '${userId}', 'stripe', 'user:${userId}', 'DEPOSIT', 50.000000, '${prevHash}', '${txHash}', 'seq_${i}', '${now}')"`,
         { encoding: "utf-8" }
       );
       prevHash = txHash;

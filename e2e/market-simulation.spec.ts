@@ -66,14 +66,14 @@ test.describe.serial("Market Simulation with 10 Users", () => {
 
     // Find existing admin user (created via real OTP login)
     const adminId = execSync(
-      `psql -t -A postgres://shreyjain@localhost:5432/shaadi_book -c "SELECT id FROM users WHERE phone = '+15550000001' LIMIT 1"`,
+      `psql -t -A postgres://localhost:5432/shaadi_book -c "SELECT id FROM users WHERE phone = '+15550000000' LIMIT 1"`,
       { encoding: "utf-8" }
     ).trim();
 
     if (!adminId) {
       // Create admin if doesn't exist
       execSync(
-        `psql -t -A postgres://shreyjain@localhost:5432/shaadi_book -c "INSERT INTO users (id, name, phone, country, role, created_at) VALUES (gen_random_uuid(), 'Shrey Admin', '+15550000001', 'US', 'ADMIN', NOW()) RETURNING id"`,
+        `psql -t -A postgres://localhost:5432/shaadi_book -c "INSERT INTO users (id, name, phone, country, role, created_at) VALUES (gen_random_uuid(), 'Test Admin', '+15550000000', 'US', 'ADMIN', NOW()) RETURNING id"`,
         { encoding: "utf-8" }
       );
     }
@@ -81,7 +81,7 @@ test.describe.serial("Market Simulation with 10 Users", () => {
     // Sign admin JWT
     const jwt = require("jsonwebtoken");
     adminToken = jwt.sign(
-      { userId: adminId, role: "ADMIN", phone: "+15550000001" },
+      { userId: adminId, role: "ADMIN", phone: "+15550000000" },
       JWT_SECRET,
       { expiresIn: "24h" }
     );
@@ -98,7 +98,7 @@ test.describe.serial("Market Simulation with 10 Users", () => {
         ON CONFLICT (phone) DO NOTHING;
       `;
       execSync(
-        `psql -t -A postgres://shreyjain@localhost:5432/shaadi_book -c "${userInsert.replace(/\n/g, " ")}"`,
+        `psql -t -A postgres://localhost:5432/shaadi_book -c "${userInsert.replace(/\n/g, " ")}"`,
         { encoding: "utf-8" }
       );
 
@@ -123,7 +123,7 @@ test.describe.serial("Market Simulation with 10 Users", () => {
     for (const user of userTokens) {
       // Get last hash
       const lastHashResult = execSync(
-        `psql -t -A postgres://shreyjain@localhost:5432/shaadi_book -c "SELECT COALESCE((SELECT tx_hash FROM transactions ORDER BY created_at DESC LIMIT 1), '${("0").repeat(64)}')"`,
+        `psql -t -A postgres://localhost:5432/shaadi_book -c "SELECT COALESCE((SELECT tx_hash FROM transactions ORDER BY created_at DESC LIMIT 1), '${("0").repeat(64)}')"`,
         { encoding: "utf-8" }
       ).trim();
 
@@ -149,7 +149,7 @@ test.describe.serial("Market Simulation with 10 Users", () => {
         );
       `;
       execSync(
-        `psql -t -A postgres://shreyjain@localhost:5432/shaadi_book -c "${depositInsert.replace(/\n/g, " ")}"`,
+        `psql -t -A postgres://localhost:5432/shaadi_book -c "${depositInsert.replace(/\n/g, " ")}"`,
         { encoding: "utf-8" }
       );
     }

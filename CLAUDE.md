@@ -10,7 +10,7 @@ Live prediction market web app for Parsh & Spoorthi's wedding in Udaipur. Guests
 - Real-time: Socket.io (WebSocket) with Redis adapter
 - Auth: Custom OTP via Twilio Verify (phone-based, supports +1 US and +91 IN)
 - Payments: Stripe (ACH preferred, card fallback, USD)
-- Hosting: DigitalOcean droplet (REDACTED_DROPLET_IP) — Docker Compose with Caddy + Next.js + Express + Postgres + Redis
+- Hosting: DigitalOcean droplet — Docker Compose with Caddy + Next.js + Express + Postgres + Redis
 - Domain: markets.parshandspoorthi.com (SSL via Caddy/Let's Encrypt)
 - CI/CD: GitHub Actions → SSH deploy to droplet on push to main
 
@@ -32,9 +32,9 @@ Live prediction market web app for Parsh & Spoorthi's wedding in Udaipur. Guests
 
 ## Deployment & Operations
 - Production: `docker compose -f docker-compose.prod.yml` on DO droplet
-- SSH: `ssh -i ~/.ssh/shaadi_droplet root@REDACTED_DROPLET_IP`
+- SSH: `ssh -i ~/.ssh/shaadi_droplet root@<DROPLET_IP>`
 - Deploy: push to main → GitHub Actions auto-deploys, or manual: `git pull && docker compose build && up -d`
-- Env: `.env` on droplet only (never committed). Contains Stripe live keys, Twilio, JWT secret.
+- Env: `.env` on droplet only (never committed). See env.example for required variables.
 - Migrations: `docker compose exec -T api npx prisma migrate deploy`
 - Hash chain fixes: use `/tmp/fix-chain.mjs` script via `docker cp` + `docker exec`
 

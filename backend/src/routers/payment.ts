@@ -18,8 +18,7 @@ import { z } from "zod";
 import { router, protectedProcedure, publicProcedure } from "../trpc.js";
 import { createPaymentIntent } from "../services/stripe.js";
 
-const STRIPE_PUBLISHABLE_KEY =
-  process.env["STRIPE_PUBLISHABLE_KEY"] ?? "REDACTED_STRIPE_PUBLISHABLE_KEY";
+const STRIPE_PUBLISHABLE_KEY = process.env["STRIPE_PUBLISHABLE_KEY"] ?? "";
 
 export const paymentRouter = router({
   /**

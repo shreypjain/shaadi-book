@@ -1,7 +1,7 @@
 # Shaadi Book — PRD & Technical Spec
 ### Live Prediction Market for Parsh & Spoorthi's Wedding · Udaipur
 
-**Author:** Shrey Jain
+**Author:** Shaadi Book Contributors
 **Version:** 0.1 · March 2026
 
 ---
@@ -19,7 +19,7 @@ Shaadi Book is a mobile-first web application that runs a live prediction market
 | Role | Description | Auth |
 |------|-------------|------|
 | **Guest** | Wedding attendee. Browses markets, deposits credits, places bets, withdraws winnings. | Name + phone → OTP (supports +91 IN and +1 US numbers) |
-| **Admin** | Shrey or Parsh. Creates/resolves markets, manages questions, monitors activity. | Same OTP flow + admin flag on account (whitelisted phone numbers) |
+| **Admin** | the admin or Parsh. Creates/resolves markets, manages questions, monitors activity. | Same OTP flow + admin flag on account (whitelisted phone numbers) |
 
 ---
 
@@ -58,7 +58,7 @@ Shaadi Book is a mobile-first web application that runs a live prediction market
 ### 3.5 Cash-Out
 1. Guest navigates to "Wallet" → taps "Withdraw."
 2. Enters Venmo handle or Zelle email/phone.
-3. Shrey sends payout manually from his Venmo/Zelle and marks complete in admin panel.
+3. the admin sends payout manually from his Venmo/Zelle and marks complete in admin panel.
 4. All payouts batched post-event. Admin dashboard shows all pending and completed withdrawals.
 
 ---
@@ -74,7 +74,7 @@ Shaadi Book is a mobile-first web application that runs a live prediction market
 
 ### 4.2 Automated Market Maker — LMSR
 
-The system uses a **Logarithmic Market Scoring Rule (LMSR)**, the same mechanism used by early prediction markets. There is no order book. The house (Shrey) effectively takes the other side of every trade via a mathematical pricing function.
+The system uses a **Logarithmic Market Scoring Rule (LMSR)**, the same mechanism used by early prediction markets. There is no order book. The house (the admin) effectively takes the other side of every trade via a mathematical pricing function.
 
 **How it works:**
 
@@ -215,8 +215,8 @@ No limit orders, no order types, no cancellation, no selling. Just buy and hold.
 | **Database** | PostgreSQL | ACID transactions critical for AMM state updates and balance management. |
 | **Real-time** | WebSockets (via Socket.io or native ws) | Push price updates, purchase events, market resolutions to all clients. |
 | **SMS Gateway** | Twilio | OTP delivery (IN + US), admin SMS commands for market creation/resolution. |
-| **Payments In** | Stripe (Apple Pay + credit card, all guests, USD only) | Webhook-driven deposits. Funds settle to Shrey's US bank account. |
-| **Payments Out** | Manual Venmo/Zelle from Shrey | All payouts manual post-event. |
+| **Payments In** | Stripe (Apple Pay + credit card, all guests, USD only) | Webhook-driven deposits. Funds settle to the organizer's bank account. |
+| **Payments Out** | Manual Venmo/Zelle from the admin | All payouts manual post-event. |
 | **Hosting** | Vercel (frontend) + Railway or Render (backend + DB) | Simple deployment, auto-scaling, managed Postgres. |
 | **Auth** | Custom OTP flow via Twilio Verify | No third-party auth provider needed; phone number is the identity. |
 
@@ -362,11 +362,11 @@ Debounce price updates to max 2/sec to avoid flooding.
 
 ## 7. Payment Flow Detail
 
-### 7.1 Escrow Model — Shrey's US Bank Account
+### 7.1 Escrow Model — the admin's US Bank Account
 
-All money flows through Shrey's US bank account via Stripe as the sole payment processor. There is no Indian bank account. All transactions are denominated in USD. Indian guests pay via credit card or Apple Pay in USD — they see a ₹93 = $1 reference rate for convenience, but the charge is in dollars.
+All money flows through the organizer's bank account via Stripe as the sole payment processor. There is no Indian bank account. All transactions are denominated in USD. Indian guests pay via credit card or Apple Pay in USD — they see a ₹93 = $1 reference rate for convenience, but the charge is in dollars.
 
-**How it works:** Stripe collects all guest deposits (Apple Pay + credit card) and settles funds into Shrey's connected US bank account. Shrey's bank account is the escrow. Payouts to winners are sent manually by Shrey via Venmo or Zelle after market resolution. The immutable ledger in Postgres (§7.4) is the source of truth for who is owed what.
+**How it works:** Stripe collects all guest deposits (Apple Pay + credit card) and settles funds into the organizer's connected US bank account. the organizer's bank account is the escrow. Payouts to winners are sent manually by the admin via Venmo or Zelle after market resolution. The immutable ledger in Postgres (§7.4) is the source of truth for who is owed what.
 
 **Invariant:** At any point in time, the sum of all user balances in the ledger must equal the total deposits received minus total withdrawals paid out. The system enforces this with a reconciliation check that runs on every transaction commit and blocks any operation that would break the invariant.
 
@@ -380,31 +380,31 @@ Guest taps "Add Credits" → selects amount ($10, $25, $50 presets or custom)
 - Stripe Checkout Session with Apple Pay and credit card support.
 - Payment intent created server-side, confirmed client-side.
 - `payment_intent.succeeded` webhook triggers ledger credit.
-- Stripe settles to Shrey's US bank account on a manual payout schedule (funds held up to 90 days via `transfer_schedule.interval = manual`).
+- Stripe settles to the organizer's bank account on a manual payout schedule (funds held up to 90 days via `transfer_schedule.interval = manual`).
 - Processing fee: ~2.9% + $0.30 per transaction.
 - Indian guests' banks handle the INR→USD conversion at their card network's rate. The app displays a ₹93 ≈ $1 reference so guests know roughly what they're spending in rupees, but the actual charge is in USD.
 
 ### 7.3 Withdrawals & Payouts
 ```
 Guest taps "Withdraw" → enters amount + Venmo handle or Zelle email/phone
-  → Shrey sends from his Venmo/Zelle → marks complete in admin panel
+  → the admin sends from his Venmo/Zelle → marks complete in admin panel
 ```
 
 **Payout flow on market resolution:**
 1. Market resolves → system calculates winnings per user.
 2. Full winnings credited to user's in-app balance (no in-app deduction).
 3. User requests withdrawal → provides Venmo handle or Zelle email/phone.
-4. Shrey sends payout manually from his Venmo/Zelle and marks the withdrawal complete in admin panel.
-5. Shrey separately requests 10% charity contribution via Venmo (external, post-wedding).
-6. Ledger records the withdrawal with Shrey's confirmation timestamp.
+4. the admin sends payout manually from his Venmo/Zelle and marks the withdrawal complete in admin panel.
+5. the admin separately requests 10% charity contribution via Venmo (external, post-wedding).
+6. Ledger records the withdrawal with the admin's confirmation timestamp.
 
-All payouts batched post-event — Shrey settles all withdrawals after the wedding.
+All payouts batched post-event — the admin settles all withdrawals after the wedding.
 
 **Critical rule:** The system will never allow a withdrawal that would cause total payouts to exceed total deposits received. The app ledger balance is the ceiling — no IOUs.
 
 ### 7.4 Immutable Ledger Guarantees
 
-Because all money sits in Shrey's bank account, the ledger must be bulletproof. Corruption = Shrey loses real money. The following safeguards are non-negotiable:
+Because all money sits in the organizer's bank account, the ledger must be bulletproof. Corruption = the admin loses real money. The following safeguards are non-negotiable:
 
 **Append-only transaction log:**
 - The `transactions` table is INSERT-only. No UPDATE, no DELETE — ever.
@@ -443,7 +443,7 @@ This check runs inside every transaction that modifies a balance. If it fails, t
 **Example:** Guest holds 10 shares of winning outcome at avg cost $0.40.
 - Gross payout: 10 × $1.00 = $10.00
 - Full $10.00 credited to balance in-app.
-- Post-wedding, Shrey requests 10% (≈ $1.00) via Venmo for charity.
+- Post-wedding, the admin requests 10% (≈ $1.00) via Venmo for charity.
 - Guest's net P&L: $10.00 - $4.00 (cost basis) - $1.00 (charity) = +$5.00
 
 **Charity is not tracked in the ledger.** No `CHARITY_FEE` transactions are created. The reconciliation invariant is simply:
@@ -520,7 +520,7 @@ Leaderboard is public and updates in real-time as markets resolve. Top 3 get bra
 
 | # | Question | Impact |
 |---|----------|--------|
-| 1 | House pool size — need to cover worst-case LMSR exposure. ~$70 per binary market, ~$120 per 5-way. If running 10 markets simultaneously, need $700–$1200 seed. | Shrey's upfront capital |
+| 1 | House pool size — need to cover worst-case LMSR exposure. ~$70 per binary market, ~$120 per 5-way. If running 10 markets simultaneously, need $700–$1200 seed. | the admin's upfront capital |
 | 2 | Post-wedding: kill the app or keep it for future events? | Infra decisions |
 | 3 | Which charity will Parsh & Spoorthi choose for the 10% donation? | Post-event Venmo request |
 
@@ -632,7 +632,7 @@ TWILIO_VERIFY_SERVICE_SID=      # Twilio Verify service for OTP
 TWILIO_PHONE_NUMBER=            # For SMS notifications + admin commands
 
 # Payments
-STRIPE_SECRET_KEY=              # Stripe account (connected to Shrey's US bank)
+STRIPE_SECRET_KEY=              # Stripe account (connected to the organizer's bank)
 STRIPE_WEBHOOK_SECRET=          # Stripe webhook signing secret
 
 # Database

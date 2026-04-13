@@ -29,7 +29,7 @@ const VAPID_PRIVATE = process.env["VAPID_PRIVATE_KEY"] ?? "";
 
 if (VAPID_PUBLIC && VAPID_PRIVATE) {
   webpush.setVapidDetails(
-    "mailto:admin@parshandspoorthi.com",
+    "mailto:admin@example.com",
     VAPID_PUBLIC,
     VAPID_PRIVATE
   );

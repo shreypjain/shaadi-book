@@ -23,11 +23,11 @@ test.describe("Login Page", () => {
   test("continue button is clickable with valid input", async ({ page }) => {
     await page.goto("/login");
     const nameInput = page.locator("#name-input");
-    await nameInput.fill("Shrey");
+    await nameInput.fill("Test User");
 
     // Fill phone via the phone input
     const phoneInput = page.locator('input[type="tel"]');
-    await phoneInput.fill("7327998071");
+    await phoneInput.fill("5550001234");
 
     const continueBtn = page.locator("text=Continue");
     await expect(continueBtn).toBeEnabled();

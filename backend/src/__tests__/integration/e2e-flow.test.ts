@@ -94,7 +94,7 @@ beforeAll(async () => {
   // Create admin user (bypasses Twilio — we create the DB row directly)
   const adminPhone = "+15550000001";
   const admin = await prisma.user.create({
-    data: { name: "Admin Shrey", phone: adminPhone, country: "US", role: "ADMIN" },
+    data: { name: "Admin User", phone: adminPhone, country: "US", role: "ADMIN" },
   });
   adminId = admin.id;
   adminToken = generateToken(adminId, "admin", adminPhone);

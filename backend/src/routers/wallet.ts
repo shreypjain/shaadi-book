@@ -166,7 +166,7 @@ export const walletRouter = router({
 
   /**
    * wallet.requestWithdrawal
-   * Submits a withdrawal request. Shrey processes manually post-event.
+   * Submits a withdrawal request. Admin processes manually post-event.
    * Validates the requested amount does not exceed the current balance.
    */
   requestWithdrawal: protectedProcedure

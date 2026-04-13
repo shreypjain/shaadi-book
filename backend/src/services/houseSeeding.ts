@@ -21,8 +21,8 @@ import { costFunction, defaultB } from "./lmsr.js";
 // Constants
 // ---------------------------------------------------------------------------
 
-export const HOUSE_PHONE = "+15550000001";
-export const HOUSE_NAME = "Shrey Jain";
+export const HOUSE_PHONE = process.env["HOUSE_PHONE"] ?? "+15550000000";
+export const HOUSE_NAME = process.env["HOUSE_NAME"] ?? "House";
 export const DEFAULT_SEED_CENTS = 2000;
 
 // ---------------------------------------------------------------------------
