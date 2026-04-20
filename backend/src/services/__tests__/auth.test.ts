@@ -246,6 +246,13 @@ describe("verifyOTP", () => {
     );
   });
 
+  it("returns false (does not throw) when Twilio returns 404 for a consumed verification", async () => {
+    const err = Object.assign(new Error("Resource not found"), { status: 404 });
+    mockVerificationChecksCreate.mockRejectedValueOnce(err);
+    const result = await verifyOTP("+15551234567", "123456");
+    expect(result).toBe(false);
+  });
+
   it("throws when TWILIO_VERIFY_SERVICE_SID is missing", async () => {
     delete process.env["TWILIO_VERIFY_SERVICE_SID"];
     await expect(verifyOTP("+15551234567", "123456")).rejects.toThrow(

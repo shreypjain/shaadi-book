@@ -86,12 +86,24 @@ export async function verifyOTP(
     throw new Error("TWILIO_VERIFY_SERVICE_SID must be set");
   }
   const client = createTwilioClient();
-  const check = await client.verify.v2
-    .services(serviceSid)
-    .verificationChecks.create({ to: phone, code });
-  const approved = check.status === "approved";
-  console.log(`[auth] OTP verify for ${phone}: ${approved ? "approved" : "rejected"}`);
-  return approved;
+  try {
+    const check = await client.verify.v2
+      .services(serviceSid)
+      .verificationChecks.create({ to: phone, code });
+    const approved = check.status === "approved";
+    console.log(`[auth] OTP verify for ${phone}: ${approved ? "approved" : "rejected"}`);
+    return approved;
+  } catch (err: unknown) {
+    // Twilio returns 404 when no active Verification exists for the phone —
+    // e.g. duplicate client submission after the first check already consumed it,
+    // or the code expired. Treat as a rejection, not a 500.
+    const status = (err as { status?: number } | null)?.status;
+    if (status === 404) {
+      console.log(`[auth] OTP verify for ${phone}: no pending verification (404)`);
+      return false;
+    }
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------

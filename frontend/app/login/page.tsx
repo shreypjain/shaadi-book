@@ -14,7 +14,7 @@
  *      → calls auth.verifyOTP → stores JWT + user profile → redirects to /
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { PhoneInput, isValidPhone } from "@/components/PhoneInput";
 import { OTPInput } from "@/components/OTPInput";
@@ -41,6 +41,7 @@ export default function LoginPage() {
   const [otpError, setOtpError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [globalError, setGlobalError] = useState("");
+  const verifyInFlightRef = useRef(false);
 
   // ---------------------------------------------------------------------------
   // Step 1: check phone → dispatch OTP (returning) or go to name step (new)
@@ -118,6 +119,12 @@ export default function LoginPage() {
   const handleVerifyOTP = useCallback(
     async (code: string) => {
       if (code.length !== 6) return;
+      // Ref guard: setIsLoading is async, so onComplete + button click (or a
+      // duplicate onComplete) can both slip past `disabled={isLoading}` and
+      // issue two verifyOTP calls. The second call hits Twilio after the
+      // Verification has been consumed and 404s.
+      if (verifyInFlightRef.current) return;
+      verifyInFlightRef.current = true;
       setOtpError("");
       setGlobalError("");
       setIsLoading(true);
@@ -141,6 +148,7 @@ export default function LoginPage() {
         setOtp("");
       } finally {
         setIsLoading(false);
+        verifyInFlightRef.current = false;
       }
     },
     [phone, country, router]
